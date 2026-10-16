@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
+from app.security import SecurityMiddleware
 from app.settings import Settings, load_settings
 
 
@@ -24,4 +25,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         # Running version comes from the socket proxy in Phase 1 (SPEC §11.5).
         return {"bundled": settings.AUTHELIA_VERSION, "running": None}
 
+    # Outermost: every request (incl. static files) passes the IP/identity/CSRF checks.
+    app.add_middleware(SecurityMiddleware, settings=settings)
     return app

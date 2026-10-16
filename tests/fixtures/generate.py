@@ -9,6 +9,7 @@ pinned Authelia binary, and writes tests/fixtures/generated/{configuration.yml,u
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -36,6 +37,9 @@ class Generator:
         self.cli = cli
         self.workdir = workdir
         self._cache: dict[str, str] = {}
+        # Plaintext for the users file: needed to log in (dev stack, e2e, differential
+        # tests). Lives only in the gitignored generated dir.
+        self.user_password = cli.rand(24)
 
     def _cached(self, name: str, make: object) -> str:
         if name not in self._cache:
@@ -56,7 +60,7 @@ class Generator:
         if name == "__GEN_PBKDF2_HASH__":
             return self._cached(name, lambda: self.cli.hash_pbkdf2(self.cli.rand(24)))
         if name == "__GEN_ARGON2_HASH__":
-            return self._cached(name, lambda: self.cli.hash_argon2(self.cli.rand(24)))
+            return self._cached(name, lambda: self.cli.hash_argon2(self.user_password))
         if name in {"__GEN_RSA_PRIVATE_KEY_PEM__", "__GEN_RSA_CERT_PEM__"}:
             pair = self._cached("rsa", lambda: "\0".join(self._rsa()))
             private, cert = pair.split("\0")
@@ -94,6 +98,10 @@ def generate(cli: AutheliaCLI, target: Path = GENERATED) -> dict[str, Path]:
         path.chmod(0o600)
         produced[dest] = path
     shutil.rmtree(target / ".work", ignore_errors=True)
+    credentials = target / "credentials.json"
+    credentials.write_text(json.dumps({"password": gen.user_password}) + "\n")
+    credentials.chmod(0o600)
+    produced["credentials.json"] = credentials
     return produced
 
 
