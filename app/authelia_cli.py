@@ -19,7 +19,7 @@ from pathlib import Path
 DEFAULT_TIMEOUT_S = 60
 
 _REDACTIONS = [
-    (re.compile(r"\$(argon2id?|pbkdf2[-\w]*|scrypt|bcrypt|sha512|2[aby])\$\S+"), "<hash>"),
+    (re.compile(r"\$(argon2id?|pbkdf2[-\w]*|scrypt|bcrypt|sha512|2[aby])\$[^\s'\"]+"), "<hash>"),
     (re.compile(r"-----BEGIN [A-Z ]+-----.*?-----END [A-Z ]+-----", re.S), "<pem>"),
 ]
 

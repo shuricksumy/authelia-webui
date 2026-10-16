@@ -227,7 +227,47 @@ def main_changed(page: Page) -> None:
     page.goto(f"{BASE}/rules", wait_until="networkidle")
 
 
+def clients_list(page: Page) -> None:
+    page.goto(f"{BASE}/clients", wait_until="networkidle")
+
+
+def client_editor(page: Page) -> None:
+    page.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
+
+
+def client_new(page: Page) -> None:
+    page.goto(f"{BASE}/clients/new", wait_until="networkidle")
+
+
+def client_secret_modal(page: Page) -> None:
+    """Rotate a secret: the one-time modal (masked). The draft is discarded by reset_draft."""
+    page.goto(f"{BASE}/clients", wait_until="networkidle")
+    page.get_by_role("button", name="Edit").first.click()
+    page.wait_for_selector("#client-form")
+    page.once("dialog", lambda dialog: dialog.accept())
+    page.get_by_role("button", name="Generate new secret").click()
+    page.wait_for_selector("dialog.secret-dialog")
+
+
+def client_delete_confirm(page: Page) -> None:
+    page.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
+    page.get_by_role("button", name="Delete").click()
+    page.wait_for_selector("dialog[open]")
+
+
+def review_clients(page: Page) -> None:
+    client_secret_modal(page)
+    page.locator("#modal").evaluate("el => { el.innerHTML = ''; }")
+    page.goto(f"{BASE}/review", wait_until="networkidle")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
+    "clients": clients_list,
+    "client-editor": client_editor,
+    "client-new": client_new,
+    "client-secret-modal": client_secret_modal,
+    "client-delete-confirm": client_delete_confirm,
+    "review-clients": review_clients,
     "rules": rules,
     "rules-by-domain": by_domain,
     "rule-editor": editor,

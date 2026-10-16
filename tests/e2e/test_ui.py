@@ -221,3 +221,65 @@ def test_a_hand_edit_is_recorded_and_announced(admin: Page) -> None:
         expect(admin.get_by_text("Files were edited outside")).to_have_count(0)
     finally:
         live.write_text(original)
+
+
+# ----------------------------------------------------------------- OIDC clients (no restart)
+
+
+def clients_file() -> str:
+    return (STACK / "managed" / "oidc_clients.yml").read_text()
+
+
+def test_clients_list_and_editor_never_show_hashes(admin: Page) -> None:
+    admin.goto(f"{BASE}/clients", wait_until="networkidle")
+    expect(admin.locator("table.clients")).to_contain_text("portainer")
+    admin.get_by_role("button", name="Edit").first.click()
+    expect(admin.locator("#client-form")).to_be_visible()
+    assert "$pbkdf2" not in admin.content() and "$argon2" not in admin.content()
+    expect(admin.get_by_text("Secret: set")).to_be_visible()
+
+
+def test_rotating_a_secret_shows_it_once_masked_and_leaves_the_live_file_alone(admin: Page) -> None:
+    before = clients_file()
+    admin.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
+    admin.once("dialog", lambda dialog: dialog.accept())
+    admin.get_by_role("button", name="Generate new secret").click()
+    secret_input = admin.locator("#one-time-secret")
+    expect(secret_input).to_have_attribute("type", "password")  # masked until Show
+    secret = secret_input.input_value()
+    assert len(secret) >= 32
+    done = admin.get_by_role("button", name="Done")
+    expect(done).to_be_disabled()
+    admin.get_by_role("button", name="Show").click()
+    expect(secret_input).to_have_attribute("type", "text")
+    admin.get_by_label("I have copied the secret").check()
+    expect(done).to_be_enabled()
+    done.click()
+    admin.wait_for_url(f"{BASE}/clients")
+    assert secret not in admin.content()  # gone with the dialog
+    assert secret not in clients_file() and clients_file() == before  # live untouched, no plaintext
+    admin.goto(f"{BASE}/review", wait_until="networkidle")
+    expect(admin.get_by_text("1 new secret")).to_be_visible()
+    assert secret not in admin.content() and "$pbkdf2" not in admin.content()
+    expect(admin.locator("pre.diff")).to_contain_text("<hash>")
+
+
+def test_editing_a_client_changes_only_that_client_in_the_diff(admin: Page) -> None:
+    admin.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
+    admin.locator("#f-client_name").fill("Portainer (renamed in e2e)")
+    admin.get_by_role("button", name="Save to draft").click()
+    admin.wait_for_url(f"{BASE}/clients?saved=2")
+    admin.goto(f"{BASE}/review", wait_until="networkidle")
+    added = admin.locator("pre.diff .d-add")
+    expect(added).to_have_count(1)  # only the new name line: nothing else was rewritten
+    expect(added).to_contain_text("Portainer (renamed in e2e)")
+    assert admin.locator("pre.diff .d-del").count() == 0
+
+
+def test_deleting_a_client_asks_first(admin: Page) -> None:
+    admin.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
+    admin.get_by_role("button", name="Delete").click()
+    expect(admin.get_by_text("Delete client?")).to_be_visible()
+    admin.locator("#modal").get_by_role("button", name="Cancel").click()
+    expect(admin.locator("dialog")).to_have_count(0)
+    assert not (STACK / "managed" / ".draft").exists()

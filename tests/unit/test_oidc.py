@@ -365,3 +365,26 @@ def test_portal_host_comes_from_the_session_cookie_config(tmp_path: Path) -> Non
     assert portal_host(main, "other.example.test") == "other.example.test"
     main.write_text("theme: light\n")
     assert portal_host(main, "auth.example.com") == "auth.example.com"
+
+
+def test_form_keeps_the_file_order_of_an_unchanged_checkbox_group(clients_text: str) -> None:
+    from app.oidc.form import ClientForm, apply_client_form
+
+    doc = ClientsDocument.parse(clients_text)
+    i = doc.client_ids().index("portainer")
+    data = doc.clients()[i]
+    form = ClientForm.from_data(data)
+    form.lists["scopes"] = ["openid", "profile", "email", "groups"]  # page order, not file order
+    node = apply_client_form(form, doc.blocks[i].node())
+    assert doc.replace_item(i, node).blocks[i].lines == doc.blocks[i].lines  # no diff at all
+    form.lists["scopes"] = ["openid", "email"]  # a real change is written
+    node = apply_client_form(form, doc.blocks[i].node())
+    assert doc.replace_item(i, node).clients()[i]["scopes"] == ["openid", "email"]
+
+
+def test_redaction_keeps_the_quotes_around_a_hash() -> None:
+    from app.authelia_cli import redact
+
+    assert redact(f"client_secret: '{FAKE_DIGEST}'") == "client_secret: '<hash>'"
+    assert redact(f'x: "{FAKE_DIGEST}" # c') == 'x: "<hash>" # c'
+    assert redact(f"error with {FAKE_DIGEST}") == "error with <hash>"

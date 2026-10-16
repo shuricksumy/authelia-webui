@@ -325,3 +325,31 @@ table.tests .note { display: block; }
   table.tests .col-actions > * { margin: 0; }
 }
 dialog > article { max-height: 92vh; overflow-y: auto; }
+
+/* OIDC clients (Phase 2) */
+.input-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.input-row > input { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.input-row > button { flex: 0 0 auto; margin-bottom: 0; width: auto; }
+.client-editor { max-width: 52rem; }
+.client-editor details { border-bottom: 1px solid var(--app-border); padding: 0.4rem 0 0.6rem; margin-bottom: 0.4rem; }
+.client-editor details > summary { padding: 0.5rem 0; }
+.client-editor fieldset.checks { margin-bottom: 1rem; }
+.client-editor fieldset.checks label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 1rem 0.3rem 0; }
+.client-editor .editor-actions { display: flex; gap: 0.6rem; justify-content: flex-end; flex-wrap: wrap; margin-top: 1rem; }
+.client-editor .editor-actions > * { width: auto; margin: 0; }
+.secret-dialog article { width: min(40rem, 100%); }
+.secret-dialog .setup-info { margin-top: 1rem; border-top: 1px solid var(--app-border); padding-top: 0.5rem; }
+.secret-dialog .setup-info dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
+.secret-dialog .setup-info dd { margin: 0; overflow-wrap: anywhere; }
+.secret-dialog footer { margin-top: 0.8rem; }
+.client-id { white-space: nowrap; }
+table.clients td { vertical-align: middle; }
+@media (max-width: 720px) {
+  table.clients, table.clients tbody { display: block; }
+  table.clients thead { display: none; }
+  table.clients tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
+  table.clients td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
+  table.clients td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 6rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  table.clients .col-actions { padding-top: 0.4rem; }
+  .secret-dialog .setup-info dl { grid-template-columns: 1fr; }
+}

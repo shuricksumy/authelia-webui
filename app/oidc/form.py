@@ -143,7 +143,10 @@ def apply_client_form(form: ClientForm, base: CommentedMap | None = None) -> Com
         if items is None:
             node.pop(key, None)
         else:
-            _set(node, key, [i.strip() for i in items if i.strip()])
+            # checkbox groups come back in page order, not file order: an unchanged set keeps
+            # the file's order (and so its diff); only redirect_uris is order-sensitive text
+            _set(node, key, [i.strip() for i in items if i.strip()],
+                 unordered=key != "redirect_uris")  # fmt: skip
 
     extra = parse_extra(form.extra_yaml)
     for key in [k for k in node if k not in KNOWN and k not in extra]:
@@ -155,11 +158,19 @@ def apply_client_form(form: ClientForm, base: CommentedMap | None = None) -> Com
     return node
 
 
-def _set(node: CommentedMap, key: str, value: Any) -> None:
+def _set(node: CommentedMap, key: str, value: Any, unordered: bool = False) -> None:
     """Assign only when the value really changes, so quoting and comments of untouched keys
-    survive the round trip."""
-    if key in node and _plain(node[key]) == _plain(value):
-        return
+    survive the round trip. With `unordered`, the same members in another order are no change."""
+    if key in node:
+        old, new = _plain(node[key]), _plain(value)
+        if old == new:
+            return
+        same_members = (
+            isinstance(old, list) and isinstance(new, list)
+            and sorted(map(str, old)) == sorted(map(str, new))
+        )  # fmt: skip
+        if unordered and same_members:
+            return
     node[key] = value
 
 

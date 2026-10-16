@@ -216,3 +216,64 @@ def test_disabling_a_rule_needs_acceptance_applies_and_enabling_restores_it(
         assert (STACK / "managed" / "access_control.yml").read_text() == live_before
     finally:
         context.close()
+
+
+def token_status(client_id: str, secret: str) -> int:
+    # Authelia answers OIDC only for its configured portal URL (port included).
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": f"{AUTH_HOST}:{PORTAL_PORT}"}
+    return httpx.post("http://127.0.0.1:19091/api/oidc/token", headers=headers, timeout=10,
+                      data={"grant_type": "client_credentials", "scope": "groups"},
+                      auth=(client_id, secret)).status_code  # fmt: skip
+
+
+def test_a_client_created_in_the_ui_gets_a_token_with_the_secret_shown_once(
+    browser: Browser, alice_state: AliceSession
+) -> None:
+    """The full path: form -> one-time secret -> review -> apply -> Authelia accepts that secret."""
+    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state.state())
+    page = context.new_page()
+    try:
+        page.goto(f"{BASE}/clients/new", wait_until="networkidle")
+        page.locator("#f-client_name").fill("e2e machine client")
+        page.locator("#f-client_id").fill("e2e-machine")
+        page.locator("#f-redirect").fill("")
+        page.get_by_text("Advanced").click()
+        page.get_by_label("authorization_code").uncheck()
+        page.get_by_label("client_credentials").check()
+        page.get_by_label("code", exact=True).uncheck()
+        # Authelia: client_credentials needs one_factor and may not ask for openid (the review
+        # page shows its validator's message otherwise).
+        page.locator("#f-authorization_policy").select_option("one_factor")
+        for scope in ("openid", "profile", "email"):
+            page.get_by_label(scope, exact=True).uncheck()
+        page.get_by_role("button", name="Save to draft").click()
+        secret_input = page.locator("#one-time-secret")
+        expect(secret_input).to_have_attribute("type", "password")
+        secret = secret_input.input_value()
+        page.get_by_label("I have copied the secret").check()
+        page.get_by_role("button", name="Done").click()
+        page.wait_for_url(f"{BASE}/clients")
+
+        before = last_job_id()
+        review_and_apply(page)
+        assert wait_for_job(not_id=before)["result"] == "applied"
+        log_back_in_after_restart(page)
+        assert token_status("e2e-machine", secret) == 200
+        assert token_status("e2e-machine", secret + "x") == 401
+        assert secret not in (STACK / "managed" / "oidc_clients.yml").read_text()
+        assert secret not in (STACK / "managed" / "audit.log").read_text()
+
+        # Clean up through the UI too: delete it again and apply, so other tests see the old state.
+        page.goto(f"{BASE}/clients", wait_until="networkidle")
+        row = page.locator("table.clients tbody tr", has_text="e2e-machine")
+        row.get_by_role("button", name="Edit").click()
+        page.get_by_role("button", name="Delete").click()
+        page.get_by_role("button", name="Delete client").click()
+        page.wait_for_url(f"{BASE}/clients")
+        before = last_job_id()
+        review_and_apply(page)
+        assert wait_for_job(not_id=before)["result"] == "applied"
+        log_back_in_after_restart(page)
+        assert token_status("e2e-machine", secret) == 401
+    finally:
+        context.close()
