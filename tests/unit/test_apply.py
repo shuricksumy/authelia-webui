@@ -60,8 +60,12 @@ class ScriptedHealth:
         return HealthResult(ok, "healthy" if ok else "Authelia did not come back up within 30 s.")
 
 
-def ok_validator(settings: Settings, text: str) -> ValidationResult:
+def ok_validator(settings: Settings, text: str, clients: str | None = None) -> ValidationResult:
     return ValidationResult(True, [], [], "")
+
+
+def ok_discovery(authelia_url: str, auth_domain: str) -> str | None:
+    return None  # the OIDC provider answers (unit tests have no Authelia)
 
 
 # --------------------------------------------------------------------- fixture
@@ -99,7 +103,8 @@ def make(
 ) -> tuple[ApplyEngine, FakeRuntime, ScriptedHealth]:
     runtime = runtime or FakeRuntime()
     waiter = ScriptedHealth(list(health or [True]))
-    engine = ApplyEngine(env["settings"], runtime, JobBoard(env["managed"]), validator, waiter)  # type: ignore[arg-type]
+    engine = ApplyEngine(env["settings"], runtime, JobBoard(env["managed"]), validator, waiter,  # type: ignore[arg-type]
+                         discovery=ok_discovery)  # fmt: skip
     return engine, runtime, waiter
 
 
@@ -140,8 +145,15 @@ def test_successful_apply_writes_commits_restarts_and_clears_the_draft(env: dict
     assert "Initial import" in git(env["managed"], "log", "--format=%s")
     assert git(env["managed"], "status", "--porcelain").strip() == ""  # runtime files ignored
     assert not (env["managed"] / ".apply" / "in-progress.json").exists()
-    assert [s.status for s in job.steps] == ["done", "done", "done", "done", "skipped", "skipped"]
-    assert job.step("verify").detail == "no anonymous access tests"
+    assert [s.status for s in job.steps] == [
+        "done",
+        "done",
+        "done",
+        "done",
+        "done",
+        "skipped",
+    ]  # verify: OIDC discovery
+    assert job.step("verify").detail == "OIDC discovery answers"
     entries = audit.recent(env["managed"])
     assert entries[-1].result == "applied" and entries[-1].user == "alice"
     assert entries[-1].client_ip == "10.8.0.5" and job.commit.startswith(entries[-1].commit[:7])
@@ -209,7 +221,7 @@ def refused(env: dict[str, Any], engine: ApplyEngine, rev: str, fragment: str) -
 
 
 def test_validator_rejection_changes_nothing(env: dict[str, Any]) -> None:
-    def reject(settings: Settings, text: str) -> ValidationResult:
+    def reject(settings: Settings, text: str, clients: str | None = None) -> ValidationResult:
         return ValidationResult(False, ["access_control: rule #2: bad"], [], "")
 
     engine, _, _ = make(env, validator=reject)
@@ -220,7 +232,7 @@ def test_validator_rejection_changes_nothing(env: dict[str, Any]) -> None:
 
 
 def test_missing_validator_changes_nothing(env: dict[str, Any]) -> None:
-    engine, _, _ = make(env, validator=lambda s, t: None)
+    engine, _, _ = make(env, validator=lambda s, t, c=None: None)
     refused(env, engine, draft_move(env), "validator could not run")
 
 
@@ -249,7 +261,8 @@ def test_hand_edits_are_committed_as_an_external_change_before_applying(
     """SPEC §16.8: a hand edit of another tracked file no longer blocks; it becomes history."""
     engine, _, _ = make(env, [True])
     engine.repo.ensure(["access_control.yml", "oidc_clients.yml"])
-    (env["managed"] / "oidc_clients.yml").write_text("identity_providers: {}\n")
+    clients = env["managed"] / "oidc_clients.yml"
+    clients.write_text(clients.read_text() + "# edited over ssh\n")
     job = run(engine, draft_move(env))
     assert job.result == "applied", job.message
     log = git(env["managed"], "log", "--format=%an|%s").splitlines()

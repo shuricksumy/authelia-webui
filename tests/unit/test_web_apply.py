@@ -13,7 +13,7 @@ from app.apply.health import HealthResult
 from app.apply.jobs import JobBoard
 from app.apply.services import ApplyServices
 from app.apply.status import StatusCache
-from tests.unit.test_apply import FakeRuntime, ScriptedHealth, ok_validator
+from tests.unit.test_apply import FakeRuntime, ScriptedHealth, ok_discovery, ok_validator
 from tests.unit.test_web import UI, env  # noqa: F401  (fixture)
 
 
@@ -24,7 +24,8 @@ def build(ui_env: dict[str, Path], health: list[bool], runtime: FakeRuntime | No
     runtime = runtime or FakeRuntime()
     board = JobBoard(ui_env["managed"])
     engine = ApplyEngine(settings, runtime, board, ok_validator,  # type: ignore[arg-type]
-                         waiter or ScriptedHealth(list(health)))  # fmt: skip
+                         waiter or ScriptedHealth(list(health)),
+                         discovery=ok_discovery)  # fmt: skip
     status = StatusCache(settings, runtime, check=lambda url: True)  # type: ignore[arg-type]
     services = ApplyServices(runtime, board, engine, status, engine.repo)  # type: ignore[arg-type]
     return UI(ui_env, services=services), services, runtime
@@ -170,7 +171,8 @@ def test_warn_policy_shows_a_banner_without_blocking_styling(env: dict[str, Path
     probe.settings.VERSION_MISMATCH = "warn"  # type: ignore[assignment]
     runtime = FakeRuntime(version="4.40.1")
     board = JobBoard(env["managed"])
-    engine = ApplyEngine(probe.settings, runtime, board, ok_validator, ScriptedHealth([True]))  # type: ignore[arg-type]
+    engine = ApplyEngine(probe.settings, runtime, board, ok_validator, ScriptedHealth([True]),  # type: ignore[arg-type]
+                         discovery=ok_discovery)  # fmt: skip
     status = StatusCache(probe.settings, runtime, check=lambda url: True)  # type: ignore[arg-type]
     ui = UI(env, services=ApplyServices(runtime, board, engine, status, engine.repo))  # type: ignore[arg-type]
     ui.settings.VERSION_MISMATCH = "warn"  # type: ignore[assignment]

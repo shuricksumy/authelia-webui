@@ -20,8 +20,11 @@ from app.apply import audit
 from app.apply.engine import ApplyRequest
 from app.apply.jobs import Job
 from app.apply.repo import Commit, RepoError
+from app.authelia_cli import redact
+from app.oidc.document import CLIENTS_NAME, ClientsDocument
+from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
-from app.rules.store import LIVE_NAME, StaleDraftError
+from app.rules.store import LIVE_NAME, Snapshot, StaleDraftError
 from app.security import identity_of
 from app.ui import diff_lines
 from app.web import (
@@ -37,6 +40,7 @@ from app.web import (
 )
 
 router = APIRouter()
+DRAFTED = (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME)
 
 
 # --------------------------------------------------------------------------- apply
@@ -113,7 +117,10 @@ def notice_seen(request: Request, what: str) -> Response:
 def revalidate_main(request: Request) -> Response:
     """Validate the live rules together with the (changed) main configuration."""
     services = services_of(request)
-    result = services.engine.validator(services.engine.settings, services.engine.store.live_text())
+    store = services.engine.store
+    result = services.engine.validator(
+        services.engine.settings, store.live_text(), store.live_clients_text() or None
+    )
     return templates(request).TemplateResponse(
         request, "partials/main_revalidated.html", {"request": request, "result": result}
     )
@@ -179,9 +186,10 @@ def history(request: Request) -> Response:
 def history_diff(request: Request, sha: str) -> Response:
     services = services_of(request)
     try:
-        text = services.repo.diff(sha, LIVE_NAME)
+        text = "".join(services.repo.diff(sha, name) for name in DRAFTED)
     except RepoError:
         return Response("Unknown commit.", status_code=404)
+    text = redact(text)  # client secret hashes never reach a page
     return templates(request).TemplateResponse(
         request, "partials/history_diff.html", {"request": request, "diff": diff_lines(text)}
     )
@@ -196,14 +204,28 @@ async def revert_to(request: Request, sha: str) -> Response:
         require_rev(v, str(data.get("rev", "")))
         if v.store.has_draft():
             raise Conflict("There are unapplied changes. Apply or discard them first.", 422)
+        repo = services_of(request).repo
+
+        def at(name: str) -> str:
+            try:
+                return repo.file_at(sha, name)
+            except RepoError:
+                return ""
+
+        snap = Snapshot(at(LIVE_NAME), at(DISABLED_NAME), at(CLIENTS_NAME))
         try:
-            text = services_of(request).repo.file_at(sha, LIVE_NAME)
-            target = RulesDocument.parse(text)
-        except (RepoError, DocumentError):
+            RulesDocument.parse(snap.rules)
+            DisabledRules.parse(snap.disabled)
+            if snap.clients:
+                ClientsDocument.parse(snap.clients)
+        except DocumentError:
             raise Conflict("That version could not be loaded.", 422) from None
-        if text == v.store.live_text():
+        live = (v.store.live_text(), v.store.live_disabled_text(), v.store.live_clients_text())
+        if (snap.rules, snap.disabled, snap.clients) == live:
             raise Conflict("That version is already live.", 422)
-        v.store.save(target, expected_sha=v.sha)
+        if bool(snap.clients) != bool(live[2]):
+            raise Conflict("That version has a different OIDC setup; revert it by hand.", 422)
+        v.store.save_snapshot(snap, expected_sha=v.sha)
     except Conflict as exc:
         return conflict_response(exc)
     except (StaleDraftError, OSError):

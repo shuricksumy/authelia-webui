@@ -23,9 +23,17 @@
         {% if changes.deleted_disabled %}<span class="chip del">{{ changes.deleted_disabled }} disabled rule(s) deleted</span>{% endif %}
         {% if changes.order_changed %}<span class="chip move">&updownarrow; order changed</span>{% endif %}
         {% if changes.default_policy_changed %}<span class="chip edit">default policy &rarr; {{ default_policy }}</span>{% endif %}
-        {% if not changes.any %}<span class="muted">no difference from live</span>{% endif %}
+        {% if not changes.rules_count %}<span class="muted">no change</span>{% endif %}
       </dd>
-      <dt>OIDC clients</dt><dd class="muted">none (arrives in a later phase)</dd>
+      <dt>OIDC clients</dt>
+      <dd>
+        {% set c = changes.clients %}
+        {% if c.added %}<span class="chip add">+{{ c.added }} added</span>{% endif %}
+        {% if c.edited %}<span class="chip edit">~{{ c.edited }} edited</span>{% endif %}
+        {% if c.removed %}<span class="chip del">-{{ c.removed }} removed</span>{% endif %}
+        {% if c.secrets_rotated %}<span class="chip move">{{ c.secrets_rotated }} new secret{{ '' if c.secrets_rotated == 1 else 's' }}</span>{% endif %}
+        {% if not (c.added or c.edited or c.removed) %}<span class="muted">no change</span>{% endif %}
+      </dd>
       <dt>Lint</dt>
       <dd>
         {% if errors %}<span class="chip del">{{ errors|length }} blocking</span>{% endif %}
@@ -92,7 +100,7 @@
   {% endif %}
 
   <section>
-    <h2>Diff <small>access_control.yml, live &rarr; draft</small></h2>
+    <h2>Diff <small>live &rarr; draft, secret hashes hidden</small></h2>
     <pre class="diff" aria-label="Diff">{% for kind, text in diff %}<span class="d-{{ kind }}">{{ text }}</span>{% endfor %}</pre>
   </section>
 

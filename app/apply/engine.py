@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import json
+import logging
 import os
 import tempfile
 from collections.abc import Callable, Iterator
@@ -30,14 +31,18 @@ from app.apply.jobs import Job, JobBoard
 from app.apply.repo import ManagedRepo, RepoError
 from app.apply.runtime import AutheliaRuntime, RuntimeUnavailable
 from app.authelia_cli import ValidationResult, redact
+from app.oidc.document import CLIENTS_NAME
+from app.oidc.lint import lint_clients
+from app.oidc.names import load_oidc_names
 from app.rules import access_tests
-from app.rules.disabled import DISABLED_NAME, DisabledRules
+from app.rules.disabled import DISABLED_NAME
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.lint import blocking, lint
 from app.rules.protected import check_protected
 from app.rules.store import (
     LIVE_NAME,
     DraftStore,
+    Snapshot,
     StaleDraftError,
     load_main_definitions,
     load_users,
@@ -45,7 +50,9 @@ from app.rules.store import (
 )
 from app.settings import Settings, VersionMismatch
 
-TRACKED = (LIVE_NAME, "oidc_clients.yml", "disabled_rules.yml", "access_tests.yml")
+log = logging.getLogger("app.apply")
+
+TRACKED = (LIVE_NAME, CLIENTS_NAME, "disabled_rules.yml", "access_tests.yml")
 EXTERNAL_SUBJECT = "External change: edited outside the configurator"
 MARKER = "in-progress.json"
 RECOVERY_HINT = (
@@ -54,7 +61,8 @@ RECOVERY_HINT = (
     "and docker restart <authelia container>."
 )
 
-Validator = Callable[[Settings, str], ValidationResult | None]
+# (settings, candidate access_control text, candidate oidc_clients text or None) -> result
+Validator = Callable[[Settings, str, str | None], ValidationResult | None]
 HealthWaiter = Callable[..., HealthResult]
 
 
@@ -79,8 +87,10 @@ class ApplyEngine:
         validator: Validator,
         health_waiter: HealthWaiter = wait_restarted_and_healthy,
         prober: probe.Prober = probe.forward_auth,
+        discovery: probe.Discovery = probe.oidc_discovery,
     ) -> None:
         self.prober = prober
+        self.discovery = discovery
         self.settings = settings
         self.runtime = runtime
         self.board = board
@@ -278,6 +288,17 @@ class ApplyEngine:
                       known_networks=known)  # fmt: skip
         if blocking(issues):
             reasons.append(f"{len(blocking(issues))} blocking lint problem(s) must be fixed first.")
+        try:
+            clients = self.store.current_clients()
+        except DocumentError as exc:
+            clients = None
+            reasons.append(f"The OIDC clients file cannot be read: {exc}.")
+        if clients is not None:
+            names = load_oidc_names(self.settings.CONFIG_MAIN)
+            client_errors = blocking(lint_clients(clients.clients(), names))
+            if client_errors:
+                reasons.append(f"{len(client_errors)} blocking OIDC client problem(s) must be "
+                               "fixed first.")  # fmt: skip
         report = check_protected({**definitions, **doc.effective()}, self.settings)
         if not report.ok:
             reasons.append("Protected rules are not satisfied: " + " ".join(report.violations))
@@ -296,6 +317,7 @@ class ApplyEngine:
         except Refused as exc:
             self._finish(job, request, "refused", str(exc), action="apply")
         except Exception:
+            log.exception("apply failed unexpectedly")  # messages only; never file contents
             self._finish(job, request, "failed", "Unexpected error. " + RECOVERY_HINT, "apply")
         return job
 
@@ -308,14 +330,13 @@ class ApplyEngine:
         reasons = [r for r in reasons if r != "Another apply is running."]  # that is us
         if reasons:
             raise Refused(" ".join(reasons))
-        doc = self.store.current()
-        text = doc.render()
-        disabled_text = self.store.current_disabled().render()
+        snap = self.store.snapshot()
+        text = snap.rules
         expected_state = self.store.current_sha()
         changes = self.store.changes()
 
         board.update(job, "validate", "running")
-        result = self.validator(self.settings, text)
+        result = self.validator(self.settings, text, snap.clients or None)
         if result is None:
             board.update(job, "validate", "failed", "The Authelia validator is not available.")
             raise Refused("Authelia's validator could not run, so nothing was applied.")
@@ -339,14 +360,17 @@ class ApplyEngine:
                 self._write_marker({"old_head": old_head, "started_at": before,
                                     "user": request.user})  # fmt: skip
                 paths = [LIVE_NAME]
-                if disabled_text != self.store.live_disabled_text():
+                if snap.disabled != self.store.live_disabled_text():
                     # Authelia never reads this file; written first, committed together.
                     disabled_path = self.managed / DISABLED_NAME
-                    if disabled_text:
-                        self._atomic_write(disabled_path, disabled_text)
+                    if snap.disabled:
+                        self._atomic_write(disabled_path, snap.disabled)
                     else:
                         disabled_path.unlink(missing_ok=True)
                     paths.append(DISABLED_NAME)
+                if snap.clients and snap.clients != self.store.live_clients_text():
+                    self._atomic_write(self.managed / CLIENTS_NAME, snap.clients)
+                    paths.append(CLIENTS_NAME)
                 self._atomic_write(self.managed / LIVE_NAME, text)
                 try:
                     commit = self.repo.commit(
@@ -371,18 +395,18 @@ class ApplyEngine:
                 # The call failed (e.g. timed out) but Docker did restart it: the new file is
                 # what Authelia loaded, so carry on with the health check instead of reverting.
                 board.update(job, "restart", "done", f"restarted (the call reported: {exc})")
-                return self._health_or_rollback(job, request, text, before, commit, disabled_text)
+                return self._health_or_rollback(job, request, snap, before, commit)
             # Authelia never loaded the new file: undo the commit so file == running config.
             self.repo.revert_head(f"could not restart Authelia ({exc})", author=request.user)
             self._marker().unlink(missing_ok=True)
             board.update(job, "restart", "failed", str(exc))
-            self._restore_draft(text, disabled_text)
+            self._restore_draft(snap)
             self._finish(job, request, "rolled-back",
                          f"Authelia could not be restarted ({exc}); the change was undone and "
                          "is back in your draft.", "apply", commit)  # fmt: skip
             return
         board.update(job, "restart", "done")
-        self._health_or_rollback(job, request, text, before, commit, disabled_text)
+        self._health_or_rollback(job, request, snap, before, commit)
 
     def _restarted_since(self, previous_started_at: str) -> bool:
         try:
@@ -390,16 +414,16 @@ class ApplyEngine:
         except RuntimeUnavailable:
             return False  # cannot tell: treat as not restarted (the file is reverted)
 
-    def _health_or_rollback(self, job: Job, request: ApplyRequest, text: str, before: str,
-                            commit: str, disabled_text: str | None = None) -> None:  # fmt: skip
+    def _health_or_rollback(self, job: Job, request: ApplyRequest, snap: Snapshot, before: str,
+                            commit: str) -> None:  # fmt: skip
         board = self.board
         board.update(job, "health", "running")
         health = self._wait(before)
         if health.healthy:
             board.update(job, "health", "done", health.reason)
-            mismatch = self._verify(job, text)
+            mismatch = self._verify(job, snap)
             if mismatch:
-                self._rollback(job, request, text, mismatch, commit, disabled_text)
+                self._rollback(job, request, snap, mismatch, commit)
                 return
             board.update(job, "rollback", "skipped")
             self._marker().unlink(missing_ok=True)
@@ -407,10 +431,10 @@ class ApplyEngine:
             self._finish(job, request, "applied", "Applied. Authelia is healthy.", "apply", commit)
             return
         board.update(job, "health", "failed", health.reason)
-        self._rollback(job, request, text, health.reason, commit, disabled_text)
+        self._rollback(job, request, snap, health.reason, commit)
 
-    def _rollback(self, job: Job, request: ApplyRequest, failed_text: str, reason: str,
-                  commit: str, failed_disabled: str | None = None) -> None:  # fmt: skip
+    def _rollback(self, job: Job, request: ApplyRequest, failed: Snapshot | None, reason: str,
+                  commit: str) -> None:  # fmt: skip
         board = self.board
         board.update(job, "rollback", "running")
         details = [*job.details, *self._authelia_errors()]
@@ -432,21 +456,37 @@ class ApplyEngine:
                          "rolling back. " + RECOVERY_HINT, "rollback", revert)  # fmt: skip
             return
         self._marker().unlink(missing_ok=True)
-        self._restore_draft(failed_text, failed_disabled)
+        if failed is not None:
+            self._restore_draft(failed)
         board.update(job, "rollback", "done", "previous version restored", details=details)
         self._finish(job, request, "rolled-back",
                      f"{reason} The previous version is live again; your change is back in the "
                      "draft so you can fix it.", "rollback", revert)  # fmt: skip
 
-    def _verify(self, job: Job, text: str) -> str | None:
-        """Probe anonymous access tests against the real Authelia; a reason string on mismatch."""
+    def _verify(self, job: Job, snap: Snapshot) -> str | None:
+        """Probe the real Authelia after the restart; a reason string when it disagrees.
+
+        - OIDC (when this deployment has clients): the discovery document must be served.
+        - Anonymous access tests: Authelia must answer what the rule tester predicted.
+        """
         board = self.board
+        if snap.clients:
+            board.update(job, "verify", "running")
+            host = probe.portal_host(self.settings.CONFIG_MAIN, self.settings.AUTH_DOMAIN)
+            problem = self.discovery(self.settings.authelia_base_url, host)
+            if problem:
+                board.update(job, "verify", "failed", "OIDC discovery failed", details=[problem])
+                return f"Authelia's OpenID Connect provider is not answering: {problem}."
+        text = snap.rules
         try:
             cases = access_tests.load(self.managed)
         except DocumentError:
             cases = []
         if not any(c.anonymous for c in cases):
-            board.update(job, "verify", "skipped", "no anonymous access tests")
+            if snap.clients:
+                board.update(job, "verify", "done", "OIDC discovery answers")
+            else:
+                board.update(job, "verify", "skipped", "no anonymous access tests")
             return None
         board.update(job, "verify", "running")
         definitions = load_main_definitions(self.settings.CONFIG_MAIN)
@@ -521,7 +561,7 @@ class ApplyEngine:
                          "An interrupted apply had completed; Authelia is healthy.", "recovery",
                          self.repo.head())  # fmt: skip
             return job.message
-        self._rollback(job, request, self.repo.file_at(self.repo.head(), LIVE_NAME),
+        self._rollback(job, request, self._snapshot_at(self.repo.head()),
                        "interrupted apply left Authelia unhealthy.", self.repo.head())  # fmt: skip
         return job.message
 
@@ -538,10 +578,22 @@ class ApplyEngine:
             result=result, commit=(commit or job.commit)[:12], summary=message[:200],
         ))  # fmt: skip
 
-    def _restore_draft(self, text: str, disabled_text: str | None = None) -> None:
+    def _snapshot_at(self, sha: str) -> Snapshot | None:
+        """The drafted files as committed in `sha` (a missing file is "")."""
+
+        def text(name: str) -> str:
+            try:
+                return self.repo.file_at(sha, name)
+            except RepoError:
+                return ""
+
+        rules = text(LIVE_NAME)
+        return Snapshot(rules, text(DISABLED_NAME), text(CLIENTS_NAME)) if rules else None
+
+    def _restore_draft(self, snap: Snapshot) -> None:
+        """Put the failed change back into the draft (the live files are the old ones again)."""
         with contextlib.suppress(DocumentError, StaleDraftError, OSError):
-            disabled = DisabledRules.parse(disabled_text) if disabled_text is not None else None
-            self.store.save(RulesDocument.parse(text), disabled=disabled)
+            self.store.save_snapshot(snap)
 
     def _atomic_write(self, path: Path, text: str) -> None:
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".apply-")
@@ -603,7 +655,21 @@ def _subject(changes: Any) -> str:
         parts.append(f"{changes.enabled} enabled")
     if changes.deleted_disabled:
         parts.append(f"{changes.deleted_disabled} disabled rule(s) deleted")
-    return "Rules: " + (", ".join(parts) if parts else "updated")
+    clients = getattr(changes, "clients", None)
+    client_parts = []
+    if clients is not None:
+        for count, word in ((clients.added, "added"), (clients.edited, "edited"),
+                            (clients.removed, "removed")):  # fmt: skip
+            if count:
+                client_parts.append(f"{count} {word}")
+        if clients.secrets_rotated:
+            client_parts.append(f"{clients.secrets_rotated} secret(s) rotated")
+    sections = []
+    if parts or not client_parts:
+        sections.append("Rules: " + (", ".join(parts) if parts else "updated"))
+    if client_parts:
+        sections.append("OIDC clients: " + ", ".join(client_parts))
+    return "; ".join(sections)
 
 
 def _body(request: ApplyRequest) -> str:

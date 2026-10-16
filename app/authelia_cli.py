@@ -143,6 +143,34 @@ class AutheliaCLI:
         proc = self.run(["crypto", "rand", "--length", str(length), "--charset", charset])
         return _value_after_colon(proc, "crypto rand")
 
+    def rand_client_id(self) -> str:
+        """A random OIDC client_id (the owner's convention: 72 chars, RFC 3986 unreserved)."""
+        return self.rand(72, "rfc3986")
+
+    def hash_random_pbkdf2(self) -> tuple[str, str]:
+        """A fresh random client secret and its PBKDF2-SHA512 hash, as a pair.
+
+        Authelia generates the secret itself (`--random`), so the plaintext is never passed on a
+        command line (visible to other processes) and never chosen by this app. The caller shows
+        the secret once and stores only the digest.
+        """
+        proc = self.run([
+            "crypto", "hash", "generate", "pbkdf2", "--variant", "sha512",
+            "--random", "--random.length", "72", "--random.charset", "rfc3986",
+        ])  # fmt: skip
+        if proc.returncode != 0:
+            raise AutheliaCLIError("crypto hash generate pbkdf2 --random failed")
+        secret = digest = ""
+        for line in proc.stdout.splitlines():
+            label, _, value = line.partition(":")
+            if label.strip() == "Random Password":
+                secret = value.strip()
+            elif label.strip() == "Digest":
+                digest = value.strip()
+        if not secret or not digest.startswith("$pbkdf2-sha512$"):
+            raise AutheliaCLIError("crypto hash generate pbkdf2 --random: unexpected output")
+        return secret, digest
+
     def hash_pbkdf2(self, password: str) -> str:
         proc = self.run(
             ["crypto", "hash", "generate", "pbkdf2", "--variant", "sha512", "--password", password]

@@ -75,11 +75,12 @@ class View:
     live: RulesDocument
     doc: RulesDocument
     disabled: DisabledRules
+    clients_text: str = ""  # "" when the deployment has no oidc_clients.yml
 
     @property
     def sha(self) -> str:
-        """Revision of the whole draft state (rules + disabled rules)."""
-        return state_sha(self.doc, self.disabled)
+        """Revision of the whole draft state (rules, disabled rules, OIDC clients)."""
+        return state_sha(self.doc, self.disabled, self.clients_text)
 
     @property
     def rev(self) -> str:
@@ -129,6 +130,7 @@ def load_view(request: Request) -> View:
         live=live,
         doc=doc,
         disabled=store.current_disabled(),
+        clients_text=store.current_clients_text(),
     )
 
 
@@ -713,7 +715,7 @@ def review(request: Request) -> Response:
     validator: ValidationResult | None = None
     reasons: list[str] = []
     if v.store.has_draft():
-        validator = validate_candidate(v.settings, v.doc.render())
+        validator = validate_candidate(v.settings, v.doc.render(), v.clients_text or None)
         # The tests gate is shown separately (checkbox), so it is not a reason here.
         reasons = services_of(request).engine.preconditions(rev=v.rev, accept_tests=True)
     try:

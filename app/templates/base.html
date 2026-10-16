@@ -20,7 +20,7 @@
       <nav aria-label="Main">
         <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
         <a href="/tests" {% if active|default('rules') == 'tests' %}aria-current="page"{% endif %}>Access tests</a>
-        <span class="soon" title="Arrives in a later phase">OIDC Clients</span>
+        <a href="/clients" {% if active|default('rules') == 'clients' %}aria-current="page"{% endif %}>OIDC Clients</a>
         <span class="soon" title="Arrives in a later phase">Users</span>
         <a href="/history" {% if active|default('rules') == 'history' %}aria-current="page"{% endif %}>History</a>
       </nav>

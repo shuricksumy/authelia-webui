@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from app.rules.access_tests import AccessCase, IPAddress, outcome_class
 from app.rules.tester import RequestObject, RuleTester
@@ -56,6 +59,41 @@ def forward_auth(authelia_url: str, case: AccessCase, client_ip: str) -> tuple[s
 
 
 Prober = Callable[[str, AccessCase, str], tuple[str, str]]
+# (authelia base url, portal host[:port]) -> None when fine, else a plain-language problem
+Discovery = Callable[[str, str], str | None]
+
+
+def portal_host(main_config: Path, auth_domain: str) -> str:
+    """host[:port] of the portal as configured (session.cookies[].authelia_url). Authelia answers
+    OIDC requests only for exactly that host, port included; AUTH_DOMAIN when not found."""
+    try:
+        data = YAML(typ="safe", pure=True).load(main_config.read_text())
+    except (OSError, YAMLError):
+        return auth_domain
+    session = data.get("session") if isinstance(data, dict) else None
+    cookies = session.get("cookies") if isinstance(session, dict) else None
+    for cookie in cookies if isinstance(cookies, list) else []:
+        url = cookie.get("authelia_url") if isinstance(cookie, dict) else None
+        if isinstance(url, str) and urlsplit(url).hostname == auth_domain:
+            return urlsplit(url).netloc
+    return auth_domain
+
+
+def oidc_discovery(authelia_url: str, host: str) -> str | None:
+    """Fetch the OpenID Connect discovery document as a browser on the portal would see it."""
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": host}
+    url = f"{authelia_url.rstrip('/')}/.well-known/openid-configuration"
+    try:
+        response = httpx.get(url, headers=headers, timeout=5)
+    except httpx.HTTPError as exc:
+        return f"discovery request failed ({type(exc).__name__})"
+    if response.status_code != 200:
+        return f"discovery answered HTTP {response.status_code}"
+    try:
+        issuer = response.json().get("issuer")
+    except ValueError:
+        return "discovery did not return JSON"
+    return None if issuer else "discovery has no issuer"
 
 
 def verify(

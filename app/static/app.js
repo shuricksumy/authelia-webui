@@ -45,17 +45,40 @@
     if (target) { target.disabled = !box.checked; }
   });
 
+  // Copy buttons: data-copy="text" or data-copy-from="input id". Reveal: data-reveal="input id".
+  document.addEventListener("click", function (event) {
+    var copy = event.target.closest("[data-copy], [data-copy-from]");
+    if (copy) {
+      var source = copy.getAttribute("data-copy-from");
+      var text = source ? document.getElementById(source).value : copy.getAttribute("data-copy");
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(function () { copy.textContent = "Copied"; });
+      }
+      return;
+    }
+    var reveal = event.target.closest("[data-reveal]");
+    if (reveal) {
+      var input = document.getElementById(reveal.getAttribute("data-reveal"));
+      var hidden = input.type === "password";
+      input.type = hidden ? "text" : "password";
+      reveal.textContent = hidden ? "Hide" : "Show";
+    }
+  });
+
   // Close dialogs.
   document.addEventListener("click", function (event) {
     var closer = event.target.closest("[data-close]");
     if (!closer) { return; }
     var modal = document.getElementById("modal");
-    if (modal) { modal.innerHTML = ""; }
+    if (modal) { modal.innerHTML = ""; }  // a one-time secret leaves the page with its dialog
+    var next = closer.getAttribute("data-done-href");
+    if (next) { window.location.assign(next); }
   });
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape") {
       var modal = document.getElementById("modal");
-      if (modal && modal.firstChild) { modal.innerHTML = ""; }
+      // A one-time secret closes only through its "Done" (after "I have copied it").
+      if (modal && modal.firstChild && !modal.querySelector(".secret-dialog")) { modal.innerHTML = ""; }
     }
   });
 

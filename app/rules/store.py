@@ -1,9 +1,10 @@
-"""Live file, draft and users file (SPEC §4, §6, §9 read-only part).
+"""Live files, draft and users file (SPEC §4, §5, §6, §9 read-only part).
 
-The live file is CONFIG_MANAGED_DIR/access_control.yml. Phase 1a never writes it: edits go to
-one shared draft in CONFIG_MANAGED_DIR/.draft/ (single-admin tool). `meta.json` remembers the
-hash of the live file the draft started from, so a draft that no longer matches the live file
-is reported as stale (apply, in step 1b, refuses stale drafts).
+The live files are CONFIG_MANAGED_DIR/{access_control,disabled_rules,oidc_clients}.yml. Only
+the apply engine writes them: edits go to one shared draft in CONFIG_MANAGED_DIR/.draft/, which
+is always a full snapshot of all three (so the rules draft file doubles as "a draft exists").
+`meta.json` remembers the hash of each live file the draft started from, so a draft that no
+longer matches them is reported as stale (apply refuses stale drafts).
 """
 
 from __future__ import annotations
@@ -17,13 +18,15 @@ import os
 import tempfile
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
+from app.authelia_cli import redact
+from app.oidc.document import CLIENTS_NAME, ClientChanges, ClientsDocument, summarise_clients
 from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.lint import UsersInfo
@@ -65,9 +68,18 @@ def load_main_definitions(path: Path) -> dict[str, Any]:
     return {"definitions": definitions} if isinstance(definitions, dict) else {}
 
 
-def state_sha(doc: RulesDocument, disabled: DisabledRules) -> str:
-    """Revision of a draft state: both files, so any edit to either changes it."""
-    return sha256(doc.render() + "\0" + disabled.render())
+def state_sha(doc: RulesDocument, disabled: DisabledRules, clients_text: str = "") -> str:
+    """Revision of a draft state: every file, so any edit to any of them changes it."""
+    return sha256(doc.render() + "\0" + disabled.render() + "\0" + clients_text)
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """The text of every drafted file. `clients` is "" when there is no oidc_clients.yml."""
+
+    rules: str
+    disabled: str
+    clients: str
 
 
 @dataclass(frozen=True)
@@ -80,13 +92,19 @@ class ChangeSummary:
     disabled: int = 0
     enabled: int = 0
     deleted_disabled: int = 0
+    clients: ClientChanges = field(default_factory=ClientChanges)
 
     @property
-    def count(self) -> int:
+    def rules_count(self) -> int:
         return (
             self.added + self.removed + self.edited + self.disabled + self.enabled
             + self.deleted_disabled + int(self.order_changed) + int(self.default_policy_changed)
         )  # fmt: skip
+
+    @property
+    def count(self) -> int:
+        c = self.clients
+        return self.rules_count + c.added + c.removed + c.edited
 
     @property
     def any(self) -> bool:
@@ -179,6 +197,8 @@ class DraftStore:
         self.draft_path = self.draft_dir / LIVE_NAME
         self.disabled_live_path = managed_dir / DISABLED_NAME
         self.disabled_draft_path = self.draft_dir / DISABLED_NAME
+        self.clients_live_path = managed_dir / CLIENTS_NAME
+        self.clients_draft_path = self.draft_dir / CLIENTS_NAME
         self.meta_path = self.draft_dir / "meta.json"
 
     # ------------------------------------------------------------------ reading
@@ -212,10 +232,36 @@ class DraftStore:
             return DisabledRules.parse(self.disabled_draft_path.read_text())
         return self.live_disabled()
 
+    def live_clients_text(self) -> str:
+        try:
+            return self.clients_live_path.read_text()
+        except FileNotFoundError:
+            return ""
+
+    def current_clients_text(self) -> str:
+        if self.has_draft() and self.clients_draft_path.is_file():
+            return self.clients_draft_path.read_text()
+        return self.live_clients_text()
+
+    def current_clients(self) -> ClientsDocument | None:
+        """None when this deployment has no oidc_clients.yml (no OIDC provider)."""
+        text = self.current_clients_text()
+        return ClientsDocument.parse(text) if text else None
+
+    def live_clients(self) -> ClientsDocument | None:
+        text = self.live_clients_text()
+        return ClientsDocument.parse(text) if text else None
+
+    def snapshot(self) -> Snapshot:
+        return Snapshot(
+            self.current().render(), self.current_disabled().render(), self.current_clients_text()
+        )
+
     def _bases(self) -> dict[str, str]:
         return {
             "base_sha256": sha256(self.live_text()),
             "base_disabled_sha256": sha256(self.live_disabled_text()),
+            "base_clients_sha256": sha256(self.live_clients_text()),
         }
 
     def is_stale(self) -> bool:
@@ -228,29 +274,37 @@ class DraftStore:
         bases = self._bases()
         if meta.get("base_sha256") != bases["base_sha256"]:
             return True
-        # drafts from before disabled rules existed only recorded the rules file
-        recorded = meta.get("base_disabled_sha256")
-        return recorded is not None and recorded != bases["base_disabled_sha256"]
+        # older drafts did not record every file: only compare what was recorded
+        for key in ("base_disabled_sha256", "base_clients_sha256"):
+            recorded = meta.get(key)
+            if recorded is not None and recorded != bases[key]:
+                return True
+        return False
 
     def changes(self) -> ChangeSummary:
-        return summarise(self.live(), self.current(), self.live_disabled(), self.current_disabled())
+        rules = summarise(
+            self.live(), self.current(), self.live_disabled(), self.current_disabled()
+        )
+        clients = summarise_clients(self.live_clients(), self.current_clients())
+        return replace(rules, clients=clients)
 
     def diff(self) -> str:
         parts = []
         for name, live, draft in (
             (LIVE_NAME, self.live_text(), self.current().render()),
             (DISABLED_NAME, self.live_disabled_text(), self.current_disabled().render()),
+            (CLIENTS_NAME, self.live_clients_text(), self.current_clients_text()),
         ):
             parts.append("".join(difflib.unified_diff(
                 live.splitlines(keepends=True), draft.splitlines(keepends=True),
                 f"{name} (live)", f"{name} (draft)",
             )))  # fmt: skip
-        return "".join(parts)
+        return redact("".join(parts))  # client secret hashes never reach a page
 
     # ------------------------------------------------------------------ writing the draft only
 
     def current_sha(self) -> str:
-        return state_sha(self.current(), self.current_disabled())
+        return state_sha(self.current(), self.current_disabled(), self.current_clients_text())
 
     def locked(self) -> contextlib.AbstractContextManager[None]:
         """Hold the draft lock (used by apply while it writes the live file)."""
@@ -276,9 +330,10 @@ class DraftStore:
         doc: RulesDocument,
         expected_sha: str | None = None,
         disabled: DisabledRules | None = None,
+        clients: ClientsDocument | None = None,
     ) -> None:
-        """Persist `doc` (and `disabled`, default: unchanged) as the draft. A draft identical to
-        the live files is removed.
+        """Persist `doc` (and `disabled` / `clients`, default: unchanged) as the draft. A draft
+        identical to the live files is removed.
 
         With `expected_sha` (state_sha of what the edit was based on) the write only happens if
         nothing changed in between; otherwise StaleDraftError (no lost updates).
@@ -287,14 +342,31 @@ class DraftStore:
             if expected_sha is not None and self.current_sha() != expected_sha:
                 raise StaleDraftError("the draft changed while this edit was being made")
             disabled = disabled if disabled is not None else self.current_disabled()
-            text, disabled_text = doc.render(), disabled.render()
-            if text == self.live_text() and disabled_text == self.live_disabled_text():
-                self._discard_unlocked()
-                return
-            if not self.has_draft() or not self.meta_path.exists():
-                self._atomic(self.meta_path, json.dumps(self._bases()))
-            self._atomic(self.disabled_draft_path, disabled_text)
-            self._atomic(self.draft_path, text)
+            clients_text = clients.render() if clients is not None else self.current_clients_text()
+            if clients is not None and not self.live_clients_text():
+                raise DocumentError("this deployment has no oidc_clients.yml")
+            self._write_unlocked(Snapshot(doc.render(), disabled.render(), clients_text))
+
+    def save_snapshot(self, snap: Snapshot, expected_sha: str | None = None) -> None:
+        """Put a whole state in the draft (after a rollback, or "revert to this version")."""
+        with self._locked():
+            if expected_sha is not None and self.current_sha() != expected_sha:
+                raise StaleDraftError("the draft changed while this edit was being made")
+            self._write_unlocked(snap)
+
+    def _write_unlocked(self, snap: Snapshot) -> None:
+        live = (self.live_text(), self.live_disabled_text(), self.live_clients_text())
+        if (snap.rules, snap.disabled, snap.clients) == live:
+            self._discard_unlocked()
+            return
+        if not self.has_draft() or not self.meta_path.exists():
+            self._atomic(self.meta_path, json.dumps(self._bases()))
+        self._atomic(self.disabled_draft_path, snap.disabled)
+        if snap.clients:
+            self._atomic(self.clients_draft_path, snap.clients)
+        else:
+            self.clients_draft_path.unlink(missing_ok=True)
+        self._atomic(self.draft_path, snap.rules)  # last: its presence means "a draft exists"
 
     def discard(self, expected_sha: str | None = None) -> None:
         with self._locked():
@@ -303,7 +375,8 @@ class DraftStore:
             self._discard_unlocked()
 
     def _discard_unlocked(self) -> None:
-        for path in (self.draft_path, self.disabled_draft_path, self.meta_path):
+        for path in (self.draft_path, self.disabled_draft_path, self.clients_draft_path,
+                     self.meta_path):  # fmt: skip
             path.unlink(missing_ok=True)
 
     def _atomic(self, path: Path, content: str) -> None:

@@ -20,6 +20,7 @@ from app.security import SecurityMiddleware
 from app.settings import Settings, load_settings
 from app.web import router
 from app.web_apply import router as apply_router
+from app.web_oidc import router as oidc_router
 from app.web_tests import router as tests_router
 
 HERE = Path(__file__).resolve().parent
@@ -76,6 +77,7 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
     app.include_router(router)
     app.include_router(apply_router)
     app.include_router(tests_router)
+    app.include_router(oidc_router)
     # Outermost: every request (incl. static files) passes the IP/identity/CSRF checks.
     app.add_middleware(SecurityMiddleware, settings=settings)
     return app

@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ 'New client' if index is none else 'Edit client' }}{% endblock %}
+{% macro opt(value, current, label=None) %}<option value="{{ value }}" {% if value == current %}selected{% endif %}>{{ label or value }}</option>{% endmacro %}
+{% macro scalar_select(key, choices, label, help='') %}
+  {% set current = form.scalars.get(key, UNSET) %}
+  <label for="f-{{ key }}">{{ label }} <small>{{ key }}</small>
+    <select id="f-{{ key }}" name="s_{{ key }}">
+      {{ opt(UNSET, current, '(not set: Authelia default)') }}
+      {% if current == '' %}{{ opt('', current, '(empty string)') }}{% endif %}
+      {% for c in choices %}{{ opt(c, current) }}{% endfor %}
+      {% if current not in choices and current not in (UNSET, '') %}{{ opt(current, current) }}{% endif %}
+    </select>
+    {% if current == '' %}<input type="hidden" name="empty_{{ key }}" value="1">{% endif %}
+    {% if help %}<small>{{ help }}</small>{% endif %}
+  </label>
+{% endmacro %}
+{% macro checks(key, choices, label) %}
+  {% set current = form.lists.get(key) %}
+  <fieldset class="checks"><legend>{{ label }} <small>{{ key }}</small></legend>
+    {% if current is not none %}<input type="hidden" name="present_{{ key }}" value="1">{% endif %}
+    {% for c in choices %}<label><input type="checkbox" name="l_{{ key }}" value="{{ c }}" {% if current and c in current %}checked{% endif %}> {{ c }}</label>{% endfor %}
+    {% for c in current or [] %}{% if c not in choices %}<label><input type="checkbox" name="l_{{ key }}" value="{{ c }}" checked> {{ c }}</label>{% endif %}{% endfor %}
+  </fieldset>
+{% endmacro %}
+{% block content %}
+<div class="client-editor" id="editor">
+  <div class="toolbar">
+    <h1>{% if index is none %}New client{% else %}Edit client <code>{{ form.client_id|truncate(40, true, '…') }}</code>{% endif %}</h1>
+  </div>
+  {% if errors %}<article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>{% endif %}
+  {% if inner_comments %}<p class="muted"><small>This client has comments inside it. Fields you do not change keep their comments; a changed field is rewritten.</small></p>{% endif %}
+
+  <form id="client-form" hx-post="/clients/save" hx-target="#editor" hx-select="#editor" hx-swap="outerHTML" hx-disinherit="*">
+    <input type="hidden" name="index" value="{{ '' if index is none else index }}">
+
+    <details open><summary><strong>Basics</strong></summary>
+      <label for="f-client_name">Name <small>client_name</small>
+        <input id="f-client_name" name="s_client_name" value="{{ '' if form.scalars.client_name == UNSET else form.scalars.client_name }}" placeholder="Photos"></label>
+      <label for="f-client_id">Client ID <small>client_id</small>
+        <span class="input-row">{% include "partials/client_id_input.html" %}
+          <button type="button" class="secondary outline" hx-post="/clients/generate-id" hx-target="#f-client_id" hx-swap="outerHTML">Generate</button></span>
+        {% if index is not none %}<small class="err-text">Changing the ID of an existing client breaks the app that uses it until you change it there too.</small>{% endif %}</label>
+      <fieldset class="checks"><legend>Type <small>public</small></legend>
+        <label><input type="radio" name="b_public" value="false" {% if form.bools.public != 'true' %}checked{% endif %}> Confidential (server-side app with a secret)</label>
+        <label><input type="radio" name="b_public" value="true" {% if form.bools.public == 'true' %}checked{% endif %}> Public (browser or mobile app, no secret, PKCE)</label>
+      </fieldset>
+      {% if index is not none and form.bools.public != 'true' %}
+      <p>Secret: {% if secret_kind == 'plaintext' %}<span class="err-text">stored in plain text</span>{% elif secret_kind %}set ({{ secret_kind }} hash){% else %}<span class="err-text">none</span>{% endif %}
+        <button type="button" class="outline small" hx-post="/clients/{{ index }}/secret" hx-confirm="Generate a new secret? The old one stops working once you apply.">Generate new secret</button></p>
+      {% elif index is none %}<p class="muted"><small>A confidential client gets a secret when you save; it is shown once.</small></p>{% endif %}
+    </details>
+
+    <details open><summary><strong>Redirect URIs</strong></summary>
+      <label for="f-redirect">Redirect URIs <small>redirect_uris</small>
+        <textarea id="f-redirect" name="l_redirect_uris" rows="3" spellcheck="false" placeholder="https://app.example.com/oauth/callback">{{ redirect_text }}</textarea>
+        <small>One per line. Use https; native apps may use their own scheme (e.g. <code>app.immich:///oauth-callback</code>).</small></label>
+      {% if form.lists.redirect_uris is not none %}<input type="hidden" name="present_redirect_uris" value="1">{% endif %}
+    </details>
+
+    <details open><summary><strong>Security</strong></summary>
+      {{ scalar_select('authorization_policy', names.authorization_policies, 'Authorization policy', 'Who may log in to this app (one_factor, two_factor, or a policy from the main config).') }}
+      {{ scalar_select('token_endpoint_auth_method', auth_methods, 'Token endpoint auth method', 'How the app sends its secret; must match the app. Public clients use none.') }}
+      {% set pkce = form.bools.get('require_pkce', UNSET) %}
+      <label for="f-require_pkce">Require PKCE <small>require_pkce</small>
+        <select id="f-require_pkce" name="b_require_pkce">{{ opt(UNSET, pkce, '(not set)') }}{{ opt('true', pkce, 'yes') }}{{ opt('false', pkce, 'no') }}</select></label>
+      {{ scalar_select('pkce_challenge_method', pkce_methods, 'PKCE method') }}
+    </details>
+
+    <details open><summary><strong>Scopes &amp; claims</strong></summary>
+      {{ checks('scopes', names.scopes, 'Scopes') }}
+      {{ scalar_select('claims_policy', names.claims_policies, 'Claims policy') }}
+    </details>
+
+    <details><summary><strong>Advanced</strong></summary>
+      {{ checks('grant_types', grant_types, 'Grant types') }}
+      {{ checks('response_types', response_types, 'Response types') }}
+      {{ checks('response_modes', response_modes, 'Response modes') }}
+      {{ scalar_select('consent_mode', consent_modes, 'Consent mode') }}
+      <label for="f-consent">Pre-configured consent duration <small>pre_configured_consent_duration</small>
+        <input id="f-consent" name="s_pre_configured_consent_duration" value="{{ '' if form.scalars.pre_configured_consent_duration == UNSET else form.scalars.pre_configured_consent_duration }}" placeholder="1 week"></label>
+      {% for key in signed_keys %}{{ scalar_select(key, signing_algs, key.replace('_', ' ')|capitalize) }}{% endfor %}
+      <label for="f-extra">Other keys (raw YAML) <small>everything the form does not show; never the secret</small>
+        <textarea id="f-extra" name="extra_yaml" rows="4" spellcheck="false">{{ form.extra_yaml }}</textarea></label>
+    </details>
+
+    <div class="editor-actions">
+      <a role="button" class="secondary outline" href="/clients">Cancel</a>
+      {% if index is not none %}<button type="button" class="secondary outline" hx-get="/clients/{{ index }}/delete" hx-target="#modal">Delete</button>{% endif %}
+      <button type="submit">Save to draft</button>
+    </div>
+  </form>
+</div>
+{% endblock %}
