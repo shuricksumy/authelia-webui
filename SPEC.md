@@ -277,6 +277,10 @@ Provide both options in `examples/`; README recommends A.
 - Require `Remote-User` and `Remote-Groups` (from Authelia forwardAuth) with
   `ADMIN_GROUP`; reject otherwise. Ignore these headers if the peer is not a
   trusted proxy.
+- The proxy must never pass client-supplied `Remote-*` headers through. Traefik's
+  forwardAuth removes the headers listed in `authResponseHeaders` when Authelia does
+  not set them (pinned by an e2e test on a deliberately bypassed host). With any other
+  proxy, strip them explicitly before the auth request.
 - Fail closed: missing/empty `ALLOWED_CLIENT_CIDRS` → refuse to start.
 
 ### Other app security

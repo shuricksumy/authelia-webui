@@ -17,6 +17,7 @@ from pathlib import Path
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
 from tests.e2e.auth import BASE, login
+from tests.e2e.conftest import rule_number
 from tests.fixtures.stack import STACK
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,15 +45,13 @@ def by_domain(page: Page) -> None:
 
 
 def editor(page: Page) -> None:
-    page.goto(
-        f"{BASE}/rules?edit=8", wait_until="networkidle"
-    )  # the photos bypass rule with warnings and many paths
+    index = rule_number("photos.example.test", "bypass") - 1  # warnings, many paths
+    page.goto(f"{BASE}/rules?edit={index}", wait_until="networkidle")
 
 
 def editor_locked(page: Page) -> None:
-    page.goto(
-        f"{BASE}/rules?edit=2", wait_until="networkidle"
-    )  # protected configurator rule: read-only
+    index = rule_number("authcfg.example.test", "two_factor") - 1  # protected: read-only
+    page.goto(f"{BASE}/rules?edit={index}", wait_until="networkidle")
 
 
 def new_rule(page: Page) -> None:
@@ -83,7 +82,8 @@ def tester(page: Page) -> None:
 
 
 def delete_confirm(page: Page) -> None:
-    page.goto(f"{BASE}/rules?edit=5", wait_until="networkidle")
+    index = rule_number("home.example.test", "bypass") - 1
+    page.goto(f"{BASE}/rules?edit={index}", wait_until="networkidle")
     page.get_by_role("button", name="Delete").click()
     page.wait_for_selector("dialog[open]")
 

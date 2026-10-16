@@ -63,7 +63,15 @@ class Identity:
     client_ip: IPAddress
 
 
+def _norm(ip: IPAddress) -> IPAddress:
+    """::ffff:10.0.0.1 -> 10.0.0.1 (dual-stack sockets present IPv4 peers this way)."""
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        return ip.ipv4_mapped
+    return ip
+
+
 def _in(ip: IPAddress, networks: Sequence[Network]) -> bool:
+    ip = _norm(ip)
     return any(ip.version == net.version and ip in net for net in networks)
 
 
@@ -72,7 +80,7 @@ def resolve_client_ip(
 ) -> IPAddress | None:
     """Client IP per the rules in the module docstring; None if the peer is unparsable."""
     try:
-        peer_ip = ipaddress.ip_address(peer or "")
+        peer_ip = _norm(ipaddress.ip_address(peer or ""))
     except ValueError:
         return None
     if not forwarded_for or not _in(peer_ip, trusted):
@@ -80,7 +88,7 @@ def resolve_client_ip(
     chain: list[IPAddress] = []
     for part in forwarded_for.split(","):
         try:
-            chain.append(ipaddress.ip_address(part.strip()))
+            chain.append(_norm(ipaddress.ip_address(part.strip())))
         except ValueError:
             return peer_ip  # malformed header from our own proxy: trust nothing in it
     for ip in reversed(chain):
@@ -132,7 +140,8 @@ class SecurityMiddleware:
         denial = self._check(scope)
         if isinstance(denial, str):
             client = scope.get("client") or ("?", 0)
-            log.warning("denied %s %s from peer %s: %s", scope["method"], scope["path"],
+            # %r: the path is attacker-controlled and may contain newlines (log injection)
+            log.warning("denied %s %r from peer %s: %s", scope["method"], scope["path"],
                         client[0], denial)  # fmt: skip
             response = PlainTextResponse("Forbidden", status_code=403)
             await response(scope, receive, send_with_headers)

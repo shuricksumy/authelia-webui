@@ -26,6 +26,9 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.error import YAMLError
 
 DEFAULT_POLICY_LINE = re.compile(r"^(\s*default_policy\s*:\s*)([^\s#]+)(.*)$")
+# Python's splitlines() and ruamel both break lines on these, but differently from "\n" when the
+# file is written back; they have no business in a config file, so refuse them.
+ODD_LINE_BREAKS = re.compile("[\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]")
 
 
 class DocumentError(ValueError):
@@ -160,11 +163,14 @@ class RulesDocument:
     prefix: tuple[str, ...]
     blocks: tuple[RuleBlock, ...]
     suffix: tuple[str, ...]
+    policy_line: int | None = None  # index in `prefix` of access_control.default_policy
 
     # ------------------------------------------------------------------ parse / render
 
     @classmethod
     def parse(cls, text: str) -> RulesDocument:
+        if ODD_LINE_BREAKS.search(text):
+            raise DocumentError("access_control.yml contains unusual line-break characters")
         try:
             data = _rt().load(text)
         except YAMLError:
@@ -175,6 +181,11 @@ class RulesDocument:
         lines = text.splitlines()
         if not isinstance(access_control, CommentedMap):
             raise DocumentError("access_control is not a mapping")
+        policy_line = (
+            int(access_control.lc.key("default_policy")[0])
+            if "default_policy" in access_control
+            else None
+        )
         rules = access_control.get("rules")
         if rules is None or (isinstance(rules, list) and not rules):
             rules_key_line = (
@@ -182,7 +193,9 @@ class RulesDocument:
             )
             end = _access_control_end(data, access_control, len(lines))
             split_at = (rules_key_line + 1) if rules_key_line is not None else end
-            return cls(tuple(lines[:split_at]), (), tuple(lines[split_at:]))
+            if policy_line is not None and policy_line >= split_at:
+                raise DocumentError("default_policy after the rules is not supported")
+            return cls(tuple(lines[:split_at]), (), tuple(lines[split_at:]), policy_line)
         if not isinstance(rules, CommentedSeq):
             raise DocumentError("access_control.rules is not a list")
 
@@ -196,12 +209,13 @@ class RulesDocument:
         end = _access_control_end(data, access_control, len(lines), after_key="rules")
         while end > starts[-1] + 1 and _is_blank(lines[end - 1]):
             end -= 1
-        # trailing comments directly above the next key belong to that key
+        if policy_line is not None and policy_line >= leads[0]:
+            raise DocumentError("default_policy after the rules is not supported")
         blocks = []
         for i, lead in enumerate(leads):
             stop = leads[i + 1] if i + 1 < len(leads) else end
             blocks.append(RuleBlock(tuple(lines[lead:stop])))
-        return cls(tuple(lines[: leads[0]]), tuple(blocks), tuple(lines[end:]))
+        return cls(tuple(lines[: leads[0]]), tuple(blocks), tuple(lines[end:]), policy_line)
 
     def render(self) -> str:
         out = [*self.prefix]
@@ -216,11 +230,11 @@ class RulesDocument:
         return [b.data() for b in self.blocks]
 
     def default_policy(self) -> str:
-        for line in self.prefix:
-            m = DEFAULT_POLICY_LINE.match(line)
-            if m:
-                return m.group(2).strip("'\"")
-        return "deny"
+        """Authelia's default when the key is absent is `deny`."""
+        if self.policy_line is None:
+            return "deny"
+        m = DEFAULT_POLICY_LINE.match(self.prefix[self.policy_line])
+        return m.group(2).strip("'\"") if m else "deny"
 
     def effective(self) -> dict[str, Any]:
         """Parsed access_control block, for the tester and the linter."""
@@ -229,13 +243,14 @@ class RulesDocument:
     # ------------------------------------------------------------------ edit (all return new docs)
 
     def with_default_policy(self, policy: str) -> RulesDocument:
+        if self.policy_line is None:
+            raise DocumentError("default_policy line not found")
         prefix = list(self.prefix)
-        for i, line in enumerate(prefix):
-            m = DEFAULT_POLICY_LINE.match(line)
-            if m:
-                prefix[i] = f"{m.group(1)}{policy}{m.group(3)}"
-                return replace(self, prefix=tuple(prefix))
-        raise DocumentError("default_policy line not found")
+        m = DEFAULT_POLICY_LINE.match(prefix[self.policy_line])
+        if not m:  # e.g. a flow-style mapping on one line
+            raise DocumentError("default_policy is not on its own line; edit it as YAML")
+        prefix[self.policy_line] = f"{m.group(1)}{policy}{m.group(3)}"
+        return replace(self, prefix=tuple(prefix))
 
     def move(self, src: int, dst: int) -> RulesDocument:
         blocks = list(self.blocks)

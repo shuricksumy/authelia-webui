@@ -56,14 +56,30 @@ def test_weakening_is_detected(rules: list[dict[str, Any]], fragment: str) -> No
     assert not report.ok and any(fragment in v for v in report.violations), report.violations
 
 
-def test_bypass_rule_placed_above_the_admin_rule_is_detected() -> None:
-    sneaky = {"domain": "authcfg.example.com", "policy": "bypass", "resources": ["^/api/.*$"]}
-    report = check_protected(cfg([PORTAL, sneaky, ADMIN, DENY]), settings())
-    # the probe URL is '/', so a bypass limited to /api does not weaken it...
-    assert report.ok
-    broad = {"domain": "*.example.com", "policy": "one_factor"}
-    report = check_protected(cfg([PORTAL, broad, ADMIN, DENY]), settings())
-    assert not report.ok and report.locked  # ...but a broad earlier rule does
+@pytest.mark.parametrize(
+    "rule",
+    [
+        # Review finding: path-limited rules used to slip through because only "/" was probed.
+        {"domain": "authcfg.example.com", "policy": "bypass", "resources": ["^/api/.*$"]},
+        {"domain": "authcfg.example.com", "policy": "one_factor", "resources": ["^/review$"]},
+        {"domain": "authcfg.example.com", "policy": "bypass", "methods": ["POST"]},
+        {"domain": "authcfg.example.com", "policy": "bypass",
+         "query": [[{"key": "debug", "operator": "present"}]]},
+        {"domain": "*.example.com", "policy": "one_factor"},  # broad earlier rule
+    ],
+)  # fmt: skip
+def test_permissive_rule_for_any_path_of_the_configurator_is_detected(
+    rule: dict[str, Any],
+) -> None:
+    report = check_protected(cfg([PORTAL, rule, ADMIN, DENY]), settings())
+    assert not report.ok, rule
+    assert 1 in report.locked  # the offending rule is the one deciding the probe
+
+
+def test_path_limited_deny_rules_are_fine() -> None:
+    """Deny only ever makes things stricter, so its limits are kept as written."""
+    extra_deny = {"domain": "authcfg.example.com", "policy": "deny", "resources": ["^/api/.*$"]}
+    assert check_protected(cfg([PORTAL, extra_deny, ADMIN, DENY]), settings()).ok
 
 
 def test_insecure_default_policy_without_explicit_deny_is_caught() -> None:

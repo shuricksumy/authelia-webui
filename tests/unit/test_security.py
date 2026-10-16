@@ -165,3 +165,15 @@ def test_csrf_token_from_another_key_is_rejected() -> None:
     other = CSRF("x" * 40).issue("alice")
     assert not CSRF("k" * 40).verify(other, "alice")
     assert CSRF("k" * 40).verify(CSRF("k" * 40).issue("alice"), "alice")
+
+
+def test_ipv4_mapped_peers_are_normalised() -> None:
+    """Dual-stack sockets present IPv4 peers as ::ffff:a.b.c.d; trust must still apply."""
+    ip = resolve_client_ip(f"::ffff:{PROXY}", f"::ffff:{VPN_CLIENT}", TRUSTED)
+    assert ip == ipaddress.ip_address(VPN_CLIENT)
+
+
+def test_denial_log_cannot_be_forged_with_newlines(caplog: pytest.LogCaptureFixture) -> None:
+    client(INTERNET).get("/x%0aINFO%20fake%20entry")
+    record = next(r for r in caplog.records if r.name == "app.security")
+    assert "\n" not in record.getMessage()

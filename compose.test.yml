@@ -4,6 +4,7 @@
 #   https://auth.example.test:8443    Authelia portal                (entrypoint `websecure`)
 #   https://authcfg.example.test:8444 the configurator, via Authelia (entrypoint `internal` only)
 #   https://locked.example.test:8444  second instance allowing only 192.0.2.0/24 (isolation test)
+#   https://forge.example.test:8444   TEST ONLY: Authelia bypass, proves forged Remote-* headers are dropped
 #
 # The configurator publishes no ports; Traefik is published on 127.0.0.1 only. The Docker socket is
 # never mounted. Containers run as the caller's uid (DEV_UID/DEV_GID) so files stay removable.

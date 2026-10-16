@@ -8,7 +8,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e.auth import BASE, login
-from tests.e2e.conftest import open_rules
+from tests.e2e.conftest import live_rules, open_rules, rule_number
 
 pytestmark = pytest.mark.e2e
 
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.e2e
 def test_admin_logs_in_with_2fa_and_sees_the_rules(admin: Page) -> None:
     open_rules(admin)
     expect(admin).to_have_title("Rules · Authelia Configurator")
-    expect(admin.locator("#rules-body tr")).to_have_count(15)
+    expect(admin.locator("#rules-body tr")).to_have_count(len(live_rules()))
     expect(admin.get_by_text("alice")).to_be_visible()
 
 
@@ -48,6 +48,19 @@ def test_configurator_is_not_routable_on_the_public_entrypoint(
     response = context.new_page().goto("https://authcfg.example.test:8443/rules")
     context.close()
     assert response is not None and response.status == 404
+
+
+def test_proxy_drops_forged_identity_headers(browser: Browser, stack: dict[str, str]) -> None:
+    """forge.example.test is bypassed by Authelia on purpose. A client that sends its own
+    Remote-User/Remote-Groups must still not reach the app as an admin: Traefik's forwardAuth
+    removes the listed authResponseHeaders when Authelia does not set them. If a proxy upgrade
+    ever changes that, this fails (the app would trust the forged admin identity)."""
+    forged = {"Remote-User": "mallory", "Remote-Groups": "admin", "X-Forwarded-For": "10.8.0.5"}
+    # Through the browser (it honours the *.example.test resolver rule), with the headers forged.
+    context = browser.new_context(ignore_https_errors=True, extra_http_headers=forged)
+    response = context.new_page().goto("https://forge.example.test:8444/rules")
+    context.close()
+    assert response is not None and response.status == 403
 
 
 # --------------------------------------------------------------------- editing a draft
@@ -105,8 +118,9 @@ def test_add_a_rule_through_the_form(admin: Page) -> None:
     form.get_by_label("Policy").select_option("two_factor")
     expect(admin.locator("#validation")).to_contain_text("Looks valid")
     form.get_by_role("button", name="Save to draft").click()
-    expect(admin.get_by_text("Rule #16 saved to the draft.")).to_be_visible()
-    expect(admin.locator("#rules-body tr")).to_have_count(16)
+    count = len(live_rules())
+    expect(admin.get_by_text(f"Rule #{count + 1} saved to the draft.")).to_be_visible()
+    expect(admin.locator("#rules-body tr")).to_have_count(count + 1)
 
 
 def test_invalid_rule_cannot_be_saved(admin: Page) -> None:
@@ -133,7 +147,8 @@ def test_tester_explains_the_matching_rule(admin: Page) -> None:
     admin.fill("#tester-url", "https://photos.example.test/api/server/ping")
     admin.get_by_role("button", name="Test", exact=True).click()
     result = admin.locator("#tester-result")
-    expect(result).to_contain_text("Rule #9 matches")
+    number = rule_number("photos.example.test", "bypass")
+    expect(result).to_contain_text(f"Rule #{number} matches")
     expect(result).to_contain_text("BYPASS")
     expect(result).to_contain_text("skipped: different domain")
 

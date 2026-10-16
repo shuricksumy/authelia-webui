@@ -89,5 +89,20 @@ def admin(browser: Browser, alice_state: dict[str, Any]) -> Iterator[Page]:
     context.close()
 
 
+def live_rules() -> list[dict[str, Any]]:
+    """The rules the stack started with (numbers in assertions derive from this, not literals)."""
+    from app.rules.document import RulesDocument
+
+    return RulesDocument.parse((STACK / "managed" / "access_control.yml").read_text()).rules()
+
+
+def rule_number(domain: str, policy: str) -> int:
+    """1-based position of the first live rule with this domain and policy."""
+    for i, rule in enumerate(live_rules()):
+        if rule.get("domain") == domain and rule.get("policy") == policy:
+            return i + 1
+    raise LookupError(domain)
+
+
 def open_rules(page: Page) -> None:
     page.goto(f"{BASE}/rules", wait_until="networkidle")

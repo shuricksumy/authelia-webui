@@ -164,3 +164,36 @@ def test_empty_and_invalid_documents() -> None:
         RulesDocument.parse("session:\n  secret: x\n")
     with pytest.raises(DocumentError):
         RulesDocument.parse("a: [unclosed\n")
+
+
+def test_default_policy_is_found_by_the_parser_not_by_a_line_regex() -> None:
+    """Review finding: a `default_policy:` line elsewhere must not be mistaken for ours."""
+    text = (
+        "authorization_policies:\n  p:\n    default_policy: two_factor\n"
+        "access_control:\n  default_policy: deny\n  rules:\n"
+        "    - domain: a.example.com\n      policy: bypass\n"
+    )
+    doc = RulesDocument.parse(text)
+    assert doc.default_policy() == "deny"
+    out = doc.with_default_policy("one_factor").render()
+    assert "    default_policy: two_factor" in out and "  default_policy: one_factor" in out
+
+
+def test_missing_default_policy_means_deny_and_cannot_be_set_blindly() -> None:
+    doc = RulesDocument.parse(
+        "access_control:\n  rules:\n    - {domain: a.example.com, policy: deny}\n"
+    )
+    assert doc.default_policy() == "deny"
+    with pytest.raises(DocumentError):
+        doc.with_default_policy("bypass")
+
+
+@pytest.mark.parametrize("char", ["\u2028", "\u2029", "\x85", "\x0c"])
+def test_unusual_line_breaks_are_refused(char: str) -> None:
+    """They would desync our line handling from the YAML parser and change data on write."""
+    text = (
+        "access_control:\n  default_policy: deny\n  rules:\n"
+        f"    - domain: 'a{char}b.example.com'\n      policy: deny\n"
+    )
+    with pytest.raises(DocumentError, match="line-break"):
+        RulesDocument.parse(text)

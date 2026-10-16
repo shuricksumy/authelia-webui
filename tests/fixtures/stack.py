@@ -37,6 +37,9 @@ DOMAIN = "example.test"
 AUTH_HOST = f"auth.{DOMAIN}"
 CONFIGURATOR_HOST = f"authcfg.{DOMAIN}"
 LOCKED_HOST = f"locked.{DOMAIN}"  # a second app instance that allows only 192.0.2.0/24
+# Test-only: Authelia *bypasses* this host on purpose. It proves the proxy strips client-forged
+# Remote-User/Remote-Groups headers when Authelia does not set them (SPEC §8).
+FORGE_HOST = f"forge.{DOMAIN}"
 PORTAL_PORT, INTERNAL_PORT = 8443, 8444
 # Where connections from the host arrive from inside Docker (NAT/gateway): RFC 1918.
 ALLOWED_NETWORKS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
@@ -78,8 +81,14 @@ def adapt_access_control(text: str) -> str:
         policy="two_factor",
         note="Second instance that only trusts 192.0.2.0/24 (isolation test)",
     )
+    forge = RuleForm(
+        domain=[FORGE_HOST],
+        policy="bypass",
+        resources=["^/.*$"],
+        note="TEST ONLY: proves the proxy drops forged identity headers (e2e)",
+    )
     # After the two auth-portal rules, before everything else (and the *.domain catch-all).
-    for offset, form in enumerate((admin, deny, locked)):
+    for offset, form in enumerate((admin, deny, locked, forge)):
         doc = doc.insert(2 + offset, apply_form(form), note=form.note)
     return doc.render()
 
@@ -101,6 +110,7 @@ def traefik_dynamic() -> str:
         + router("portal", AUTH_HOST, "websecure", "authelia", False)
         + router("configurator", CONFIGURATOR_HOST, "internal", "configurator", True)
         + router("locked", LOCKED_HOST, "internal", "locked", True)
+        + router("forge", FORGE_HOST, "internal", "configurator", True)
         + """  middlewares:
     authelia:
       forwardAuth:

@@ -355,3 +355,28 @@ def test_stale_draft_is_flagged_everywhere(ui: UI) -> None:
     live.write_text(live.read_text() + "\n# changed over ssh\n")
     assert "the live file changed since this draft started" in ui.get("/rules").text
     assert "The live file changed after this draft" in ui.get("/review").text
+
+
+# --------------------------------------------------------------------- review findings
+
+
+def test_protected_rule_cannot_be_edited_even_bypassing_the_ui(ui: UI) -> None:
+    """The editor disables protected rules; the server must refuse too (SPEC §4)."""
+    r = ui.post("/rules/save", {"index": "1", "domain": "authcfg.example.com",
+                                "networks": "10.8.0.0/24", "subject": "group:admin",
+                                "policy": "two_factor", "note": "harmless looking"})  # fmt: skip
+    assert r.status_code == 422 and "read-only" in r.text
+    raw = ui.post("/rules/1/raw", {"text": "domain: authcfg.example.com\npolicy: two_factor\n"})
+    assert raw.status_code == 422
+    assert not (ui.env["managed"] / ".draft" / "access_control.yml").exists()
+
+
+def test_sneaky_path_limited_bypass_on_the_configurator_is_refused(ui: UI) -> None:
+    """Appended at the end it sits below the explicit deny and is harmless (accepted);
+    moving it above the admin rule would open a path of the admin UI, so that is refused."""
+    r = ui.post("/rules/save", {"index": "", "domain": "authcfg.example.com",
+                                "resources": "^/version$", "policy": "bypass"})  # fmt: skip
+    assert r.status_code == 204
+    moved = ui.post("/rules/move", {"src": "6", "dst": "1"})
+    assert moved.status_code == 422 and "weaken a protected rule" in moved.text
+    assert ui.domains()[1] == "authcfg.example.com" and ui.domains()[6] == "authcfg.example.com"

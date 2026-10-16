@@ -47,6 +47,10 @@ The app is only routed on Traefik's `internal` entrypoint (8444), never on the p
 `locked.example.test` is a second instance that allows only `192.0.2.0/24`, so it answers 403 even
 to a valid admin: that is the network-isolation check.
 
+**Behind a reverse proxy other than Traefik:** make sure client-supplied `Remote-User` /
+`Remote-Groups` headers are removed before they reach the app. Traefik's forwardAuth does this for
+the headers in `authResponseHeaders`; the e2e suite checks it.
+
 ### Split an existing configuration
 
 Authelia merges several config files. The configurator owns only dedicated files and never writes

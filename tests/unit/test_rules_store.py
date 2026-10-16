@@ -117,3 +117,19 @@ def test_main_definitions_only(tmp_path: Path) -> None:
     )
     assert load_main_definitions(path) == {"definitions": {"network": {"vpn": ["10.8.0.0/24"]}}}
     assert load_main_definitions(tmp_path / "missing.yml") == {}
+
+
+def test_concurrent_edits_cannot_overwrite_each_other(store: DraftStore) -> None:
+    """Review finding: two edits based on the same version must not silently overwrite."""
+    from app.rules.store import StaleDraftError, sha256
+
+    base = store.current()
+    base_sha = sha256(base.render())
+    store.save(base.delete(0), expected_sha=base_sha)  # first edit wins
+    with pytest.raises(StaleDraftError):
+        store.save(base.delete(2), expected_sha=base_sha)  # second, based on the old version
+    assert [r["domain"] for r in store.current().rules()] == ["b.example.com", "c.example.com"]
+    with pytest.raises(StaleDraftError):
+        store.discard(expected_sha=base_sha)
+    store.discard(expected_sha=sha256(store.current().render()))
+    assert not store.has_draft()

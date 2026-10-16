@@ -27,7 +27,13 @@ from app.rules.document import DocumentError, RulesDocument
 from app.rules.form import FormError, RuleForm, apply_form
 from app.rules.lint import Issue, UsersInfo, blocking, lint
 from app.rules.protected import ProtectedReport, check_protected
-from app.rules.store import DraftStore, load_main_definitions, load_users, sha256
+from app.rules.store import (
+    DraftStore,
+    StaleDraftError,
+    load_main_definitions,
+    load_users,
+    sha256,
+)
 from app.rules.tester import POLICIES, RequestObject, RuleTester, Subject
 from app.security import Identity, identity_of
 from app.settings import Settings
@@ -163,17 +169,34 @@ def error_page(request: Request, message: str, status: int = 503) -> HTMLRespons
 
 def require_rev(v: View, rev: str | None) -> None:
     if rev != v.rev:
-        raise Conflict("The draft changed in another tab or window. Reload the page and retry.")
+        raise Conflict(STALE)
+
+
+STALE = "The draft changed in another tab or window. Reload the page and retry."
 
 
 def commit(v: View, new_doc: RulesDocument) -> None:
-    """Save `new_doc` as the draft unless it introduces a protected-rule violation."""
+    """Save `new_doc` as the draft unless it introduces a protected-rule violation.
+
+    The save is a compare-and-swap against the document this view was built from, so two
+    concurrent edits can never silently overwrite each other.
+    """
     _, before = v.analyse()
     _, after = v.analyse(new_doc)
     introduced = [x for x in after.violations if x not in before.violations]
     if introduced:
         raise Conflict("Refused: this would weaken a protected rule. " + " ".join(introduced), 422)
-    v.store.save(new_doc)
+    try:
+        v.store.save(new_doc, expected_sha=sha256(v.doc.render()))
+    except StaleDraftError:
+        raise Conflict(STALE) from None
+
+
+def refuse_locked(v: View, index: int) -> None:
+    """Protected rules are read-only (SPEC §4); the UI disables them, the server enforces it."""
+    _, report = v.analyse()
+    if index in report.locked:
+        raise Conflict("This is a protected rule and is read-only.", 422)
 
 
 def conflict_response(exc: Conflict) -> HTMLResponse:
@@ -352,8 +375,8 @@ def edit_rule(request: Request, index: int) -> Response:
 
 @router.post("/rules/validate", response_class=HTMLResponse)
 async def validate_rule(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     raw = str(data.get("index", ""))
     index = int(raw) if raw.isdigit() else None
     form = form_from_request(data)
@@ -371,14 +394,20 @@ async def validate_rule(request: Request) -> Response:
 
 @router.post("/rules/save", response_class=HTMLResponse)
 async def save_rule(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     try:
         require_rev(v, str(data.get("rev", "")))
     except Conflict as exc:
         return conflict_response(exc)
     raw = str(data.get("index", ""))
     index = int(raw) if raw.isdigit() else None
+    if index is not None:
+        try:
+            check_index(v, index)
+            refuse_locked(v, index)
+        except Conflict as exc:
+            return conflict_response(exc)
     form = form_from_request(data)
     doc, errors = candidate(v, index, form)
     problems = list(errors)
@@ -404,8 +433,8 @@ async def save_rule(request: Request) -> Response:
 
 @router.post("/rules/move", response_class=HTMLResponse)
 async def move_rule(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     try:
         require_rev(v, str(data.get("rev", "")))
         src, dst = int(str(data.get("src"))), int(str(data.get("dst")))
@@ -421,8 +450,8 @@ async def move_rule(request: Request) -> Response:
 
 @router.post("/rules/{index}/move", response_class=HTMLResponse)
 async def move_step(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     step = -1 if data.get("dir") == "up" else 1
     return await _move_to(v, index, index + step, str(data.get("rev", "")))
 
@@ -453,11 +482,12 @@ def delete_confirm(request: Request, index: int) -> Response:
 
 @router.post("/rules/{index}/delete", response_class=HTMLResponse)
 async def delete_rule(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     try:
         require_rev(v, str(data.get("rev", "")))
         check_index(v, index)
+        refuse_locked(v, index)
         commit(v, v.doc.delete(index))
     except Conflict as exc:
         return conflict_response(exc)
@@ -466,8 +496,8 @@ async def delete_rule(request: Request, index: int) -> Response:
 
 @router.post("/rules/default-policy", response_class=HTMLResponse)
 async def set_default_policy(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     policy = str(data.get("policy", ""))
     try:
         require_rev(v, str(data.get("rev", "")))
@@ -495,12 +525,13 @@ def raw_editor(request: Request, index: int) -> Response:
 
 @router.post("/rules/{index}/raw", response_class=HTMLResponse)
 async def save_raw(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     text = str(data.get("text", ""))
     try:
         require_rev(v, str(data.get("rev", "")))
         check_index(v, index)
+        refuse_locked(v, index)
     except Conflict as exc:
         return conflict_response(exc)
     errors: list[str] = []
@@ -627,11 +658,13 @@ def discard_confirm(request: Request) -> Response:
 
 @router.post("/draft/discard", response_class=HTMLResponse)
 async def discard(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
     v = load_view(request)
-    data = await request.form()
     try:
         require_rev(v, str(data.get("rev", "")))
+        v.store.discard(expected_sha=sha256(v.doc.render()))
+    except StaleDraftError:
+        return conflict_response(Conflict(STALE))
     except Conflict as exc:
         return conflict_response(exc)
-    v.store.discard()
     return Response(status_code=204, headers={"HX-Redirect": "/rules"})

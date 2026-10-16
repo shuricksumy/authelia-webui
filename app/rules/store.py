@@ -8,12 +8,15 @@ is reported as stale (apply, in step 1b, refuses stale drafts).
 
 from __future__ import annotations
 
+import contextlib
 import difflib
+import fcntl
 import hashlib
 import json
 import os
 import tempfile
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -115,6 +118,10 @@ def _safe_domain(lines: tuple[str, ...]) -> list[str]:
         return []
 
 
+class StaleDraftError(RuntimeError):
+    """The draft (or live file) changed after the caller read it."""
+
+
 class DraftStore:
     def __init__(self, managed_dir: Path) -> None:
         self.managed_dir = managed_dir
@@ -163,18 +170,44 @@ class DraftStore:
 
     # ------------------------------------------------------------------ writing the draft only
 
-    def save(self, doc: RulesDocument) -> None:
-        """Persist `doc` as the draft. An unchanged document removes the draft."""
-        text = doc.render()
-        if text == self.live_text():
-            self.discard()
-            return
-        self.draft_dir.mkdir(mode=0o700, exist_ok=True)
-        if not self.has_draft() or not self.meta_path.exists():
-            self._atomic(self.meta_path, json.dumps({"base_sha256": sha256(self.live_text())}))
-        self._atomic(self.draft_path, text)
+    def current_sha(self) -> str:
+        return sha256(self.current().render())
 
-    def discard(self) -> None:
+    @contextlib.contextmanager
+    def _locked(self) -> Iterator[None]:
+        """Exclusive lock for read-compare-write (several requests, threads or workers)."""
+        self.draft_dir.mkdir(mode=0o700, exist_ok=True)
+        with open(self.draft_dir / ".lock", "w") as handle:
+            fcntl.flock(handle, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle, fcntl.LOCK_UN)
+
+    def save(self, doc: RulesDocument, expected_sha: str | None = None) -> None:
+        """Persist `doc` as the draft. An unchanged document removes the draft.
+
+        With `expected_sha` (hash of the document the edit was based on) the write only happens
+        if nothing changed in between; otherwise StaleDraftError (no lost updates).
+        """
+        with self._locked():
+            if expected_sha is not None and self.current_sha() != expected_sha:
+                raise StaleDraftError("the draft changed while this edit was being made")
+            text = doc.render()
+            if text == self.live_text():
+                self._discard_unlocked()
+                return
+            if not self.has_draft() or not self.meta_path.exists():
+                self._atomic(self.meta_path, json.dumps({"base_sha256": sha256(self.live_text())}))
+            self._atomic(self.draft_path, text)
+
+    def discard(self, expected_sha: str | None = None) -> None:
+        with self._locked():
+            if expected_sha is not None and self.current_sha() != expected_sha:
+                raise StaleDraftError("the draft changed")
+            self._discard_unlocked()
+
+    def _discard_unlocked(self) -> None:
         for path in (self.draft_path, self.meta_path):
             path.unlink(missing_ok=True)
 

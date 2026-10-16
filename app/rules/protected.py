@@ -12,6 +12,11 @@ set with the rule tester and require the outcomes the deployment depends on:
 Because it is behavioural, moving a protected rule below a wildcard catch-all, widening its
 networks or dropping its deny twin is caught as well as deleting it. The rules that decide
 these probes are reported as `locked` (shown read-only in the UI).
+
+The configurator host is probed *pessimistically*: path, method and query limits of every
+rule that is not `deny` are ignored, so a permissive rule that applies to some path only (for
+example a bypass for `^/api/.*`) is treated as applying to every path. Probing a few sample
+paths could never prove that no path is weakened; this does.
 """
 
 from __future__ import annotations
@@ -70,6 +75,19 @@ def _outside_ips(allowed: Sequence[Network]) -> list[ipaddress.IPv4Address | ipa
     return [ip for ip in candidates if not _inside(ip, allowed)]
 
 
+LIMITS = ("resources", "methods", "query")
+
+
+def _pessimistic(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Every non-deny rule as if it applied to all paths, methods and queries."""
+    access_control = dict(config.get("access_control") or {})
+    access_control["rules"] = [
+        rule if rule.get("policy") == "deny" else {k: v for k, v in rule.items() if k not in LIMITS}
+        for rule in access_control.get("rules") or []
+    ]
+    return {**config, "access_control": access_control}
+
+
 def check_protected(config: Mapping[str, Any], settings: Settings) -> ProtectedReport:
     """`config` = effective config with `access_control` (and `definitions` if any)."""
     allowed = settings.ALLOWED_CLIENT_CIDRS
@@ -87,8 +105,10 @@ def check_protected(config: Mapping[str, Any], settings: Settings) -> ProtectedR
             locked.add(result.rule_index)
 
     tester = RuleTester(config)
-    worst = {**config, "access_control": {**config.get("access_control", {}),
-                                          "default_policy": "bypass"}}  # fmt: skip
+    pessimistic = _pessimistic(config)
+    host_tester = RuleTester(pessimistic)
+    worst = {**pessimistic, "access_control": {**pessimistic["access_control"],
+                                               "default_policy": "bypass"}}  # fmt: skip
     worst_case = RuleTester(worst)
 
     for method, path in PORTAL_PROBES:
@@ -103,8 +123,13 @@ def check_protected(config: Mapping[str, Any], settings: Settings) -> ProtectedR
     host = settings.CONFIGURATOR_DOMAIN
     admin = Subject("admin-probe", (settings.ADMIN_GROUP,), inside)
     expectations = [
-        ("an admin on an allowed network", tester, admin, "two_factor"),
-        ("an anonymous visitor on an allowed network", tester, Subject(ip=inside), "two_factor"),
+        ("an admin on an allowed network", host_tester, admin, "two_factor"),
+        (
+            "an anonymous visitor on an allowed network",
+            host_tester,
+            Subject(ip=inside),
+            "two_factor",
+        ),
         ("a non-admin user", worst_case, Subject("probe", ("no-group",), inside), "deny"),
     ]
     for ip in outsiders:
