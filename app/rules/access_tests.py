@@ -65,6 +65,8 @@ class AccessCase:
 def case_from(data: Mapping[str, Any]) -> AccessCase:
     """Validate one case; raises DocumentError with a plain-language reason."""
     url = str(data.get("url", "")).strip()
+    if len(url) > 2048:
+        raise DocumentError("the URL is too long")
     expect = str(data.get("expect", "")).strip()
     if expect not in POLICIES:
         raise DocumentError(f"expect must be one of {', '.join(POLICIES)}")
@@ -88,7 +90,7 @@ def case_from(data: Mapping[str, Any]) -> AccessCase:
         user=str(data.get("user") or "").strip(),
         groups=tuple(str(g) for g in groups),
         ip=ip,
-        name=str(data.get("name") or "").strip(),
+        name=" ".join(str(data.get("name") or "").split())[:200],
     )
 
 

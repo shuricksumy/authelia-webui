@@ -36,6 +36,20 @@ class DisabledEntry:
         return self.block.data()
 
 
+def _check_entry(entry: DisabledEntry) -> None:
+    """An entry is pasted back into access_control.yml verbatim, so it must be exactly one rule:
+    only comments or blank lines above it, nothing outdented inside or after it."""
+    block = entry.block
+    start = block.rule_start
+    if any(line.strip() and not line.lstrip().startswith("#") for line in entry.lines[:start]):
+        raise DocumentError("disabled_rules.yml: an entry has text above its rule")
+    for line in entry.lines[start + 1 :]:
+        outdented = len(line) - len(line.lstrip(" ")) <= block.dash_col
+        if line.strip() and outdented and not line.lstrip().startswith("#"):
+            raise DocumentError("disabled_rules.yml: an entry holds more than one rule")
+    block.data()  # must parse as exactly one rule mapping
+
+
 @dataclass(frozen=True)
 class DisabledRules:
     entries: tuple[DisabledEntry, ...] = ()
@@ -65,7 +79,7 @@ class DisabledRules:
             else:
                 raise DocumentError("disabled_rules.yml: an entry has neither yaml nor rule")
             entry = DisabledEntry(max(0, position), lines)
-            entry.block.data()  # must hold exactly one rule
+            _check_entry(entry)
             entries.append(entry)
         return cls(tuple(entries))
 

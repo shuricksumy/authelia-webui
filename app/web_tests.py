@@ -6,6 +6,7 @@ managed repo at once (author = the admin) with no restart.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -45,6 +46,7 @@ def form_context(
         "case": case, "index": index, "errors": errors, "policies": POLICIES,
         "policy_labels": POLICY_LABEL, "methods": METHODS,
         "usernames": sorted(v.users.usernames), "groups_text": ", ".join(case.groups),
+        "tests_rev": services_of(v.request).engine.tests_rev(),
     }  # fmt: skip
 
 
@@ -55,8 +57,9 @@ def tests_page(request: Request) -> Response:
         results = services_of(request).engine.test_results()
     except DocumentError as exc:
         return render(v, "tests.html", results=[], broken=str(exc), active="tests",
-                      labels=POLICY_LABEL)  # fmt: skip
-    return render(v, "tests.html", results=results, broken="", active="tests", labels=POLICY_LABEL)
+                      labels=POLICY_LABEL, tests_rev="")  # fmt: skip
+    return render(v, "tests.html", results=results, broken="", active="tests", labels=POLICY_LABEL,
+                  tests_rev=services_of(request).engine.tests_rev())  # fmt: skip
 
 
 @router.get("/tests/new", response_class=HTMLResponse)
@@ -80,14 +83,19 @@ def edit_test(request: Request, index: int) -> Response:
     return render(v, "partials/test_form.html", **form_context(v, cases[index], index, []))
 
 
-def _save(request: Request, cases: list[AccessCase], subject: str) -> str | None:
-    """Commit the new list. Returns a plain-language problem, or None."""
+Change = Callable[[list[AccessCase]], tuple[list[AccessCase], str]]
+
+
+def _commit(request: Request, change: Change, expected_rev: str) -> str | None:
+    """Apply `change` to the tests file under the apply lock. Returns a problem, or None."""
     identity = identity_of(request.state)
     try:
-        services_of(request).engine.save_tests(cases, identity.username, subject)
+        services_of(request).engine.update_tests(change, identity.username, expected_rev)
     except Refused as exc:
         return str(exc)
-    except (OSError, RepoError):
+    except LookupError:
+        return "That test no longer exists. Reload the page."
+    except (OSError, RepoError, DocumentError):
         return "The tests could not be saved."
     return None
 
@@ -98,25 +106,25 @@ async def save_test(request: Request) -> Response:
     v = load_view(request)
     raw_index = str(data.get("index", "")).strip()
     index = int(raw_index) if raw_index.isdigit() else None
-    values = {
-        k: str(data.get(k, "")) for k in ("name", "url", "method", "user", "groups", "ip", "expect")
-    }
+    fields = ("name", "url", "method", "user", "groups", "ip", "expect")
+    values = {k: str(data.get(k, "")) for k in fields}
     try:
         case = access_tests.case_from(values)
         if case.method not in METHODS:
             raise DocumentError("unknown HTTP method")
-        cases = access_tests.load(v.settings.CONFIG_MANAGED_DIR)
     except DocumentError as exc:
-        draft = AccessCase(url=values["url"], expect="one_factor", name=values["name"])
+        draft = AccessCase(url=values["url"][:2048], expect="one_factor", name=values["name"][:200])
         return render(v, "partials/test_form.html", status=422,
                       **form_context(v, draft, index, [str(exc)]))  # fmt: skip
-    if index is not None and 0 <= index < len(cases):
-        cases[index] = case
-        subject = f"Tests: edited {case.name or case.url}"
-    else:
-        cases.append(case)
-        subject = f"Tests: added {case.name or case.url}"
-    problem = await run_in_threadpool(_save, request, cases, subject)
+
+    def change(cases: list[AccessCase]) -> tuple[list[AccessCase], str]:
+        if index is None:
+            return [*cases, case], f"Tests: added {case.name or case.url}"
+        if not 0 <= index < len(cases):
+            raise LookupError(index)
+        return [*cases[:index], case, *cases[index + 1 :]], f"Tests: edited {case.name or case.url}"
+
+    problem = await run_in_threadpool(_commit, request, change, str(data.get("tests_rev", "")))
     if problem:
         return render(v, "partials/test_form.html", status=422,
                       **form_context(v, case, index, [problem]))  # fmt: skip
@@ -125,14 +133,15 @@ async def save_test(request: Request) -> Response:
 
 @router.post("/tests/{index}/delete", response_class=HTMLResponse)
 async def delete_test(request: Request, index: int) -> Response:
-    v = load_view(request)
-    cases = access_tests.load(v.settings.CONFIG_MANAGED_DIR)
-    if not 0 <= index < len(cases):
-        return conflict_response(Conflict("That test no longer exists. Reload the page.", 404))
-    gone = cases.pop(index)
-    problem = await run_in_threadpool(
-        _save, request, cases, f"Tests: removed {gone.name or gone.url}"
-    )
+    data = await request.form()
+
+    def change(cases: list[AccessCase]) -> tuple[list[AccessCase], str]:
+        if not 0 <= index < len(cases):
+            raise LookupError(index)
+        gone = cases[index]
+        return [*cases[:index], *cases[index + 1 :]], f"Tests: removed {gone.name or gone.url}"
+
+    problem = await run_in_threadpool(_commit, request, change, str(data.get("tests_rev", "")))
     if problem:
         return conflict_response(Conflict(problem, 422))
     return Response(status_code=204, headers={"HX-Redirect": "/tests"})

@@ -125,6 +125,10 @@ class ManagedRepo:
         """Put the committed version of `path` back into the working tree."""
         self._git("checkout", "--", path)
 
+    def restore_all(self) -> None:
+        """Put every tracked file back to HEAD (untracked and ignored files are left alone)."""
+        self._git("checkout", "HEAD", "--", ".")
+
     def revert_head(self, reason: str, author: str | None = None) -> str:
         """Undo the last commit with a new commit (history keeps both)."""
         self._git("revert", "--no-edit", "--no-commit", "HEAD", author=author)

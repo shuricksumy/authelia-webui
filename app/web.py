@@ -545,7 +545,13 @@ async def enable_rule(request: Request, index: int) -> Response:
         check_disabled_index(v, index)
         rest, entry = v.disabled.remove(index)
         position = min(entry.position, len(v.doc.blocks))
-        commit(v, v.doc.insert_block(position, entry.block), disabled=rest)
+        new_doc = v.doc.insert_block(position, entry.block)
+        # Belt and braces: the file must re-parse to exactly the old rules plus this one.
+        rules = v.doc.rules()
+        expected = [*rules[:position], entry.data(), *rules[position:]]
+        if RulesDocument.parse(new_doc.render()).rules() != expected:
+            raise Conflict("That disabled rule cannot be enabled safely; edit it by hand.", 422)
+        commit(v, new_doc, disabled=rest)
     except (Conflict, DocumentError) as exc:
         return conflict_response(exc if isinstance(exc, Conflict) else Conflict(str(exc), 422))
     return section_response(v, flash=f"Rule enabled again at position {position + 1} in the draft.")

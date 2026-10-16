@@ -3,6 +3,7 @@
     <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">{{ 'Edit test' if index is not none else 'Add test' }}</h3></header>
     {% for e in errors %}<p class="notice error" role="alert">{{ e }}</p>{% endfor %}
     <form hx-post="/tests/save" hx-target="#modal" hx-swap="innerHTML">
+      <input type="hidden" name="tests_rev" value="{{ tests_rev }}">
       {% if index is not none %}<input type="hidden" name="index" value="{{ index }}">{% endif %}
       <label for="t-name">Name <small>optional</small> <input id="t-name" name="name" value="{{ case.name }}" placeholder="Photos app: API stays open"></label>
       <div class="grid-2">

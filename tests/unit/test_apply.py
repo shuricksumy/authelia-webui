@@ -516,3 +516,38 @@ def test_authelia_log_excerpt_reads_only_the_tail_of_a_large_log(env: dict[str, 
     engine, _, _ = make(env)
     errors = engine._authelia_errors()
     assert errors == ["the recent error"]
+
+
+def _crashed_before_commit(env: dict[str, Any]) -> tuple[ApplyEngine, str]:
+    """A crash after the atomic write but before the commit: the new text is on disk only."""
+    original = live(env)
+    engine, _, _ = make(env, [True])
+    engine.repo.ensure(["access_control.yml"])
+    draft_move(env)
+    (env["managed"] / "access_control.yml").write_text(env["store"].current().render())
+    (env["managed"] / ".apply").mkdir(exist_ok=True)
+    (env["managed"] / ".apply" / "in-progress.json").write_text(
+        json.dumps({"old_head": engine.repo.head(), "started_at": "start-0", "user": "alice"})
+    )
+    return engine, original
+
+
+def test_recovery_puts_back_a_write_that_was_never_committed(env: dict[str, Any]) -> None:
+    """Authelia never loaded it and it was never health-checked: file must equal running config."""
+    engine, original = _crashed_before_commit(env)
+    head = engine.repo.head()
+    assert "undone before it took effect" in (engine.recover() or "")
+    assert live(env) == original and engine.repo.head() == head
+    assert not engine.repo.is_dirty()
+    assert env["store"].has_draft()  # the change is still there to apply again
+    assert engine.runtime.restarts == 0  # type: ignore[attr-defined]
+
+
+def test_an_interrupted_write_is_never_recorded_as_an_external_change(env: dict[str, Any]) -> None:
+    """Page loads can race the startup recovery: they must not commit the in-flight write."""
+    engine, original = _crashed_before_commit(env)
+    head = engine.repo.head()
+    assert engine.commit_external_changes() is None
+    assert engine.repo.head() == head and "External change" not in git(env["managed"], "log")
+    engine.recover()
+    assert live(env) == original

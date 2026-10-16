@@ -124,6 +124,9 @@ class ApplyEngine:
             return None
 
     def _commit_external_unlocked(self) -> str | None:
+        if self._marker().exists():
+            # An interrupted apply's own write is not a hand edit: recovery resolves it.
+            return None
         if not self.repo.has_commits() or not self.repo.is_dirty():
             return None
         sha = self.repo.commit_tracked_changes(
@@ -138,12 +141,32 @@ class ApplyEngine:
         ))  # fmt: skip
         return sha
 
-    def save_tests(self, cases: list[access_tests.AccessCase], user: str, subject: str) -> str:
-        """Write access_tests.yml and commit it at once. Authelia never reads the file, so there
-        is no draft, no restart and nothing to roll back. Refused while an apply runs."""
+    def tests_rev(self) -> str:
+        """Revision of access_tests.yml as the page saw it (edits by index check it)."""
+        try:
+            return sha256((self.managed / access_tests.TESTS_NAME).read_text())[:16]
+        except FileNotFoundError:
+            return sha256("")[:16]
+
+    def update_tests(
+        self,
+        change: Callable[
+            [list[access_tests.AccessCase]], tuple[list[access_tests.AccessCase], str]
+        ],
+        user: str,
+        expected_rev: str | None = None,
+    ) -> str:
+        """Read, change and commit access_tests.yml under the apply lock. Authelia never reads the
+        file, so there is no draft, no restart and nothing to roll back. `change` returns the new
+        list and the commit subject. Refused while an apply runs or when the file changed since
+        `expected_rev`."""
         with self._exclusive():
             self.repo.ensure(TRACKED)
             self._commit_external_unlocked()
+            if expected_rev is not None and expected_rev != self.tests_rev():
+                raise Refused("The tests changed in the meantime. Reload the page and retry.")
+            cases, subject = change(access_tests.load(self.managed))
+            subject = " ".join(subject.split())[:120]  # one line, bounded
             self._atomic_write(self.managed / access_tests.TESTS_NAME, access_tests.render(cases))
             sha = self.repo.commit([access_tests.TESTS_NAME], subject, "", author=user)
             audit.append(self.managed, audit.AuditEntry(
@@ -478,10 +501,15 @@ class ApplyEngine:
             return "An interrupted apply left an unreadable marker; check the history."
         job = self.board.new("recovery")
         request = ApplyRequest(user="recovery", client_ip="-", rev="")
-        if self.repo.head() == old_head:  # crashed before the commit: nothing changed
+        if self.repo.head() == old_head:
+            # Crashed before the commit: the live files may already hold the new text, which
+            # Authelia never loaded. Put the committed version back so file == running config;
+            # the draft is still there (it is discarded only after the commit).
+            self.repo.restore_all()
             marker.unlink(missing_ok=True)
-            self._finish(job, request, "refused", "An interrupted apply had not changed anything.",
-                         "recovery")  # fmt: skip
+            self._finish(job, request, "refused",
+                         "An interrupted apply was undone before it took effect; your change is "
+                         "still in the draft.", "recovery")  # fmt: skip
             return job.message
         health = self.health_waiter(
             self.runtime, self.settings.AUTHELIA_HEALTH_URL, before,

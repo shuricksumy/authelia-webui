@@ -63,6 +63,19 @@ def test_review_counts_disabled_rules(env: dict[str, Path]) -> None:  # noqa: F8
 # --------------------------------------------------------------------- access tests
 
 
+def current_tests_rev(ui: UI) -> str:
+    page = ui.get("/tests/new", htmx=True).text
+    return re.search(r'name="tests_rev" value="([0-9a-f]+)"', page).group(1)  # type: ignore[union-attr]
+
+
+def save_test(ui: UI, data: dict[str, str]):  # type: ignore[no-untyped-def]
+    return ui.post("/tests/save", {**data, "tests_rev": current_tests_rev(ui)})
+
+
+def delete_test(ui: UI, index: int):  # type: ignore[no-untyped-def]
+    return ui.post(f"/tests/{index}/delete", {"tests_rev": current_tests_rev(ui)})
+
+
 CASE = {"url": "https://photos.example.com/api/ping", "method": "GET", "user": "",
         "groups": "", "ip": "", "expect": "bypass", "name": "Ping stays open"}  # fmt: skip
 
@@ -70,24 +83,24 @@ CASE = {"url": "https://photos.example.com/api/ping", "method": "GET", "user": "
 def test_add_edit_delete_tests_commit_immediately(env: dict[str, Path]) -> None:  # noqa: F811
     ui = UI(env)
     assert "No tests yet" in ui.get("/tests").text
-    r = ui.post("/tests/save", CASE)
+    r = save_test(ui, CASE)
     assert r.status_code == 204 and r.headers["HX-Redirect"] == "/tests"
     assert len(access_tests.load(env["managed"])) == 1
     assert "Tests: added Ping stays open" in managed_git(env, "log", "-1", "--format=%s")
     assert "Ping stays open" in ui.get("/tests").text
     edited = {**CASE, "index": "0", "expect": "deny", "name": "Ping is closed"}
-    assert ui.post("/tests/save", edited).status_code == 204
+    assert save_test(ui, edited).status_code == 204
     assert access_tests.load(env["managed"])[0].expect == "deny"
-    assert ui.post("/tests/0/delete").status_code == 204
+    assert delete_test(ui, 0).status_code == 204
     assert access_tests.load(env["managed"]) == []
     assert "Tests: removed" in managed_git(env, "log", "-1", "--format=%s")
 
 
 def test_invalid_test_is_rejected_with_a_reason(env: dict[str, Path]) -> None:  # noqa: F811
     ui = UI(env)
-    bad = ui.post("/tests/save", {**CASE, "url": "not a url"})
+    bad = save_test(ui, {**CASE, "url": "not a url"})
     assert bad.status_code == 422 and "must be absolute" in bad.text
-    bad = ui.post("/tests/save", {**CASE, "ip": "999.1.1.1"})
+    bad = save_test(ui, {**CASE, "ip": "999.1.1.1"})
     assert bad.status_code == 422 and "not a valid IP" in bad.text
     assert not (env["managed"] / "access_tests.yml").exists()
 
@@ -106,7 +119,7 @@ def test_tester_offers_add_as_test_prefilled(env: dict[str, Path]) -> None:  # n
 
 def test_failing_test_needs_acceptance_before_apply(env: dict[str, Path]) -> None:  # noqa: F811
     ui, _, _ = build(env, [True])
-    ui.post("/tests/save", CASE)  # the photos ping is bypass
+    save_test(ui, CASE)  # the photos ping is bypass
     ui.post("/rules/move", {"src": "3", "dst": "4"})  # the 2FA photos rule now matches first
     page = ui.get("/review").text
     assert "would not get the expected result" in page
@@ -121,7 +134,7 @@ def test_failing_test_needs_acceptance_before_apply(env: dict[str, Path]) -> Non
 
 def test_passing_tests_do_not_gate_apply(env: dict[str, Path]) -> None:  # noqa: F811
     ui, _, _ = build(env, [True])
-    ui.post("/tests/save", CASE)
+    save_test(ui, CASE)
     ui.post("/rules/default-policy", {"policy": "one_factor"})  # does not touch the ping rule
     page = ui.get("/review").text
     assert "Access tests" in page and 'name="accept_tests"' not in page
@@ -134,7 +147,7 @@ def test_passing_tests_do_not_gate_apply(env: dict[str, Path]) -> None:  # noqa:
 
 def test_hand_edit_is_committed_and_announced(env: dict[str, Path]) -> None:  # noqa: F811
     ui, _, _ = build(env, [True])
-    ui.post("/tests/save", CASE)  # creates the repository
+    save_test(ui, CASE)  # creates the repository
     live = env["managed"] / "access_control.yml"
     live.write_text(live.read_text() + "# edited over ssh\n")
     page = ui.get("/rules").text
@@ -161,3 +174,43 @@ def test_main_config_change_banner_revalidate_and_mark_seen(env: dict[str, Path]
     assert "Authelia accepts the current configuration" in page
     assert ui.post("/notices/main/seen").status_code == 200
     assert "main Authelia configuration changed" not in ui.get("/rules").text
+
+
+def test_test_edits_are_refused_when_the_file_changed_meanwhile(env: dict[str, Path]) -> None:  # noqa: F811
+    ui = UI(env)
+    save_test(ui, CASE)
+    old = current_tests_rev(ui)
+    save_test(ui, {**CASE, "name": "second"})  # someone else adds a test
+    r = ui.post("/tests/0/delete", {"tests_rev": old})
+    assert r.status_code == 422 and "changed in the meantime" in r.text
+    assert len(access_tests.load(env["managed"])) == 2
+    assert ui.post("/tests/save", {**CASE, "tests_rev": "0" * 16}).status_code == 422
+
+
+def test_test_name_is_one_bounded_line_in_the_commit(env: dict[str, Path]) -> None:  # noqa: F811
+    ui = UI(env)
+    save_test(ui, {**CASE, "name": "two\nlines " + "x" * 500})
+    subject = managed_git(env, "log", "-1", "--format=%B").strip()
+    assert "\n" not in subject and len(subject) <= 120
+
+
+def test_disabled_entry_with_extra_text_is_rejected(env: dict[str, Path]) -> None:  # noqa: F811
+    from app.rules.disabled import DisabledRules
+    from app.rules.document import DocumentError
+
+    sneaky = (
+        "disabled_rules:\n  - position: 0\n    yaml: |\n"
+        "      session:\n        expiration: 1y\n"
+        "      - domain: x.example.com\n        policy: bypass\n"
+    )
+    trailing = (
+        "disabled_rules:\n  - position: 0\n    yaml: |\n"
+        "          - domain: x.example.com\n            policy: bypass\n"
+        "      session: {}\n"
+    )
+    for text in (sneaky, trailing):
+        try:
+            DisabledRules.parse(text)
+        except DocumentError:
+            continue
+        raise AssertionError("accepted: " + text)

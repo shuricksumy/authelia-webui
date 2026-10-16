@@ -29,7 +29,7 @@
         {% if has_draft %}<td data-label="Draft"><span class="badge {{ r.draft.policy }}">{{ labels[r.draft.policy] }}</span>{% if r.fails %} <span class="err-text">&#10007; would fail</span>{% elif r.changed %} <small>changed</small>{% else %} <span class="ok-text">&#10003;</span>{% endif %}</td>{% endif %}
         <td class="col-actions">
           <button type="button" class="outline small" hx-get="/tests/{{ loop.index0 }}/edit" hx-target="#modal">Edit</button>
-          <button type="button" class="outline secondary small" hx-post="/tests/{{ loop.index0 }}/delete" hx-confirm="Delete this test?">Delete</button>
+          <button type="button" class="outline secondary small" hx-post="/tests/{{ loop.index0 }}/delete" hx-vals='{"tests_rev": "{{ tests_rev }}"}' hx-confirm="Delete this test?">Delete</button>
         </td>
       </tr>
       {% endfor %}
