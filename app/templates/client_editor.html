@@ -41,10 +41,10 @@
           <button type="button" class="secondary outline" hx-post="/clients/generate-id" hx-target="#f-client_id" hx-swap="outerHTML">Generate</button></span>
         {% if index is not none %}<small class="err-text">Changing the ID of an existing client breaks the app that uses it until you change it there too.</small>{% endif %}</label>
       <fieldset class="checks"><legend>Type <small>public</small></legend>
-        <label><input type="radio" name="b_public" value="false" {% if form.bools.public != 'true' %}checked{% endif %}> Confidential (server-side app with a secret)</label>
+        <label><input type="radio" name="b_public" value="{{ UNSET if form.bools.public == UNSET else 'false' }}" {% if form.bools.public != 'true' %}checked{% endif %}> Confidential (server-side app with a secret)</label>
         <label><input type="radio" name="b_public" value="true" {% if form.bools.public == 'true' %}checked{% endif %}> Public (browser or mobile app, no secret, PKCE)</label>
       </fieldset>
-      {% if index is not none and form.bools.public != 'true' %}
+      {% if index is not none and form.bools.public != 'true' and form.scalars.token_endpoint_auth_method in (UNSET, 'client_secret_basic', 'client_secret_post') %}
       <p>Secret: {% if secret_kind == 'plaintext' %}<span class="err-text">stored in plain text</span>{% elif secret_kind %}set ({{ secret_kind }} hash){% else %}<span class="err-text">none</span>{% endif %}
         <button type="button" class="outline small" hx-post="/clients/{{ index }}/secret" hx-confirm="Generate a new secret? The old one stops working once you apply.">Generate new secret</button></p>
       {% elif index is none %}<p class="muted"><small>A confidential client gets a secret when you save; it is shown once.</small></p>{% endif %}

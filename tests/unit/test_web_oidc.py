@@ -177,3 +177,37 @@ def test_no_clients_file_is_explained(env: dict[str, Path]) -> None:  # noqa: F8
     assert "has no <code>oidc_clients.yml</code>" in page
     assert ui.post("/clients/0/secret").status_code == 404
     assert re.search(r"New client", page) is None
+
+
+def test_an_absent_public_key_stays_absent_on_save(oidc: UI, env: dict[str, Path]) -> None:  # noqa: F811
+    text = CLIENTS.replace(
+        "        client_secret:",
+        "        token_endpoint_auth_method: 'client_secret_basic'\n        client_secret:",
+        1,
+    )
+    (env["managed"] / "oidc_clients.yml").write_text(text)
+    page = oidc.get("/clients/0/edit").text
+    assert 'name="b_public" value="__unset__"' in page  # garage has no public: key
+    r = oidc.post("/clients/save", {
+        "index": "0", "client_id": "garage", "s_client_name": "Garage 2", "b_public": "__unset__",
+        "s_authorization_policy": "two_factor", "s_consent_mode": "auto",
+        "s_token_endpoint_auth_method": "client_secret_basic",
+        "l_redirect_uris": "https://garage.example.com/cb", "present_redirect_uris": "1",
+        "l_scopes": ["openid", "groups"], "present_scopes": "1",
+    })  # fmt: skip
+    assert r.status_code == 204, r.text
+    draft = DraftStore(env["managed"]).current_clients_text()
+    assert "public:" not in draft.split("'spa'")[0]
+
+
+def test_rotation_is_refused_for_jwt_auth_methods(oidc: UI, env: dict[str, Path]) -> None:  # noqa: F811
+    text = CLIENTS.replace(
+        "        client_secret:",
+        "        token_endpoint_auth_method: 'client_secret_jwt'\n        client_secret:",
+        1,
+    )
+    (env["managed"] / "oidc_clients.yml").write_text(text)
+    r = oidc.post("/clients/0/secret")
+    assert r.status_code == 422 and "client_secret_jwt" in r.text
+    assert "Generate new secret" not in oidc.get("/clients/0/edit").text
+    assert not DraftStore(env["managed"]).has_draft()

@@ -313,6 +313,10 @@ async def rotate_secret(request: Request, index: int) -> Response:
         client = doc.clients()[index]
         if is_public(client):
             raise Conflict("A public client has no secret.", 422)
+        if auth_method(client) not in ("client_secret_basic", "client_secret_post"):
+            # client_secret_jwt needs the plaintext in Authelia; private_key_jwt uses keys
+            raise Conflict(f"Clients using {auth_method(client)} cannot get a hashed secret here; "
+                           "edit them by hand.", 422)  # fmt: skip
         secret, digest = await run_in_threadpool(generate_secret, v)
         new_doc = doc.with_secret(index, digest)
         commit_clients(v, new_doc)
