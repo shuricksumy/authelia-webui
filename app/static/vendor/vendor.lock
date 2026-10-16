@@ -1,0 +1,20 @@
+{
+  "htmx": {
+    "file": "htmx.min.js",
+    "integrity": "sha384-2OatzQy1H+Zd/IIrjr1TcuDGqLXeHhbooAyJY1KdQMKnr4LZ22k31GBLdYKHmVjg",
+    "package": "htmx.org",
+    "version": "2.0.11"
+  },
+  "pico": {
+    "file": "pico.min.css",
+    "integrity": "sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU",
+    "package": "@picocss/pico",
+    "version": "2.1.1"
+  },
+  "sortable": {
+    "file": "Sortable.min.js",
+    "integrity": "sha384-DgmC6Xe2bSN2WjTDXzWYbUbxyhNP+NNkGDR/g78pCXV7E7rcVTGxVg0uIVCUUcBc",
+    "package": "sortablejs",
+    "version": "1.15.7"
+  }
+}

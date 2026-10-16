@@ -11,7 +11,7 @@ import ipaddress
 import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.rules.tester import (
@@ -43,6 +43,7 @@ class UsersInfo:
     usernames: frozenset[str]
     groups: frozenset[str]
     available: bool = True
+    memberships: Mapping[str, tuple[str, ...]] = field(default_factory=dict)  # user -> groups
 
 
 # --------------------------------------------------------------------------- regex checks

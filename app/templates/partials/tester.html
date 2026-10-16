@@ -1,0 +1,25 @@
+<dialog open aria-labelledby="dlg-title">
+  <article class="tester">
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Test a URL</h3></header>
+    <form hx-post="/tester/run" hx-target="#tester-result" hx-swap="innerHTML">
+      <div class="grid-2">
+        <label for="tester-url">URL <input id="tester-url" type="text" name="url" value="{{ url }}" placeholder="https://photos.example.com/api/assets" required></label>
+        <label for="tester-method">Method
+          <select id="tester-method" name="method">{% for m in methods %}<option {% if m == method %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
+      </div>
+      <div class="grid-2">
+        <label for="tester-user">User
+          <select id="tester-user" name="user" hx-get="/tester/groups" hx-target="#tester-groups" hx-swap="outerHTML" hx-trigger="change">
+            <option value="">(anonymous)</option>
+            {% for name in usernames %}<option value="{{ name }}" {% if name == user %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select></label>
+        <label for="tester-groups">Groups <small>from the users file, editable</small>
+          <input id="tester-groups" name="groups" value="{{ groups }}" placeholder="comma separated" {% if not user %}disabled{% endif %}></label>
+      </div>
+      <label for="tester-ip">Client IP <small>optional, only needed for rules with networks</small>
+        <input id="tester-ip" type="text" name="ip" value="{{ ip }}" placeholder="192.0.2.10"></label>
+      <button type="submit">Test</button>
+    </form>
+    <div id="tester-result" aria-live="polite"></div>
+  </article>
+</dialog>

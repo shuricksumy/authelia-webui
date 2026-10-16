@@ -1,0 +1,5 @@
+{% set errs = (issues|selectattr('severity', 'equalto', 'error')|list) if issues else [] %}
+{% set warns = (issues|selectattr('severity', 'equalto', 'warning')|list) if issues else [] %}
+{% if errs %}<ul class="problems">{% for i in errs %}<li class="error"><strong>Blocking:</strong> {{ i.message }}</li>{% endfor %}</ul>{% endif %}
+{% if warns %}<ul class="problems">{% for i in warns %}<li class="warning"><strong>Warning:</strong> {{ i.message }}</li>{% endfor %}</ul>{% endif %}
+{% if not errs and not warns and issues is not none %}<p class="ok-text">Looks valid.</p>{% endif %}

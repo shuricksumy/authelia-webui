@@ -1,0 +1,13 @@
+<div class="editor" id="editor">
+  <h2>Rule #{{ index + 1 }} as YAML</h2>
+  {% if errors %}<article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>{% endif %}
+  <form hx-post="/rules/{{ index }}/raw" hx-target="#panel" hx-swap="innerHTML">
+    <label for="raw-text" class="visually-hidden">Rule YAML</label>
+    <textarea id="raw-text" name="text" rows="16" spellcheck="false" class="mono" {% if locked %}disabled{% endif %}>{{ text }}</textarea>
+    <p class="muted"><small>Comments inside the rule are kept. The rule is checked like any other before it is saved to the draft.</small></p>
+    <div class="editor-actions">
+      <a role="button" class="secondary outline" href="/rules?edit={{ index }}" hx-get="/rules/{{ index }}/edit" hx-target="#panel">Back to the form</a>
+      {% if not locked %}<button type="submit">Save to draft</button>{% endif %}
+    </div>
+  </form>
+</div>

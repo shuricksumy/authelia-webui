@@ -111,6 +111,14 @@ class RuleBlock:
             raise DocumentError("a rule block does not hold exactly one mapping")
         return dict(parsed[0])
 
+    def rule_yaml(self) -> str:
+        """The rule as a YAML mapping (no leading dash), comments inside it included."""
+        buf = io.StringIO()
+        yaml = _rt()
+        yaml.indent(mapping=2, sequence=4, offset=2)
+        yaml.dump(self.node(), buf)
+        return buf.getvalue().rstrip("\n")
+
     def node(self) -> CommentedMap:
         parsed = _rt().load(self._dedented())
         node = parsed[0]

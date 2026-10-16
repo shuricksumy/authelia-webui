@@ -1,0 +1,13 @@
+{% from "partials/icons.html" import warn %}
+{% if has_draft %}
+<div class="draftbar{% if stale %} stale{% endif %}">
+  <span class="draftbar-text">{{ warn() }}
+    <strong>{{ change_count }} unapplied change{{ '' if change_count == 1 else 's' }}</strong>
+    {% if stale %}<span>- the live file changed since this draft started</span>{% endif %}
+  </span>
+  <span class="draftbar-actions">
+    <a role="button" class="small" href="/review">Review &amp; apply</a>
+    <button type="button" class="small secondary outline" hx-get="/draft/discard" hx-target="#modal">Discard</button>
+  </span>
+</div>
+{% endif %}

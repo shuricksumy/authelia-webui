@@ -1,0 +1,10 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Discard the draft?</h3></header>
+    <p>All {{ changes.added + changes.removed + changes.edited + (1 if changes.order_changed else 0) + (1 if changes.default_policy_changed else 0) }} unapplied change(s) are thrown away and the draft goes back to the live rules.</p>
+    <footer>
+      <button type="button" class="secondary" data-close>Keep editing</button>
+      <button type="button" class="danger" hx-post="/draft/discard">Discard draft</button>
+    </footer>
+  </article>
+</dialog>

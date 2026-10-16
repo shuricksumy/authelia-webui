@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Rules{% endblock %} · Authelia Configurator</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="rev" content="{{ rev|default('') }}">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"historyCacheSize":0}'>
+  <link rel="stylesheet" href="/static/vendor/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/vendor/htmx.min.js" defer></script>
+  <script src="/static/vendor/Sortable.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="/rules">Authelia Configurator</a>
+      <nav aria-label="Main">
+        <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
+        <span class="soon" title="Arrives in a later phase">OIDC Clients</span>
+        <span class="soon" title="Arrives in a later phase">Users</span>
+        <span class="soon" title="Arrives in step 1b">History</span>
+      </nav>
+      <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>
+    </div>
+  </header>
+
+  <div id="draftbar">{% include "partials/draftbar.html" %}</div>
+
+  <main class="container-fluid">
+    <div id="flash" class="flash" role="status" aria-live="polite"></div>
+    {% block content %}{% endblock %}
+  </main>
+
+  <div id="modal"></div>
+
+  <footer class="statusbar">
+    <span>Authelia running: <strong>unknown</strong> <small>(checked from step 1b)</small></span>
+    <span>bundled <strong>{{ bundled_version }}</strong></span>
+    <span>last apply: <strong>none</strong></span>
+  </footer>
+</body>
+</html>

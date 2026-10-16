@@ -39,12 +39,15 @@ def load_users(path: Path) -> UsersInfo:
     except (OSError, YAMLError):
         return UsersInfo(frozenset(), frozenset(), available=False)
     users = (data or {}).get("users") or {}
-    names, groups = set(), set()
+    names: set[str] = set()
+    groups: set[str] = set()
+    memberships: dict[str, tuple[str, ...]] = {}
     for name, fields in users.items():
         names.add(str(name))
-        for group in (fields or {}).get("groups") or []:
-            groups.add(str(group))
-    return UsersInfo(frozenset(names), frozenset(groups))
+        own = tuple(str(g) for g in (fields or {}).get("groups") or [])
+        memberships[str(name)] = own
+        groups.update(own)
+    return UsersInfo(frozenset(names), frozenset(groups), memberships=memberships)
 
 
 def load_main_definitions(path: Path) -> dict[str, Any]:

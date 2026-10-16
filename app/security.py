@@ -50,8 +50,10 @@ SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
     (b"x-content-type-options", b"nosniff"),
     (b"referrer-policy", b"no-referrer"),
     (b"x-frame-options", b"DENY"),
-    (b"cache-control", b"no-store"),
 ]
+# Pages and API answers are never cached; vendored static files may be (they are not secret).
+NO_STORE = (b"cache-control", b"no-store")
+STATIC_CACHE = (b"cache-control", b"private, max-age=3600")
 
 
 @dataclass(frozen=True)
@@ -115,10 +117,12 @@ class SecurityMiddleware:
             await self.app(scope, receive, send)
             return
 
+        cache = STATIC_CACHE if scope["path"].startswith("/static/") else NO_STORE
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 message.setdefault("headers", [])
-                message["headers"] = [*message["headers"], *SECURITY_HEADERS]
+                message["headers"] = [*message["headers"], *SECURITY_HEADERS, cache]
             await send(message)
 
         if scope["path"] in EXEMPT_PATHS:

@@ -17,7 +17,8 @@ import sys
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
-SKIP_PREFIXES = ("tests/fixtures/generated/", ".git/", ".venv/")
+# Vendored third-party assets are hash-locked (vendor.lock) and carry their own project URLs.
+SKIP_PREFIXES = ("tests/fixtures/generated/", ".git/", ".venv/", "app/static/vendor/")
 # Deliberate bad samples live here; this is the checker's own test.
 SKIP_FILES = {"tests/unit/test_hygiene.py"}
 SKIP_NAMES = {"uv.lock"}
@@ -46,7 +47,8 @@ ALLOWED_DOMAINS = {
     "docker.com", "python.org", "pypi.org", "astral.sh", "traefik.io", "mkjwk.org",
     "anthropic.com", "claude.com", "claude.ai", "sigstore.dev", "renovatebot.com",
     "gitleaks.io", "pre-commit.com", "trivy.dev", "json.schemastore.org", "schemastore.org",
-    "apache.org", "ntfy.sh", "gotify.net", "home-assistant.io", "cloudflare.com",
+    "apache.org", "jsdelivr.net", "htmx.org", "ntfy.sh", "gotify.net", "home-assistant.io",
+    "cloudflare.com",
 }  # fmt: skip
 ALLOWED_SUFFIXES = (".example.com", ".example.org", ".example.net", ".example.test")
 # Typical file names that look like domains.

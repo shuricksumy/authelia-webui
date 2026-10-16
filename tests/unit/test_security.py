@@ -120,6 +120,7 @@ def test_security_headers_on_allowed_denied_and_exempt() -> None:
         assert "unsafe-inline" not in csp
         assert r.headers["x-content-type-options"] == "nosniff"
         assert "set-cookie" not in r.headers  # the app sets no cookies
+        assert r.headers["cache-control"] == "no-store"
 
 
 # --------------------------------------------------------------------- CSRF

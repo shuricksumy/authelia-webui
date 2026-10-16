@@ -1,0 +1,62 @@
+{% from "partials/icons.html" import warn %}
+<section id="rules-section" data-rev="{{ rev }}">
+  {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
+
+  <div class="toolbar">
+    <h1>Rules</h1>
+    <form class="inline-form" hx-post="/rules/default-policy" hx-target="#rules-section" hx-swap="outerHTML" hx-trigger="change">
+      <label for="default-policy">default policy</label>
+      <select id="default-policy" name="policy" aria-label="Default policy">
+        {% for p in policies %}<option value="{{ p }}" {% if p == default_policy %}selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select>
+    </form>
+    <div class="toolbar-actions">
+      <a role="button" href="/rules/new" hx-get="/rules/new" hx-target="#panel" hx-push-url="/rules?new=1">+ Add rule</a>
+      <button type="button" class="secondary" hx-get="/tester" hx-target="#modal">Test a URL</button>
+    </div>
+  </div>
+
+  {% if protected_violations %}
+  <article class="notice error" role="alert">
+    <strong>Protected rules are not satisfied.</strong>
+    <ul>{% for v in protected_violations %}<li>{{ v }}</li>{% endfor %}</ul>
+    <small>These rules keep the admin UI and OIDC working. Applying will be blocked until they are fixed.</small>
+  </article>
+  {% endif %}
+
+  <form class="filters" hx-get="/rules" hx-target="#rules-section" hx-select="#rules-section" hx-swap="outerHTML" hx-push-url="true"
+        hx-trigger="input changed delay:250ms from:#q, change from:#view-order, change from:#view-domain">
+    <label for="q" class="visually-hidden">Filter</label>
+    <input id="q" type="search" name="q" value="{{ q }}" placeholder="Filter by domain, group, policy or note">
+    <fieldset class="view-switch">
+      <legend class="visually-hidden">View</legend>
+      <label><input id="view-order" type="radio" name="view" value="order" {% if view == 'order' %}checked{% endif %}> Order</label>
+      <label><input id="view-domain" type="radio" name="view" value="domain" {% if view == 'domain' %}checked{% endif %}> By domain</label>
+    </fieldset>
+  </form>
+
+  {% if all_count == 0 %}
+    <article class="empty"><p>No rules yet. Use <strong>+ Add rule</strong> to create the first one.</p></article>
+  {% elif view == 'domain' %}
+    {% for domain, group_rows in groups %}
+      <h2 class="group-title">{{ domain }}</h2>
+      <div class="table-scroll"><table class="rules readonly"><tbody>
+        {% for r in group_rows %}{% include "partials/row.html" %}{% endfor %}
+      </tbody></table></div>
+    {% else %}<p class="muted">No rule matches the filter.</p>{% endfor %}
+  {% else %}
+    <div class="table-scroll">
+      <table class="rules" id="rules-table">
+        <thead><tr>
+          <th class="col-handle"><span class="visually-hidden">Reorder</span></th><th class="col-num">#</th><th>Domain</th>
+          <th>Paths</th><th>Who</th><th>Policy</th><th class="col-actions"><span class="visually-hidden">Actions</span></th>
+        </tr></thead>
+        <tbody id="rules-body" data-sortable="{{ 1 if sortable else 0 }}">
+          {% for r in rows %}{% include "partials/row.html" %}{% else %}
+          <tr><td colspan="7" class="muted">No rule matches the filter.</td></tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if not sortable %}<p class="muted"><small>Clear the filter to reorder rules by dragging.</small></p>{% endif %}
+  {% endif %}
+</section>

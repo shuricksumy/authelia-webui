@@ -103,6 +103,7 @@ def test_users_file_yields_names_and_groups_only(tmp_path: Path) -> None:
     )
     info = load_users(path)
     assert info.usernames == {"alice", "bob"} and info.groups == {"admin", "dev", "home"}
+    assert info.memberships == {"alice": ("admin", "dev"), "bob": ("home",)}
     assert secret_hash not in repr(info) and "example.com" not in repr(info)
     assert not load_users(tmp_path / "missing.yml").available
     path.write_text("users: [unclosed")

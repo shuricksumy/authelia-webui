@@ -1,0 +1,15 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Delete rule #{{ row.number }}?</h3></header>
+    <p>This removes <strong>{{ row.domains|join(', ') }}</strong> ({{ row.who }}, <span class="badge {{ row.policy }}">{{ row.policy_label }}</span>) from the <em>draft</em>. Nothing is applied until you review and apply.</p>
+    {% if row.locked %}
+    <p class="notice error">This is a protected rule and cannot be deleted.</p>
+    <footer><button type="button" class="secondary" data-close>Close</button></footer>
+    {% else %}
+    <footer>
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="danger" hx-post="/rules/{{ row.index }}/delete" hx-target="#rules-section" hx-swap="outerHTML">Delete rule #{{ row.number }}</button>
+    </footer>
+    {% endif %}
+  </article>
+</dialog>

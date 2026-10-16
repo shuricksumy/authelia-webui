@@ -1,0 +1,33 @@
+{% from "partials/icons.html" import grip, lock, warn %}
+<tr data-index="{{ r.index }}"{% if r.status %} class="status-{{ r.status }}"{% endif %}>
+  <td class="col-handle">{% if sortable and view != 'domain' %}<span class="drag-handle" title="Drag to reorder">{{ grip() }}</span>{% endif %}</td>
+  <td class="col-num">{{ r.number }}{% if r.status %}<small class="marker {{ r.status }}">{{ {'moved': 'moved', 'edited': 'edited', 'new': 'new'}[r.status] }}</small>{% endif %}</td>
+  <td class="col-domain">
+    <span class="domain">{{ r.domains|join(', ') }}</span>
+    {% if r.note %}<small class="note">{{ r.note.splitlines()[0]|truncate(70) }}</small>{% endif %}
+  </td>
+  <td class="col-paths">
+    {% if r.resources %}
+    <details><summary>{{ r.resources|length }} path{{ '' if r.resources|length == 1 else 's' }}</summary>
+      <ul class="regex">{% for p in r.resources %}<li><code>{{ p }}</code></li>{% endfor %}</ul></details>
+    {% else %}<span class="muted">all</span>{% endif %}
+  </td>
+  <td class="col-who">{{ r.who }}</td>
+  <td class="col-policy">
+    <span class="badge {{ r.policy }}">{{ r.policy_label }}</span>
+    {% if r.locked %}<span class="lock" title="Protected rule: the admin UI or OIDC depends on it">{{ lock() }}<span class="visually-hidden">Protected</span></span>{% endif %}
+    {% if r.issues %}
+    <details class="issues {% if r.errors %}has-errors{% endif %}"><summary>{{ warn() }} {{ r.issues|length }}</summary>
+      <ul>{% for i in r.issues %}<li class="{{ i.severity }}">{{ i.message }}</li>{% endfor %}</ul></details>
+    {% endif %}
+  </td>
+  <td class="col-actions">
+    {% if view != 'domain' %}
+    <button type="button" class="outline secondary small icon-btn" title="Move up" aria-label="Move rule {{ r.number }} up"
+            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"up"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == 0 or not sortable %}disabled{% endif %}>&uarr;</button>
+    <button type="button" class="outline secondary small icon-btn" title="Move down" aria-label="Move rule {{ r.number }} down"
+            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"down"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == all_count - 1 or not sortable %}disabled{% endif %}>&darr;</button>
+    {% endif %}
+    <a role="button" class="outline small" href="/rules?edit={{ r.index }}" hx-get="/rules/{{ r.index }}/edit" hx-target="#panel" hx-push-url="/rules?edit={{ r.index }}">{{ 'View' if r.locked else 'Edit' }}</a>
+  </td>
+</tr>

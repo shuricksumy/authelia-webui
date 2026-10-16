@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Rules{% endblock %}
+{% block content %}
+<div class="layout">
+  <div class="main-col">{% include "partials/section.html" %}</div>
+  <aside id="panel" class="panel" aria-label="Rule editor">{% if has_panel %}{% include "partials/editor.html" %}{% endif %}</aside>
+</div>
+{% endblock %}

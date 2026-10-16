@@ -1,0 +1,3 @@
+{% if errors %}<ul class="problems">{% for e in errors %}<li class="error"><strong>Blocking:</strong> {{ e }}</li>{% endfor %}</ul>
+{% else %}{% include "partials/validation_body.html" %}{% endif %}
+<button id="save-btn" type="submit" hx-swap-oob="true" {% if blocked %}disabled title="Fix the blocking problems first"{% endif %}>Save to draft</button>

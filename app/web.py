@@ -1,0 +1,637 @@
+"""Pages and HTMX partials (SPEC §15). Phase 1a: everything edits the draft, nothing is applied.
+
+Conventions:
+- every mutation carries `rev`, a short hash of the draft it was rendered from; a mismatch
+  (another tab changed the draft) answers 409 and only updates the flash message;
+- a change that would weaken a protected rule (app/rules/protected.py) is refused;
+- GET routes that return an HTMX partial redirect to the full page for normal navigation.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.templating import Jinja2Templates
+from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
+from ruamel.yaml.error import YAMLError
+
+from app.authelia_cli import AutheliaCLI, AutheliaCLIError, ValidationResult, redact
+from app.rules.document import DocumentError, RulesDocument
+from app.rules.form import FormError, RuleForm, apply_form
+from app.rules.lint import Issue, UsersInfo, blocking, lint
+from app.rules.protected import ProtectedReport, check_protected
+from app.rules.store import DraftStore, load_main_definitions, load_users, sha256
+from app.rules.tester import POLICIES, RequestObject, RuleTester, Subject
+from app.security import Identity, identity_of
+from app.settings import Settings
+from app.ui import (
+    build_rows,
+    diff_lines,
+    filter_rows,
+    format_subject_lines,
+    group_by_domain,
+    lines_of,
+    parse_subject_lines,
+    skipped_summary,
+)
+
+router = APIRouter()
+METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
+
+
+class Conflict(Exception):
+    """The draft changed since the page was rendered, or the change is refused."""
+
+    def __init__(self, message: str, status: int = 409) -> None:
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+@dataclass
+class View:
+    request: Request
+    settings: Settings
+    store: DraftStore
+    users: UsersInfo
+    definitions: dict[str, Any]
+    identity: Identity
+    live: RulesDocument
+    doc: RulesDocument
+
+    @property
+    def rev(self) -> str:
+        return sha256(self.doc.render())[:16]
+
+    @property
+    def known_networks(self) -> frozenset[str]:
+        network = (self.definitions.get("definitions") or {}).get("network") or {}
+        return frozenset(str(k) for k in network)
+
+    def effective(self, doc: RulesDocument | None = None) -> dict[str, Any]:
+        return {**self.definitions, **(doc or self.doc).effective()}
+
+    def analyse(self, doc: RulesDocument | None = None) -> tuple[list[Issue], ProtectedReport]:
+        doc = doc or self.doc
+        issues = lint(
+            doc.rules(),
+            users=self.users,
+            default_policy=doc.default_policy(),
+            known_networks=self.known_networks,
+        )
+        return issues, check_protected(self.effective(doc), self.settings)
+
+
+def templates(request: Request) -> Jinja2Templates:
+    t: Jinja2Templates = request.app.state.templates
+    return t
+
+
+def load_view(request: Request) -> View:
+    settings: Settings = request.app.state.settings
+    store = DraftStore(settings.CONFIG_MANAGED_DIR)
+    live = store.live()
+    doc = store.current()
+    return View(
+        request=request,
+        settings=settings,
+        store=store,
+        users=load_users(settings.USERS_FILE),
+        definitions=load_main_definitions(settings.CONFIG_MAIN),
+        identity=identity_of(request.state),
+        live=live,
+        doc=doc,
+    )
+
+
+def is_htmx(request: Request) -> bool:
+    return request.headers.get("hx-request") == "true"
+
+
+def base_context(v: View, **extra: Any) -> dict[str, Any]:
+    changes = v.store.changes()
+    count = (
+        changes.added + changes.removed + changes.edited
+        + int(changes.order_changed) + int(changes.default_policy_changed)
+    )  # fmt: skip
+    return {
+        "request": v.request,
+        "identity": v.identity,
+        "csrf_token": v.request.state.csrf_token,
+        "has_draft": v.store.has_draft(),
+        "stale": v.store.is_stale(),
+        "change_count": count,
+        "rev": v.rev,
+        "bundled_version": v.settings.AUTHELIA_VERSION,
+        **extra,
+    }
+
+
+def render(v: View, name: str, status: int = 200, **ctx: Any) -> HTMLResponse:
+    return templates(v.request).TemplateResponse(
+        v.request, name, base_context(v, **ctx), status_code=status
+    )
+
+
+def error_page(request: Request, message: str, status: int = 503) -> HTMLResponse:
+    return templates(request).TemplateResponse(
+        request,
+        "error.html",
+        {
+            "request": request,
+            "message": message,
+            "csrf_token": request.state.csrf_token,
+            "identity": identity_of(request.state),
+            "has_draft": False,
+            "change_count": 0,
+            "stale": False,
+            "bundled_version": request.app.state.settings.AUTHELIA_VERSION,
+        },
+        status_code=status,
+    )
+
+
+# --------------------------------------------------------------------------- helpers
+
+
+def require_rev(v: View, rev: str | None) -> None:
+    if rev != v.rev:
+        raise Conflict("The draft changed in another tab or window. Reload the page and retry.")
+
+
+def commit(v: View, new_doc: RulesDocument) -> None:
+    """Save `new_doc` as the draft unless it introduces a protected-rule violation."""
+    _, before = v.analyse()
+    _, after = v.analyse(new_doc)
+    introduced = [x for x in after.violations if x not in before.violations]
+    if introduced:
+        raise Conflict("Refused: this would weaken a protected rule. " + " ".join(introduced), 422)
+    v.store.save(new_doc)
+
+
+def conflict_response(exc: Conflict) -> HTMLResponse:
+    body = (
+        '<div id="flash" class="flash error" role="alert" hx-swap-oob="true">'
+        f"{_esc(exc.message)}</div>"
+    )
+    return HTMLResponse(body, status_code=exc.status, headers={"HX-Reswap": "none"})
+
+
+def _esc(text: str) -> str:
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    )
+
+
+def section_response(
+    v: View, flash: str = "", query: str = "", panel: bool = False
+) -> HTMLResponse:
+    """Re-render the rules section (and the draft bar out-of-band) after a mutation."""
+    v2 = load_view(v.request)
+    return render(
+        v2, "partials/section_response.html", **rules_context(v2, query=query, flash=flash)
+    )
+
+
+def rules_context(v: View, view: str = "order", query: str = "", flash: str = "") -> dict[str, Any]:
+    issues, report = v.analyse()
+    rows = build_rows(v.doc, v.live, issues, report.locked)
+    visible = filter_rows(rows, query)
+    return {
+        "rows": visible,
+        "all_count": len(rows),
+        "groups": group_by_domain(visible) if view == "domain" else [],
+        "view": view,
+        "q": query,
+        "default_policy": v.doc.default_policy(),
+        "policies": POLICIES,
+        "protected_violations": report.violations,
+        "flash": flash,
+        "sortable": view == "order" and not query.strip(),
+    }
+
+
+def editor_context(
+    v: View,
+    index: int | None,
+    form: RuleForm,
+    errors: list[str] | None = None,
+    locked: bool = False,
+) -> dict[str, Any]:
+    inner = index is not None and v.doc.blocks[index].has_inner_comments
+    return {
+        "index": index,
+        "form": form,
+        "domain_text": "\n".join(form.domain),
+        "domain_regex_text": "\n".join(form.domain_regex),
+        "resources_text": "\n".join(form.resources),
+        "subject_text": format_subject_lines(form.subject),
+        "methods_text": "\n".join(form.methods),
+        "networks_text": "\n".join(form.networks),
+        "errors": errors or [],
+        "locked": locked,
+        "inner_comments": inner,
+        "policies": POLICIES,
+    }
+
+
+def form_from_request(data: Any) -> RuleForm:
+    def text(name: str) -> str:
+        return str(data.get(name, "")).replace("\r\n", "\n")  # browsers send CRLF in textareas
+
+    return RuleForm(
+        domain=lines_of(text("domain")),
+        domain_regex=lines_of(text("domain_regex")),
+        resources=lines_of(text("resources")),
+        subject=parse_subject_lines(text("subject")),
+        methods=[m.upper() for m in lines_of(text("methods"))],
+        networks=lines_of(text("networks")),
+        query_yaml=text("query_yaml").strip("\n"),
+        extra_yaml=text("extra_yaml").strip("\n"),
+        policy=text("policy"),
+        note=text("note").strip(),
+    )
+
+
+def candidate(v: View, index: int | None, form: RuleForm) -> tuple[RulesDocument, list[str]]:
+    """The document with `form` applied at `index` (None = appended), plus form errors."""
+    try:
+        if index is None:
+            return v.doc.insert(len(v.doc.blocks), apply_form(form), note=form.note), []
+        block = v.doc.blocks[index]
+        note = None if form.note == block.note else form.note
+        return v.doc.replace_rule(index, apply_form(form, block.node()), note=note), []
+    except (FormError, DocumentError) as exc:
+        return v.doc, [str(exc)]
+
+
+def rule_issues(issues: list[Issue], index: int) -> list[Issue]:
+    return [i for i in issues if i.rule == index]
+
+
+def check_index(v: View, index: int) -> None:
+    if not 0 <= index < len(v.doc.blocks):
+        raise Conflict("That rule no longer exists. Reload the page.", 404)
+
+
+# --------------------------------------------------------------------------- pages
+
+
+@router.get("/", include_in_schema=False)
+def home() -> RedirectResponse:
+    return RedirectResponse("/rules", status_code=303)
+
+
+@router.get("/rules", response_class=HTMLResponse)
+def rules_page(
+    request: Request,
+    view: str = "order",
+    q: str = "",
+    edit: int | None = None,
+    new: int = 0,
+    saved: str = "",
+) -> Response:
+    try:
+        v = load_view(request)
+    except (OSError, DocumentError) as exc:
+        return error_page(
+            request,
+            "The managed access control file could not be read. Run the migration script "
+            f"(scripts/split_config.py) or check CONFIG_MANAGED_DIR. ({type(exc).__name__})",
+        )
+    ctx = rules_context(v, view="domain" if view == "domain" else "order", query=q)
+    if saved:
+        ctx["flash"] = f"Rule #{saved} saved to the draft."
+    panel = None
+    if edit is not None and 0 <= edit < len(v.doc.blocks):
+        _, report = v.analyse()
+        block = v.doc.blocks[edit]
+        form = RuleForm.from_data(block.data(), note=block.note)
+        panel = editor_context(v, edit, form, locked=edit in report.locked)
+    elif new:
+        panel = editor_context(v, None, RuleForm())
+    if panel:
+        issues, _ = v.analyse()
+        panel["issues"] = rule_issues(issues, panel["index"]) if panel["index"] is not None else []
+    merged = {**ctx, "has_panel": bool(panel), **(panel or {})}
+    return render(v, "rules.html", **merged)
+
+
+@router.get("/rules/new", response_class=HTMLResponse)
+def new_rule(request: Request) -> Response:
+    if not is_htmx(request):
+        return RedirectResponse("/rules?new=1", status_code=303)
+    v = load_view(request)
+    return render(v, "partials/editor.html", issues=[], **editor_context(v, None, RuleForm()))
+
+
+@router.get("/rules/{index}/edit", response_class=HTMLResponse)
+def edit_rule(request: Request, index: int) -> Response:
+    if not is_htmx(request):
+        return RedirectResponse(f"/rules?edit={index}", status_code=303)
+    v = load_view(request)
+    try:
+        check_index(v, index)
+    except Conflict as exc:
+        return conflict_response(exc)
+    issues, report = v.analyse()
+    block = v.doc.blocks[index]
+    form = RuleForm.from_data(block.data(), note=block.note)
+    return render(
+        v, "partials/editor.html", issues=rule_issues(issues, index),
+        **editor_context(v, index, form, locked=index in report.locked),
+    )  # fmt: skip
+
+
+@router.post("/rules/validate", response_class=HTMLResponse)
+async def validate_rule(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    raw = str(data.get("index", ""))
+    index = int(raw) if raw.isdigit() else None
+    form = form_from_request(data)
+    doc, errors = candidate(v, index, form)
+    issues: list[Issue] = []
+    if not errors:
+        all_issues, _ = v.analyse(doc)
+        target = index if index is not None else len(doc.blocks) - 1
+        issues = rule_issues(all_issues, target)
+    return render(
+        v, "partials/validation.html", errors=errors, issues=issues,
+        blocked=bool(errors or blocking(issues)),
+    )  # fmt: skip
+
+
+@router.post("/rules/save", response_class=HTMLResponse)
+async def save_rule(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    try:
+        require_rev(v, str(data.get("rev", "")))
+    except Conflict as exc:
+        return conflict_response(exc)
+    raw = str(data.get("index", ""))
+    index = int(raw) if raw.isdigit() else None
+    form = form_from_request(data)
+    doc, errors = candidate(v, index, form)
+    problems = list(errors)
+    issues: list[Issue] = []
+    if not problems:
+        all_issues, _ = v.analyse(doc)
+        target = index if index is not None else len(doc.blocks) - 1
+        issues = rule_issues(all_issues, target)
+        problems += [i.message for i in blocking(issues)]
+    if not problems:
+        try:
+            commit(v, doc)
+        except Conflict as exc:
+            problems.append(exc.message)
+    if problems:
+        return render(
+            v, "partials/editor.html", status=422, issues=issues,
+            **editor_context(v, index, form, errors=problems),
+        )  # fmt: skip
+    number = len(doc.blocks) if index is None else index + 1
+    return Response(status_code=204, headers={"HX-Redirect": f"/rules?saved={number}"})
+
+
+@router.post("/rules/move", response_class=HTMLResponse)
+async def move_rule(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        src, dst = int(str(data.get("src"))), int(str(data.get("dst")))
+        check_index(v, src)
+        check_index(v, dst)
+        commit(v, v.doc.move(src, dst))
+    except (Conflict, ValueError, DocumentError) as exc:
+        if isinstance(exc, Conflict):
+            return conflict_response(exc)
+        return conflict_response(Conflict("Could not move that rule.", 400))
+    return section_response(v, flash=f"Moved rule #{src + 1} to position {dst + 1}.")
+
+
+@router.post("/rules/{index}/move", response_class=HTMLResponse)
+async def move_step(request: Request, index: int) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    step = -1 if data.get("dir") == "up" else 1
+    return await _move_to(v, index, index + step, str(data.get("rev", "")))
+
+
+async def _move_to(v: View, src: int, dst: int, rev: str) -> Response:
+    try:
+        require_rev(v, rev)
+        check_index(v, src)
+        if not 0 <= dst < len(v.doc.blocks):
+            return section_response(v)  # already at the edge
+        commit(v, v.doc.move(src, dst))
+    except Conflict as exc:
+        return conflict_response(exc)
+    return section_response(v, flash=f"Moved rule #{src + 1} to position {dst + 1}.")
+
+
+@router.get("/rules/{index}/delete", response_class=HTMLResponse)
+def delete_confirm(request: Request, index: int) -> Response:
+    v = load_view(request)
+    try:
+        check_index(v, index)
+    except Conflict as exc:
+        return conflict_response(exc)
+    _, report = v.analyse()
+    rows = build_rows(v.doc, v.live, [], report.locked)
+    return render(v, "partials/delete_confirm.html", row=rows[index])
+
+
+@router.post("/rules/{index}/delete", response_class=HTMLResponse)
+async def delete_rule(request: Request, index: int) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        check_index(v, index)
+        commit(v, v.doc.delete(index))
+    except Conflict as exc:
+        return conflict_response(exc)
+    return section_response(v, flash=f"Rule #{index + 1} deleted from the draft.")
+
+
+@router.post("/rules/default-policy", response_class=HTMLResponse)
+async def set_default_policy(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    policy = str(data.get("policy", ""))
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        if policy not in POLICIES:
+            raise Conflict("Unknown policy.", 400)
+        commit(v, v.doc.with_default_policy(policy))
+    except Conflict as exc:
+        return conflict_response(exc)
+    return section_response(v, flash=f"Default policy set to {policy} in the draft.")
+
+
+@router.get("/rules/{index}/raw", response_class=HTMLResponse)
+def raw_editor(request: Request, index: int) -> Response:
+    v = load_view(request)
+    try:
+        check_index(v, index)
+    except Conflict as exc:
+        return conflict_response(exc)
+    _, report = v.analyse()
+    return render(
+        v, "partials/raw_editor.html", index=index, text=v.doc.blocks[index].rule_yaml(),
+        errors=[], locked=index in report.locked,
+    )  # fmt: skip
+
+
+@router.post("/rules/{index}/raw", response_class=HTMLResponse)
+async def save_raw(request: Request, index: int) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    text = str(data.get("text", ""))
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        check_index(v, index)
+    except Conflict as exc:
+        return conflict_response(exc)
+    errors: list[str] = []
+    try:
+        node = YAML(typ="rt").load(text)
+        if not isinstance(node, CommentedMap):
+            errors.append("The rule must be a YAML mapping (key: value lines).")
+    except YAMLError:
+        errors.append("That is not valid YAML.")
+        node = None
+    if not errors and node is not None:
+        doc = v.doc.replace_rule(index, node)
+        issues, _ = v.analyse(doc)
+        errors += [i.message for i in blocking(rule_issues(issues, index))]
+        if not errors:
+            try:
+                commit(v, doc)
+            except Conflict as exc:
+                errors.append(exc.message)
+    if errors:
+        return render(
+            v, "partials/raw_editor.html", status=422, index=index, text=text, errors=errors,
+            locked=False,
+        )  # fmt: skip
+    return Response(status_code=204, headers={"HX-Redirect": f"/rules?saved={index + 1}"})
+
+
+# --------------------------------------------------------------------------- tester
+
+
+@router.get("/tester", response_class=HTMLResponse)
+def tester_dialog(request: Request, url: str = "", user: str = "") -> Response:
+    v = load_view(request)
+    return render(
+        v, "partials/tester.html", url=url, method="GET", user=user,
+        groups=", ".join(v.users.memberships.get(user, ())), ip="", result=None, message="",
+        usernames=sorted(v.users.usernames), methods=METHODS,
+    )  # fmt: skip
+
+
+@router.get("/tester/groups", response_class=HTMLResponse)
+def tester_groups(request: Request, user: str = "") -> Response:
+    v = load_view(request)
+    groups = ", ".join(v.users.memberships.get(user, ()))
+    return HTMLResponse(
+        f'<input id="tester-groups" name="groups" value="{_esc(groups)}" '
+        f'placeholder="comma separated"{" disabled" if not user else ""}>'
+    )
+
+
+@router.post("/tester/run", response_class=HTMLResponse)
+async def tester_run(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    url, method = str(data.get("url", "")).strip(), str(data.get("method", "GET"))
+    user = str(data.get("user", ""))
+    groups = tuple(g.strip() for g in str(data.get("groups", "")).split(",") if g.strip())
+    ip_text = str(data.get("ip", "")).strip()
+    message, result, matched = "", None, None
+    try:
+        obj = RequestObject.from_url(url, method if method in METHODS else "GET")
+        ip = ipaddress.ip_address(ip_text) if ip_text else None
+        subject = Subject(user, groups if user else (), ip)
+        result = RuleTester(v.effective()).evaluate(obj, subject)
+        if result.rule_index is not None:
+            _, report = v.analyse()
+            matched = build_rows(v.doc, v.live, [], report.locked)[result.rule_index]
+    except ValueError as exc:
+        message = str(exc) if "URL" in str(exc) else "That is not a valid IP address."
+    return render(
+        v, "partials/tester_result.html", result=result, matched=matched, message=message,
+        skipped=skipped_summary(result) if result else [], user=user,
+        default_policy=v.doc.default_policy(),
+    )  # fmt: skip
+
+
+# --------------------------------------------------------------------------- review / discard
+
+
+def validate_draft(request: Request, v: View) -> ValidationResult | None:
+    """Ask Authelia whether main + draft + OIDC clients validate. Read-only: temp copy."""
+    settings = v.settings
+    try:
+        cli = AutheliaCLI.local(settings.AUTHELIA_BINARY)
+        with tempfile.TemporaryDirectory(prefix="draft-validate-") as tmp:
+            draft = Path(tmp) / "access_control.yml"
+            draft.write_text(v.doc.render())
+            draft.chmod(0o600)
+            paths = [settings.CONFIG_MAIN, draft]
+            clients = settings.CONFIG_MANAGED_DIR / "oidc_clients.yml"
+            if clients.is_file():
+                paths.append(clients)
+            result = cli.validate(paths)
+        return ValidationResult(
+            result.ok, [redact(e) for e in result.errors], [redact(w) for w in result.warnings], ""
+        )
+    except (AutheliaCLIError, OSError):
+        return None
+
+
+@router.get("/review", response_class=HTMLResponse)
+def review(request: Request) -> Response:
+    try:
+        v = load_view(request)
+    except (OSError, DocumentError):
+        return error_page(request, "The managed access control file could not be read.")
+    issues, report = v.analyse()
+    changes = v.store.changes()
+    validator = validate_draft(request, v) if v.store.has_draft() else None
+    rows = build_rows(v.doc, v.live, issues, report.locked)
+    return render(
+        v, "review.html", changes=changes, issues=issues, errors=blocking(issues),
+        warnings=[i for i in issues if i.severity == "warning"], report=report, rows=rows,
+        diff=diff_lines(v.store.diff()), validator=validator,
+        default_policy=v.doc.default_policy(),
+    )  # fmt: skip
+
+
+@router.get("/draft/discard", response_class=HTMLResponse)
+def discard_confirm(request: Request) -> Response:
+    v = load_view(request)
+    return render(v, "partials/discard_confirm.html", changes=v.store.changes())
+
+
+@router.post("/draft/discard", response_class=HTMLResponse)
+async def discard(request: Request) -> Response:
+    v = load_view(request)
+    data = await request.form()
+    try:
+        require_rev(v, str(data.get("rev", "")))
+    except Conflict as exc:
+        return conflict_response(exc)
+    v.store.discard()
+    return Response(status_code=204, headers={"HX-Redirect": "/rules"})

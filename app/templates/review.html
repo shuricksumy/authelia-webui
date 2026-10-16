@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "partials/icons.html" import warn %}
+{% block title %}Review{% endblock %}
+{% block content %}
+<h1>Review changes</h1>
+{% if not has_draft %}
+  <article class="empty"><p>No unapplied changes. <a href="/rules">Back to the rules</a>.</p></article>
+{% else %}
+  {% if stale %}
+  <article class="notice error" role="alert"><strong>The live file changed after this draft was started.</strong>
+    Applying would overwrite those changes, so it will be refused. Discard the draft and redo the edits, or ask me to merge once step 1b exists.</article>
+  {% endif %}
+
+  <section class="summary" aria-label="Summary">
+    <dl>
+      <dt>Rules</dt>
+      <dd>
+        {% if changes.added %}<span class="chip add">+{{ changes.added }} added</span>{% endif %}
+        {% if changes.edited %}<span class="chip edit">~{{ changes.edited }} edited</span>{% endif %}
+        {% if changes.removed %}<span class="chip del">-{{ changes.removed }} removed</span>{% endif %}
+        {% if changes.order_changed %}<span class="chip move">&updownarrow; order changed</span>{% endif %}
+        {% if changes.default_policy_changed %}<span class="chip edit">default policy &rarr; {{ default_policy }}</span>{% endif %}
+        {% if not changes.any %}<span class="muted">no difference from live</span>{% endif %}
+      </dd>
+      <dt>OIDC clients</dt><dd class="muted">none (arrives in a later phase)</dd>
+      <dt>Lint</dt>
+      <dd>
+        {% if errors %}<span class="chip del">{{ errors|length }} blocking</span>{% endif %}
+        {% if warnings %}<span class="chip edit">{{ warn() }} {{ warnings|length }} warning{{ '' if warnings|length == 1 else 's' }}</span>{% endif %}
+        {% if not errors and not warnings %}<span class="ok-text">clean</span>{% endif %}
+      </dd>
+      <dt>Protected rules</dt>
+      <dd>{% if report.ok %}<span class="ok-text">satisfied</span>{% else %}<span class="chip del">{{ report.violations|length }} not satisfied</span>{% endif %}</dd>
+      <dt>Authelia check</dt>
+      <dd>
+        {% if validator is none %}<span class="muted">not available in this environment</span>
+        {% elif validator.ok %}<span class="ok-text">Authelia accepts the draft{% if validator.warnings %} with {{ validator.warnings|length }} warning(s){% endif %}</span>
+        {% else %}<span class="chip del">Authelia rejects the draft</span>{% endif %}
+      </dd>
+    </dl>
+  </section>
+
+  {% if errors or warnings %}
+  <section><h2>Lint</h2>
+    <ul class="problems">
+      {% for i in errors %}<li class="error"><strong>Blocking:</strong> {{ i.message }}</li>{% endfor %}
+      {% for i in warnings %}<li class="warning">{{ i.message }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if not report.ok %}
+  <section><h2>Protected rules</h2><ul class="problems">{% for v in report.violations %}<li class="error">{{ v }}</li>{% endfor %}</ul></section>
+  {% endif %}
+  {% if validator is not none and (validator.errors or validator.warnings) %}
+  <section><h2>Authelia says</h2>
+    <ul class="problems">
+      {% for e in validator.errors %}<li class="error">{{ e }}</li>{% endfor %}
+      {% for w in validator.warnings %}<li class="warning">{{ w }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2>Diff <small>access_control.yml, live &rarr; draft</small></h2>
+    <pre class="diff" aria-label="Diff">{% for kind, text in diff %}<span class="d-{{ kind }}">{{ text }}</span>{% endfor %}</pre>
+  </section>
+
+  <p class="muted">Applying will restart Authelia (about 5 seconds of errors on protected apps).</p>
+  <div class="editor-actions">
+    <a role="button" class="secondary outline" href="/rules">Back to the rules</a>
+    <button type="button" disabled aria-disabled="true" title="Applying arrives in step 1b">Validate &amp; apply</button>
+  </div>
+  <p class="muted"><small>Apply is disabled: applying changes (validate, write, git commit, restart, health check, rollback) is step 1b.</small></p>
+{% endif %}
+{% endblock %}

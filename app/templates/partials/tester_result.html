@@ -1,0 +1,15 @@
+{% if message %}<p class="notice error">{{ message }}</p>
+{% elif result %}
+<div class="result">
+  {% if result.rule_index is none %}
+    <p class="result-line">No rule matches, so the default policy applies: <span class="badge {{ result.policy }}">{{ result.policy|upper }}</span></p>
+  {% else %}
+    <p class="result-line">Rule #{{ result.rule_index + 1 }} matches: <span class="badge {{ result.policy }}">{{ matched.policy_label }}</span>
+      <small>{{ matched.domains|join(', ') }} &middot; {{ matched.who }}</small></p>
+    {% if result.login_required %}<p class="muted">An anonymous visitor is sent to log in first, because this rule has a subject.</p>{% endif %}
+  {% endif %}
+  {% if skipped %}<ul class="skipped">{% for s in skipped %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+  {% for u in result.uncertain %}<p class="notice info"><small>Cannot be evaluated exactly here: {{ u }}.</small></p>{% endfor %}
+  <p class="muted"><small>Preview of Authelia's rule matching, not Authelia itself. First matching rule wins; otherwise the default policy ({{ default_policy }}).</small></p>
+</div>
+{% endif %}

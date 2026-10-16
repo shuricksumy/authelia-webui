@@ -1,0 +1,76 @@
+<div class="editor" id="editor">
+  <h2>{% if index is none %}New rule{% else %}{{ 'Rule' if locked else 'Edit rule' }} #{{ index + 1 }}{% endif %}</h2>
+
+  {% if locked %}
+  <article class="notice info">
+    <strong>Protected rule.</strong> The admin UI or OIDC depends on it, so it is read-only here and cannot be deleted.
+    Rules that make it effective can still be reordered, but a change that weakens it is refused.
+  </article>
+  {% endif %}
+  {% if errors %}
+  <article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>
+  {% endif %}
+  {% if inner_comments and not locked %}
+  <p class="muted"><small>This rule has comments inside it. They are kept when you change fields here;
+    use the <a href="#" hx-get="/rules/{{ index }}/raw" hx-target="#panel">raw YAML editor</a> for exact control.</small></p>
+  {% endif %}
+
+  <form id="rule-form" hx-post="/rules/save" hx-target="#panel" hx-swap="innerHTML">
+    <input type="hidden" name="index" value="{{ '' if index is none else index }}">
+    <fieldset {% if locked %}disabled{% endif %}>
+      <label for="f-domain">Domain(s) <small>domain</small>
+        <textarea id="f-domain" name="domain" rows="2" spellcheck="false" placeholder="photos.example.com&#10;*.example.com">{{ domain_text }}</textarea>
+        <small>One per line. <code>*.example.com</code> matches any subdomain but not example.com itself.</small>
+      </label>
+
+      <label for="f-resources">Paths (regex) <small>resources</small>
+        <textarea id="f-resources" name="resources" rows="3" spellcheck="false" placeholder="^/api/.*$">{{ resources_text }}</textarea>
+        <small>One regex per line. <strong>Leave empty for all paths.</strong> Matched against the path plus <code>?query</code>; Go RE2 syntax (no lookaheads).</small>
+      </label>
+
+      <label for="f-subject">Who <small>subject</small>
+        <textarea id="f-subject" name="subject" rows="2" spellcheck="false" placeholder="group:family&#10;user:bob and group:dev">{{ subject_text }}</textarea>
+        <small><strong>Leave empty for anyone.</strong> Each line is an alternative (OR); join conditions on a line with <code>and</code>.
+          Forms: <code>user:name</code>, <code>group:name</code>, <code>oauth2:client:id</code>.</small>
+      </label>
+
+      <label for="f-policy">Policy <small>policy</small>
+        <select id="f-policy" name="policy" required>
+          {% for p in policies %}<option value="{{ p }}" {% if p == form.policy %}selected{% endif %}>{{ {'bypass': 'Bypass (no login)', 'one_factor': 'One factor (password)', 'two_factor': 'Two factor', 'deny': 'Deny'}[p] }}</option>{% endfor %}
+        </select>
+      </label>
+
+      <label for="f-note">Note <small>kept as a comment above the rule</small>
+        <textarea id="f-note" name="note" rows="2" placeholder="What this rule is for">{{ form.note }}</textarea>
+      </label>
+
+      <details class="advanced">
+        <summary>Advanced (domain regex, methods, networks, query, extra keys)</summary>
+        <label for="f-domain-regex">Domain regex <small>domain_regex</small>
+          <textarea id="f-domain-regex" name="domain_regex" rows="2" spellcheck="false">{{ domain_regex_text }}</textarea></label>
+        <label for="f-methods">Methods <small>methods</small>
+          <textarea id="f-methods" name="methods" rows="2" spellcheck="false" placeholder="GET">{{ methods_text }}</textarea></label>
+        <label for="f-networks">Networks <small>networks</small>
+          <textarea id="f-networks" name="networks" rows="2" spellcheck="false" placeholder="192.0.2.0/24">{{ networks_text }}</textarea></label>
+        <label for="f-query">Query <small>query, raw YAML</small>
+          <textarea id="f-query" name="query_yaml" rows="3" spellcheck="false" class="mono">{{ form.query_yaml }}</textarea></label>
+        <label for="f-extra">Other keys <small>kept as written, raw YAML</small>
+          <textarea id="f-extra" name="extra_yaml" rows="3" spellcheck="false" class="mono">{{ form.extra_yaml }}</textarea></label>
+        {% if index is not none %}<p><a href="#" hx-get="/rules/{{ index }}/raw" hx-target="#panel">Edit the whole rule as raw YAML</a></p>{% endif %}
+      </details>
+    </fieldset>
+
+    <div id="validation" class="validation" aria-live="polite"
+         hx-post="/rules/validate" hx-include="#rule-form" hx-trigger="change from:#rule-form, load delay:80ms" hx-target="this" hx-swap="innerHTML">
+      {% include "partials/validation_body.html" %}
+    </div>
+
+    <div class="editor-actions">
+      <a role="button" class="secondary outline" href="/rules">Cancel</a>
+      {% if index is not none and not locked %}
+      <button type="button" class="outline danger" hx-get="/rules/{{ index }}/delete" hx-target="#modal">Delete</button>
+      {% endif %}
+      {% if not locked %}<button id="save-btn" type="submit">Save to draft</button>{% endif %}
+    </div>
+  </form>
+</div>
