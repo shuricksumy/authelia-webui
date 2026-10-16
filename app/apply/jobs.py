@@ -16,12 +16,13 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
-STEPS = ("validate", "save", "restart", "health", "rollback")
+STEPS = ("validate", "save", "restart", "health", "verify", "rollback")
 STEP_LABELS = {
     "validate": "Validating",
     "save": "Saving",
     "restart": "Restarting Authelia",
     "health": "Health check",
+    "verify": "Checking access tests on the live Authelia",
     "rollback": "Rolling back",
 }
 

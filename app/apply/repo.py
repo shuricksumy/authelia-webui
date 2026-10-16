@@ -114,6 +114,13 @@ class ManagedRepo:
         self._git("commit", "-q", "-m", message, author=author)
         return self.head()
 
+    def commit_tracked_changes(self, subject: str, body: str, author: str) -> str:
+        """Commit every change to tracked files (hand edits); untracked files stay untracked."""
+        self._git("add", "--update")
+        message = subject if not body else f"{subject}\n\n{body}"
+        self._git("commit", "-q", "-m", message, author=author)
+        return self.head()
+
     def restore(self, path: str) -> None:
         """Put the committed version of `path` back into the working tree."""
         self._git("checkout", "--", path)

@@ -23,12 +23,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.apply import audit
+from app.apply import audit, notify, probe
+from app.apply import state as apply_state
 from app.apply.health import HealthResult, wait_restarted_and_healthy
 from app.apply.jobs import Job, JobBoard
 from app.apply.repo import ManagedRepo, RepoError
 from app.apply.runtime import AutheliaRuntime, RuntimeUnavailable
 from app.authelia_cli import ValidationResult, redact
+from app.rules import access_tests
 from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.lint import blocking, lint
@@ -39,10 +41,12 @@ from app.rules.store import (
     StaleDraftError,
     load_main_definitions,
     load_users,
+    sha256,
 )
 from app.settings import Settings, VersionMismatch
 
-TRACKED = (LIVE_NAME, "oidc_clients.yml", "disabled_rules.yml", "protected_rules.yml")
+TRACKED = (LIVE_NAME, "oidc_clients.yml", "disabled_rules.yml", "access_tests.yml")
+EXTERNAL_SUBJECT = "External change: edited outside the configurator"
 MARKER = "in-progress.json"
 RECOVERY_HINT = (
     "Manual action needed. On the Docker host run: "
@@ -63,6 +67,7 @@ class ApplyRequest:
     user: str
     client_ip: str
     rev: str  # revision of the draft the user reviewed (first 16 hex of its sha256)
+    accept_tests: bool = False  # the admin ticked "I accept these changes" for failing tests
 
 
 class ApplyEngine:
@@ -73,7 +78,9 @@ class ApplyEngine:
         board: JobBoard,
         validator: Validator,
         health_waiter: HealthWaiter = wait_restarted_and_healthy,
+        prober: probe.Prober = probe.forward_auth,
     ) -> None:
+        self.prober = prober
         self.settings = settings
         self.runtime = runtime
         self.board = board
@@ -99,6 +106,44 @@ class ApplyEngine:
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
+    def exclusive(self) -> contextlib.AbstractContextManager[None]:
+        """The apply lock (non-blocking: Refused when another apply holds it)."""
+        return self._exclusive()
+
+    # ------------------------------------------------------------------ external changes
+
+    def commit_external_changes(self) -> str | None:
+        """Commit hand edits of tracked managed files (SPEC §16.8). Returns the commit, or None
+        when there was nothing to commit or an apply is running (it will be done later)."""
+        if not self.repo.has_commits():
+            return None
+        try:
+            with self._exclusive():
+                return self._commit_external_unlocked()
+        except Refused:
+            return None
+
+    def _commit_external_unlocked(self) -> str | None:
+        if not self.repo.has_commits() or not self.repo.is_dirty():
+            return None
+        sha = self.repo.commit_tracked_changes(
+            EXTERNAL_SUBJECT,
+            "Found uncommitted changes to managed files and recorded them as they were.",
+            author="external",
+        )
+        apply_state.update(self.managed, external={"commit": sha, "ts": audit.now()})
+        audit.append(self.managed, audit.AuditEntry(
+            ts=audit.now(), user="external", client_ip="-", action="external-change",
+            result="committed", commit=sha[:12], summary="Managed files were edited by hand.",
+        ))  # fmt: skip
+        return sha
+
+    def main_config_sha(self) -> str:
+        try:
+            return sha256(self.settings.CONFIG_MAIN.read_text())
+        except OSError:
+            return ""
+
     def _marker(self) -> Path:
         return self.state_dir / MARKER
 
@@ -123,7 +168,18 @@ class ApplyEngine:
             )
         return None
 
-    def preconditions(self, rev: str | None = None) -> list[str]:
+    def test_results(self) -> list[access_tests.CaseResult]:
+        """Access tests evaluated on the live rules and on the draft (when there is one)."""
+        definitions = load_main_definitions(self.settings.CONFIG_MAIN)
+        cases = access_tests.load(self.managed)
+        live_config = {**definitions, **self.store.live().effective()}
+        draft_config = (
+            {**definitions, **self.store.current().effective()} if self.store.has_draft() else None
+        )
+        return access_tests.evaluate(cases, live_config, draft_config,
+                                     self.settings.default_client_ip)  # fmt: skip
+
+    def preconditions(self, rev: str | None = None, accept_tests: bool = False) -> list[str]:
         """Plain-language reasons why apply is not possible right now (empty: ready)."""
         reasons: list[str] = []
         if self.board.running():
@@ -145,10 +201,15 @@ class ApplyEngine:
             return [*reasons, str(exc)]
         if rev is not None and rev != self.store.current_sha()[:16]:
             reasons.append("The draft changed since you reviewed it. Review it again.")
-        if self.repo.is_repo() and self.repo.is_dirty():
+        try:
+            failing = access_tests.failing(self.test_results())
+        except DocumentError as exc:
+            failing = []
+            reasons.append(f"The access tests file cannot be read: {exc}.")
+        if failing and not accept_tests:
             reasons.append(
-                "Managed files were changed outside the configurator (git shows uncommitted "
-                "changes). Commit or revert them on the host first."
+                f"{len(failing)} access test(s) would not get the expected result. Check them "
+                'and tick "I accept these changes" if that is intended.'
             )
         users = load_users(self.settings.USERS_FILE)
         definitions = load_main_definitions(self.settings.CONFIG_MAIN)
@@ -180,11 +241,13 @@ class ApplyEngine:
 
     def _apply(self, request: ApplyRequest, job: Job) -> None:
         board = self.board
-        reasons = self.preconditions(rev=request.rev)
+        if self.repo.ensure(TRACKED) or "main_sha" not in apply_state.load(self.managed):
+            apply_state.update(self.managed, main_sha=self.main_config_sha())
+        self._commit_external_unlocked()  # hand edits become history first (may stale the draft)
+        reasons = self.preconditions(rev=request.rev, accept_tests=request.accept_tests)
         reasons = [r for r in reasons if r != "Another apply is running."]  # that is us
         if reasons:
             raise Refused(" ".join(reasons))
-        self.repo.ensure(TRACKED)
         doc = self.store.current()
         text = doc.render()
         disabled_text = self.store.current_disabled().render()
@@ -274,8 +337,13 @@ class ApplyEngine:
         health = self._wait(before)
         if health.healthy:
             board.update(job, "health", "done", health.reason)
+            mismatch = self._verify(job, text)
+            if mismatch:
+                self._rollback(job, request, text, mismatch, commit, disabled_text)
+                return
             board.update(job, "rollback", "skipped")
             self._marker().unlink(missing_ok=True)
+            apply_state.update(self.managed, main_sha=self.main_config_sha())
             self._finish(job, request, "applied", "Applied. Authelia is healthy.", "apply", commit)
             return
         board.update(job, "health", "failed", health.reason)
@@ -285,7 +353,7 @@ class ApplyEngine:
                   commit: str, failed_disabled: str | None = None) -> None:  # fmt: skip
         board = self.board
         board.update(job, "rollback", "running")
-        details = self._authelia_errors()
+        details = [*job.details, *self._authelia_errors()]
         try:
             before = self.runtime.inspect(timeout_s=5).started_at
             revert = self.repo.revert_head(reason, author=request.user)
@@ -309,6 +377,34 @@ class ApplyEngine:
         self._finish(job, request, "rolled-back",
                      f"{reason} The previous version is live again; your change is back in the "
                      "draft so you can fix it.", "rollback", revert)  # fmt: skip
+
+    def _verify(self, job: Job, text: str) -> str | None:
+        """Probe anonymous access tests against the real Authelia; a reason string on mismatch."""
+        board = self.board
+        try:
+            cases = access_tests.load(self.managed)
+        except DocumentError:
+            cases = []
+        if not any(c.anonymous for c in cases):
+            board.update(job, "verify", "skipped", "no anonymous access tests")
+            return None
+        board.update(job, "verify", "running")
+        definitions = load_main_definitions(self.settings.CONFIG_MAIN)
+        config = {**definitions, **RulesDocument.parse(text).effective()}
+        results = probe.verify(cases, config, self.settings.authelia_base_url,
+                               self.settings.default_client_ip, self.prober)  # fmt: skip
+        bad = [r for r in results if r.mismatch]
+        untestable = [r for r in results if r.actual == "untestable"]
+        if bad:
+            details = [f"{r.case.method} {r.case.url}: previewed {r.expected}, Authelia says "
+                       f"{r.actual}" for r in bad]  # fmt: skip
+            board.update(job, "verify", "failed", f"{len(bad)} mismatch(es)", details=details)
+            return f"Authelia does not behave as previewed for {len(bad)} access test(s)."
+        note = f"{len(results) - len(untestable)} checked"
+        if untestable:
+            note += f", {len(untestable)} not testable"
+        board.update(job, "verify", "done", note)
+        return None
 
     def _wait(self, previous_started_at: str) -> HealthResult:
         return self.health_waiter(
@@ -369,6 +465,9 @@ class ApplyEngine:
     def _finish(self, job: Job, request: ApplyRequest, result: str, message: str, action: str,
                 commit: str = "") -> None:  # fmt: skip
         self.board.update(job, result=result, message=message, commit=commit or job.commit)
+        if result in ("applied", "rolled-back", "failed"):
+            notify.send(self.settings, action, result, request.user, message[:300],
+                        commit or job.commit)  # fmt: skip
         audit.append(self.managed, audit.AuditEntry(
             ts=audit.now(), user=request.user, client_ip=request.client_ip, action=action,
             result=result, commit=(commit or job.commit)[:12], summary=message[:200],

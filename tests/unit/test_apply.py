@@ -140,7 +140,8 @@ def test_successful_apply_writes_commits_restarts_and_clears_the_draft(env: dict
     assert "Initial import" in git(env["managed"], "log", "--format=%s")
     assert git(env["managed"], "status", "--porcelain").strip() == ""  # runtime files ignored
     assert not (env["managed"] / ".apply" / "in-progress.json").exists()
-    assert [s.status for s in job.steps] == ["done", "done", "done", "done", "skipped"]
+    assert [s.status for s in job.steps] == ["done", "done", "done", "done", "skipped", "skipped"]
+    assert job.step("verify").detail == "no anonymous access tests"
     entries = audit.recent(env["managed"])
     assert entries[-1].result == "applied" and entries[-1].user == "alice"
     assert entries[-1].client_ip == "10.8.0.5" and job.commit.startswith(entries[-1].commit[:7])
@@ -242,11 +243,30 @@ def test_stale_draft(env: dict[str, Any]) -> None:
     refused(env, engine, rev, "live file changed")
 
 
-def test_hand_edited_tracked_file_blocks_apply(env: dict[str, Any]) -> None:
+def test_hand_edits_are_committed_as_an_external_change_before_applying(
+    env: dict[str, Any],
+) -> None:
+    """SPEC §16.8: a hand edit of another tracked file no longer blocks; it becomes history."""
     engine, _, _ = make(env, [True])
     engine.repo.ensure(["access_control.yml", "oidc_clients.yml"])
     (env["managed"] / "oidc_clients.yml").write_text("identity_providers: {}\n")
-    refused(env, engine, draft_move(env), "changed outside the configurator")
+    job = run(engine, draft_move(env))
+    assert job.result == "applied", job.message
+    log = git(env["managed"], "log", "--format=%an|%s").splitlines()
+    assert log[0].startswith("alice|Rules:")
+    assert log[1] == "external|External change: edited outside the configurator"
+    assert [e.action for e in audit.recent(env["managed"])][-2:] == ["external-change", "apply"]
+
+
+def test_hand_edit_of_the_rules_file_makes_the_draft_stale(env: dict[str, Any]) -> None:
+    """The edit is recorded first; the draft was based on the old file, so apply refuses it."""
+    rev = draft_move(env)
+    engine, _, _ = make(env, [True])
+    engine.repo.ensure(["access_control.yml"])
+    path = env["managed"] / "access_control.yml"
+    path.write_text(path.read_text() + "# edited over SSH\n")
+    refused(env, engine, rev, "live file changed")
+    assert "External change" in git(env["managed"], "log", "--format=%s", "-n1")
 
 
 def test_blocking_lint_and_protected_violations(env: dict[str, Any]) -> None:

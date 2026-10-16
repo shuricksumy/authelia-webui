@@ -10,6 +10,7 @@ import ipaddress
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from pydantic import Field, SecretStr, ValidationError, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -65,12 +66,13 @@ class Settings(BaseSettings):
     TRUSTED_PROXY_CIDRS: Annotated[list[Network], NoDecode]
     AUTHELIA_CONTAINER: str = Field(min_length=1)
     AUTHELIA_HEALTH_URL: str = Field(min_length=1)
+    # Internal base URL for forward-auth probes; derived from AUTHELIA_HEALTH_URL when unset.
+    AUTHELIA_URL: str | None = None
     APP_SECRET_KEY: SecretStr
 
     CONFIG_MAIN: Path = Path("/config/configuration.yml")
     CONFIG_MANAGED_DIR: Path = Path("/config/managed")
     USERS_FILE: Path = Path("/config/users.yml")
-    PROTECTED_RULES_FILE: Path = Path("/config/managed/protected_rules.yml")
     RESTART_MODE: RestartMode = RestartMode.SOCKET_PROXY
     DOCKER_PROXY_URL: str = "http://socket-proxy:2375"
     VERSION_MISMATCH: VersionMismatch = VersionMismatch.BLOCK
@@ -90,6 +92,19 @@ class Settings(BaseSettings):
     def _empty_is_unset(cls, value: object) -> object:
         # `VAR=` in compose/.env means "not set", not Path(".") or an empty URL.
         return None if isinstance(value, str) and not value.strip() else value
+
+    @property
+    def authelia_base_url(self) -> str:
+        if self.AUTHELIA_URL:
+            return self.AUTHELIA_URL.rstrip("/")
+        parts = urlsplit(self.AUTHELIA_HEALTH_URL)
+        return f"{parts.scheme}://{parts.netloc}"
+
+    @property
+    def default_client_ip(self) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+        """An address inside the allowed networks, used when an access test names none."""
+        first = self.ALLOWED_CLIENT_CIDRS[0]
+        return next(first.hosts(), first.network_address)
 
     @field_validator("APP_SECRET_KEY")
     @classmethod
