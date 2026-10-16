@@ -1,0 +1,43 @@
+# SPEC §13 — never commit deployment data or secrets
+*.sqlite3
+configuration.yml
+users.yml
+managed/
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+*.crt
+*.key
+notification.txt
+*.log
+
+# Generated test data (hashes, keys) — created at test time
+tests/fixtures/generated/
+
+# Claude Code personal settings
+.claude/settings.local.json
+
+# Python / tooling
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Playwright
+test-results/
+playwright-report/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+.scan-image.tar

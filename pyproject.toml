@@ -1,0 +1,55 @@
+[project]
+name = "authelia-configurator"
+version = "0.1.0"
+description = "Internal-only web UI for managing Authelia access control rules and OIDC clients"
+license = "Apache-2.0"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "jinja2>=3.1",
+    "ruamel.yaml>=0.18",
+    "pydantic-settings>=2.6",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "pytest-playwright>=0.6",
+    "httpx>=0.28",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+ignore = ["S603", "S607"]  # subprocess without a shell and with an args list is our pattern
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S108", "S607"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+packages = ["app", "scripts"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["ruamel.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["."]
+markers = [
+    "integration: needs Docker and the pinned Authelia image",
+    "e2e: needs the compose test stack",
+]

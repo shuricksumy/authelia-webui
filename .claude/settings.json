@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "plan",
+    "allow": [
+      "Bash(make:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(uv run:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(gitleaks detect:*)",
+      "Bash(gitleaks git:*)",
+      "Bash(gitleaks dir:*)",
+      "Bash(trivy image:*)",
+      "Bash(docker compose -f compose.test.yml:*)",
+      "Bash(docker build:*)",
+      "Bash(docker run --rm authelia/authelia:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(npx playwright:*)",
+      "WebFetch(domain:www.authelia.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(uv sync:*)",
+      "Bash(uv lock:*)",
+      "Bash(pre-commit run:*)",
+      "Bash(docker run --rm zricethezav/gitleaks:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/configuration.yml)",
+      "Read(./**/users.yml)",
+      "Read(./**/managed/**)",
+      "Read(./**/*.sqlite3)",
+      "Read(./**/notification.txt)",
+      "Bash(git push --force:*)",
+      "Bash(docker run * /var/run/docker.sock*)",
+      "Bash(docker run * -v /var/run/docker.sock*)"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "enabledManagers": ["custom.regex", "dockerfile", "github-actions", "pep621", "uv"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Pinned Authelia version (single source of truth, SPEC §11.1)",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG AUTHELIA_VERSION=(?<currentValue>\\S+)"],
+      "datasourceTemplate": "docker",
+      "depNameTemplate": "authelia/authelia"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchPackageNames": ["authelia/authelia"],
+      "groupName": "authelia",
+      "commitMessageTopic": "authelia",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": ["patch", "minor"]
+    },
+    {
+      "matchPackageNames": ["authelia/authelia"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false
+    },
+    {
+      "matchManagers": ["github-actions", "pep621", "uv"],
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    }
+  ],
+  "platformAutomerge": true
+}

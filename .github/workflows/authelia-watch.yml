@@ -1,0 +1,51 @@
+name: authelia-watch
+# Fallback to Renovate (SPEC §11.2): opens a PR when Authelia publishes a newer release.
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest="$(gh api repos/authelia/authelia/releases/latest --jq .tag_name | sed 's/^v//')"
+          current="$(scripts/authelia_version.sh)"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          newest="$(printf '%s\n%s\n' "$latest" "$current" | sort -V | tail -n1)"
+          if [ "$latest" != "$current" ] && [ "$newest" = "$latest" ]; then
+            echo "newer=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Skip when a PR for this version already exists
+        id: existing
+        if: steps.latest.outputs.newer == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: |
+          n="$(gh pr list --state open --search "authelia ${LATEST} in:title" --json number --jq length)"
+          echo "count=$n" >> "$GITHUB_OUTPUT"
+      - name: Bump the pinned version
+        if: steps.latest.outputs.newer == 'true' && steps.existing.outputs.count == '0'
+        run: sed -i "s/^ARG AUTHELIA_VERSION=.*/ARG AUTHELIA_VERSION=${{ steps.latest.outputs.latest }}/" Dockerfile
+      - name: Open PR (CI decides whether it is safe to merge)
+        if: steps.latest.outputs.newer == 'true' && steps.existing.outputs.count == '0'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: authelia-${{ steps.latest.outputs.latest }}
+          title: "chore: authelia ${{ steps.latest.outputs.latest }}"
+          commit-message: "chore: bump Authelia to ${{ steps.latest.outputs.latest }}"
+          body: |
+            Authelia ${{ steps.latest.outputs.latest }} was released (current pin: ${{ steps.latest.outputs.current }}).
+            CI runs the merge-behaviour, validate and image tests against the new version, with
+            deprecation warnings treated as failures. Major versions need manual review.

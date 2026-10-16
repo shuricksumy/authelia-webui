@@ -1,0 +1,33 @@
+# Synthetic users file (4-space indent on purpose). __GEN_ARGON2_HASH__ is
+# replaced at test time. dave/erin are referenced by rules but absent here (lint case).
+users:
+    alice:
+        password: __GEN_ARGON2_HASH__
+        displayname: Alice Example
+        email: alice@example.com
+        groups:
+            - admin
+            - dev
+        disabled: false
+    bob:
+        password: __GEN_ARGON2_HASH__
+        displayname: Bob Example
+        email: bob@example.com
+        groups:
+            - home
+        disabled: false
+    device:
+        password: __GEN_ARGON2_HASH__
+        displayname: Home Device
+        email: device@example.com
+        groups:
+            - home
+        disabled: false
+    family:
+        password: __GEN_ARGON2_HASH__
+        displayname: Family Account
+        email: family@example.com
+        groups:
+            - family
+        photo_quota: 500
+        disabled: false
