@@ -48,7 +48,9 @@ def login(browser: Browser, username: str | None = None, password: str | None = 
     """Return a Playwright storage state for a logged-in session (alice by default)."""
     context = browser.new_context(ignore_https_errors=True)
     page = context.new_page()
-    page.goto(f"{BASE}/", wait_until="networkidle")
+    from tests.e2e.conftest import goto
+
+    goto(page, f"{BASE}/", wait_until="networkidle")
     sign_in(page, username, password, totp)
     state: dict[str, Any] = context.storage_state()  # type: ignore[assignment]
     context.close()

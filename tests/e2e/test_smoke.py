@@ -5,13 +5,13 @@ import subprocess
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import PORTAL_URL, compose
+from tests.e2e.conftest import PORTAL_URL, compose, goto
 
 pytestmark = pytest.mark.e2e
 
 
 def test_authelia_portal_serves_login_page(stack: dict[str, str], page: Page) -> None:
-    response = page.goto(PORTAL_URL, wait_until="networkidle")
+    response = goto(page, PORTAL_URL, wait_until="networkidle")
     assert response is not None and response.ok
     expect(page).to_have_title("Login - Authelia")
     expect(page.get_by_role("textbox", name="Username")).to_be_visible()

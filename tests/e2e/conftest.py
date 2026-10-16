@@ -6,12 +6,15 @@ import os
 import secrets
 import shutil
 import subprocess
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from playwright.sync_api import Browser, BrowserContext, Page
+from playwright.sync_api import Error as PlaywrightError
 
 from scripts.split_config import _dockerfile_version
 from tests.e2e.auth import BASE, login
@@ -20,6 +23,43 @@ from tests.fixtures.stack import AUTH_HOST, PORTAL_PORT, STACK, prepare
 ROOT = Path(__file__).resolve().parents[2]
 PORTAL_URL = f"https://{AUTH_HOST}:{PORTAL_PORT}"
 RESOLVER = "--host-resolver-rules=MAP *.example.test 127.0.0.1"
+
+
+TRANSIENT = ("ERR_NETWORK_CHANGED", "ERR_CONNECTION_RESET", "ERR_CONNECTION_REFUSED")
+
+
+def goto(page: Page, url: str, attempts: int = 4, **kwargs: Any) -> Any:
+    """page.goto that retries when Chromium reports a transient network event (seen on CI right
+    after the Docker networks were created)."""
+    for attempt in range(attempts):
+        try:
+            return page.goto(url, **kwargs)
+        except PlaywrightError as exc:
+            if attempt == attempts - 1 or not any(code in str(exc) for code in TRANSIENT):
+                raise
+            time.sleep(1.5)
+
+
+def wait_for_traefik(timeout_s: float = 90) -> None:
+    """Traefik has no health check: 'running' does not mean its routers are loaded. Wait until it
+    serves the portal (the certificate is self-signed, hence verify=False)."""
+    from tests.fixtures.stack import AUTH_HOST, PORTAL_PORT
+
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        try:
+            r = httpx.get(
+                f"https://127.0.0.1:{PORTAL_PORT}/",
+                headers={"Host": AUTH_HOST},
+                verify=False,  # noqa: S501 - throwaway self-signed test certificate
+                timeout=3,
+            )
+            if r.status_code == 200:
+                return
+        except httpx.HTTPError:
+            pass
+        time.sleep(1)
+    raise AssertionError("Traefik did not start serving the portal in time")
 
 
 def stack_env() -> dict[str, str]:
@@ -69,6 +109,7 @@ def stack() -> Iterator[dict[str, str]]:
     up = compose("up", "-d", "--build", "--wait", "--wait-timeout", "240", env=env)
     try:
         assert up.returncode == 0, up.stderr[-2000:]
+        wait_for_traefik()
         yield env
     finally:
         compose("down", "-v", "--remove-orphans", env=env)
@@ -92,7 +133,7 @@ class AliceSession:
         )
         try:
             page = context.new_page()
-            response = page.goto(f"{BASE}/healthz")
+            response = goto(page, f"{BASE}/healthz")
             return response is not None and response.ok and page.url.startswith(BASE)
         finally:
             context.close()
