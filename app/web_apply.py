@@ -60,7 +60,7 @@ async def start_apply(request: Request) -> Response:
         threading.Thread(
             target=services.engine.apply, args=(apply_request, job), name="apply", daemon=True
         ).start()
-    return render(v, "partials/apply_progress.html", **_progress_context(job))
+    return render(v, "partials/apply_progress.html", **_progress_context(services.board.snapshot()))
 
 
 def _progress_context(job: Job | None) -> dict[str, Any]:
@@ -70,7 +70,7 @@ def _progress_context(job: Job | None) -> dict[str, Any]:
 @router.get("/apply/status", response_class=HTMLResponse)
 def apply_status(request: Request) -> Response:
     services = services_of(request)
-    job = services.board.current()
+    job = services.board.snapshot()
     if job is not None and job.done:
         services.status.invalidate()  # the footer should reflect the restart that just happened
     return templates(request).TemplateResponse(
@@ -82,7 +82,7 @@ def apply_status(request: Request) -> Response:
 
 @router.get("/apply/result", response_class=HTMLResponse)
 def apply_result(request: Request) -> Response:
-    job = services_of(request).board.current()
+    job = services_of(request).board.snapshot()
     ctx = {**shell_context(request), **_progress_context(job), "has_draft": False,
            "change_count": 0, "stale": False}  # fmt: skip
     return templates(request).TemplateResponse(request, "apply_result.html", ctx)

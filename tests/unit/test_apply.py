@@ -384,3 +384,16 @@ def test_job_board_sees_a_result_written_by_another_instance(env: dict[str, Any]
     assert seen is not None and seen.id == job.id and seen.result == "applied"
     other = second.new("bob")
     assert first.current() is not None and first.current().id == other.id  # type: ignore[union-attr]
+
+
+def test_snapshot_is_a_consistent_copy_of_a_job_that_keeps_changing(env: dict[str, Any]) -> None:
+    """Review finding from CI: a page rendered from the live job could mix two moments."""
+    board = JobBoard(env["managed"])
+    job = board.new("alice")
+    frozen = board.snapshot()
+    assert frozen is not None and not frozen.done
+    board.update(job, "restart", "done", result="applied", message="done")
+    assert not frozen.done and frozen.step("restart").status == "pending"  # unaffected
+    later = board.snapshot()
+    assert later is not None and later.done and later.step("restart").status == "done"
+    assert later is not board.current()

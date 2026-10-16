@@ -6,6 +6,7 @@ result is still there after Authelia's restart signs everyone out and they log i
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import secrets
@@ -115,6 +116,14 @@ class JobBoard:
             if self._stamp() != self._mtime:
                 self._job = self._load()
             return self._job
+
+    def snapshot(self) -> Job | None:
+        """An independent copy for rendering: the apply thread keeps mutating the live job, and a
+        page built from it could otherwise mix two moments (e.g. "done" yet still polling)."""
+        with self._lock:
+            if self._stamp() != self._mtime:
+                self._job = self._load()
+            return copy.deepcopy(self._job)
 
     def running(self) -> bool:
         job = self.current()

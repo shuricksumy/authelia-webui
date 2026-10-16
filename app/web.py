@@ -135,7 +135,7 @@ def shell_context(request: Request) -> dict[str, Any]:
         "csrf_token": request.state.csrf_token,
         "bundled_version": request.app.state.settings.AUTHELIA_VERSION,
         "runtime": services.status.get(),
-        "last_job": services.board.current(),
+        "last_job": services.board.snapshot(),
     }
 
 
