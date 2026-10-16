@@ -111,6 +111,14 @@ def traefik_dynamic() -> str:
         + router("configurator", CONFIGURATOR_HOST, "internal", "configurator", True)
         + router("locked", LOCKED_HOST, "internal", "locked", True)
         + router("forge", FORGE_HOST, "internal", "configurator", True)
+        + """    broken:
+      rule: Host(`authcfg.example.test`) && Header(`X-Test-Instance`, `broken`)
+      priority: 1000
+      entryPoints: [internal]
+      service: broken
+      middlewares: [authelia]
+      tls: {}
+"""
         + """  middlewares:
     authelia:
       forwardAuth:
@@ -121,6 +129,7 @@ def traefik_dynamic() -> str:
     authelia: {loadBalancer: {servers: [{url: "http://authelia:9091"}]}}
     configurator: {loadBalancer: {servers: [{url: "http://configurator:8080"}]}}
     locked: {loadBalancer: {servers: [{url: "http://configurator-locked:8080"}]}}
+    broken: {loadBalancer: {servers: [{url: "http://configurator-broken:8080"}]}}
 """
     )
 

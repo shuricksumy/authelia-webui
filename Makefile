@@ -4,6 +4,8 @@ export AUTHELIA_VERSION
 # Containers run as you, so files in the (gitignored) generated stack stay removable.
 export DEV_UID := $(shell id -u)
 export DEV_GID := $(shell id -g)
+# Group owning the Docker socket (Linux); Docker Desktop's VM socket is root-owned -> 0.
+export DOCKER_GID := $(shell stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)
 COMPOSE := docker compose -f compose.test.yml
 
 .PHONY: help version sync fixtures stack dev totp dev-logs dev-down test test-integration test-e2e lint hygiene scan screenshots image

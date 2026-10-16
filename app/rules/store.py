@@ -173,6 +173,14 @@ class DraftStore:
     def current_sha(self) -> str:
         return sha256(self.current().render())
 
+    def locked(self) -> contextlib.AbstractContextManager[None]:
+        """Hold the draft lock (used by apply while it writes the live file)."""
+        return self._locked()
+
+    def discard_unlocked(self) -> None:
+        """Remove the draft; caller must hold `locked()`."""
+        self._discard_unlocked()
+
     @contextlib.contextmanager
     def _locked(self) -> Iterator[None]:
         """Exclusive lock for read-compare-write (several requests, threads or workers)."""

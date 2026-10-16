@@ -77,6 +77,7 @@ class Settings(BaseSettings):
     AUTHELIA_LOG_FILE: Path | None = None
     NOTIFY_WEBHOOK_URL: SecretStr | None = None  # may embed a token (e.g. Telegram)
     AUTHELIA_BINARY: str = "authelia"
+    APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 
     @field_validator("ALLOWED_CLIENT_CIDRS", "TRUSTED_PROXY_CIDRS", mode="before")

@@ -29,7 +29,16 @@ def stack_env() -> dict[str, str]:
         "TEST_APP_SECRET_KEY": secrets.token_urlsafe(48),
         "DEV_UID": str(os.getuid()),
         "DEV_GID": str(os.getgid()),
+        "DOCKER_GID": docker_gid(),
     }
+
+
+def docker_gid() -> str:
+    """Group owning the Docker socket on Linux; Docker Desktop's VM socket is root-owned."""
+    try:
+        return str(os.stat("/var/run/docker.sock").st_gid) if os.uname().sysname == "Linux" else "0"
+    except OSError:
+        return "0"
 
 
 def compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:

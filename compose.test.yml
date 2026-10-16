@@ -5,6 +5,12 @@
 #   https://authcfg.example.test:8444 the configurator, via Authelia (entrypoint `internal` only)
 #   https://locked.example.test:8444  second instance allowing only 192.0.2.0/24 (isolation test)
 #   https://forge.example.test:8444   TEST ONLY: Authelia bypass, proves forged Remote-* headers are dropped
+#   authcfg + header X-Test-Instance: broken -> TEST ONLY instance whose health check goes through
+#       `health-switch`: unhealthy while the live rules contain "break-health", so such an apply is
+#       rolled back for real (e2e and integration tests)
+#
+# Restarts go through `socket-proxy` only (SPEC §7): it holds the Docker socket read-only and allows
+# exactly GET .../containers/<authelia>/json and POST .../containers/<authelia>/restart.
 #
 # The configurator publishes no ports; Traefik is published on 127.0.0.1 only. The Docker socket is
 # never mounted. Containers run as the caller's uid (DEV_UID/DEV_GID) so files stay removable.
@@ -19,9 +25,10 @@ x-hardened: &hardened
 
 x-configurator-env: &configurator-env
   AUTH_DOMAIN: auth.example.test
+  DOCKER_PROXY_URL: http://socket-proxy:2375
+  AUTHELIA_CONTAINER: authelia-webui-authelia-1
   ADMIN_GROUP: admin
   TRUSTED_PROXY_CIDRS: 172.29.250.10/32 # Traefik only
-  AUTHELIA_CONTAINER: authelia
   AUTHELIA_HEALTH_URL: http://authelia:9091/api/health
   APP_SECRET_KEY: ${TEST_APP_SECRET_KEY:?run via make so a secret is generated}
 
@@ -35,6 +42,8 @@ networks:
     ipam:
       config:
         - subnet: 172.29.250.0/24
+  proxy:
+    internal: true # only the configurator and the socket proxy; no route out
 
 services:
   traefik:
@@ -68,6 +77,30 @@ services:
       - "127.0.0.1:19091:9091" # test-only direct access (differential tests, health)
     networks: [stack]
 
+  socket-proxy:
+    image: wollomatic/socket-proxy:1.13.1
+    user: "65534:${DOCKER_GID:-0}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64M
+    command:
+      - -loglevel=info
+      - -listenip=0.0.0.0
+      - -allowfrom=configurator,configurator-broken
+      - -allowGET=/v1\..{1,2}/containers/authelia-webui-authelia-1/json
+      - -allowPOST=/v1\..{1,2}/containers/authelia-webui-authelia-1/restart
+      - -allowhealthcheck
+      - -shutdowngracetime=5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    healthcheck:
+      test: ["CMD", "./healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks: [proxy]
+
   configurator:
     <<: *hardened
     image: authelia-configurator:stack
@@ -80,6 +113,34 @@ services:
       CONFIGURATOR_DOMAIN: authcfg.example.test
       ALLOWED_CLIENT_CIDRS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     volumes: *configurator-volumes
+    networks: [stack, proxy]
+    depends_on:
+      socket-proxy: {condition: service_healthy}
+
+  configurator-broken: # TEST ONLY: health URL that never answers 200 -> every apply rolls back
+    <<: *hardened
+    image: authelia-configurator:stack
+    depends_on: [configurator]
+    environment:
+      <<: *configurator-env
+      CONFIGURATOR_DOMAIN: authcfg.example.test
+      ALLOWED_CLIENT_CIDRS: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      AUTHELIA_HEALTH_URL: http://health-switch:8000/
+      APPLY_HEALTH_TIMEOUT_S: "10"
+    volumes: *configurator-volumes
+    networks: [stack, proxy]
+
+  health-switch: # TEST ONLY, see tests/fixtures/health_switch.py
+    <<: *hardened
+    image: authelia-configurator:stack
+    depends_on: [configurator]
+    command: ["python", "/srv/health_switch.py"]
+    volumes:
+      - ./tests/fixtures/health_switch.py:/srv/health_switch.py:ro
+      - ./tests/fixtures/generated/stack/managed:/config/managed:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8000), 2)"]
+      interval: 5s
     networks: [stack]
 
   configurator-locked:
