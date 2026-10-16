@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from app.authelia_cli import AutheliaCLI, parse_validate_output, redact
@@ -64,3 +65,5 @@ def test_docker_runner_is_offline_and_mounts_readonly(tmp_path: Path) -> None:
     assert "none" in argv and argv[argv.index("--network") + 1] == "none"
     assert f"{tmp_path.resolve()}:{tmp_path.resolve()}:ro" in argv
     assert "-v" in argv and "/var/run/docker.sock" not in " ".join(argv)
+    # Generated key files must belong to the caller, not root (Linux bind mounts).
+    assert argv[argv.index("--user") + 1] == f"{os.getuid()}:{os.getgid()}"

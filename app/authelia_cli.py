@@ -9,6 +9,7 @@ Hashing, randomness and validation are always delegated to Authelia itself
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from collections.abc import Sequence
@@ -90,7 +91,10 @@ class AutheliaCLI:
     def _argv(self, args: Sequence[str], mounts: Sequence[Path], writable: bool) -> list[str]:
         if not self.docker:
             return [*self.argv_prefix, *args]
-        argv = ["docker", "run", "--rm", "--network", "none", "--entrypoint", ""]
+        # Run as the calling user: files the container writes (keys) stay readable by us on
+        # Linux, where bind mounts keep the container's uid (root by default).
+        user = f"{os.getuid()}:{os.getgid()}"
+        argv = ["docker", "run", "--rm", "--network", "none", "--user", user, "--entrypoint", ""]
         mode = "rw" if writable else "ro"
         for directory in sorted({m.resolve() for m in mounts}):
             argv += ["-v", f"{directory}:{directory}:{mode}"]
