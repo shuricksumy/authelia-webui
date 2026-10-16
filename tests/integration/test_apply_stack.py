@@ -7,6 +7,7 @@ The proxy only accepts the configurator containers, so the engine runs *inside* 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from collections.abc import Iterator
 from pathlib import Path
@@ -30,7 +31,7 @@ from app.apply.engine import ApplyEngine, ApplyRequest
 from app.apply.jobs import JobBoard
 from app.apply.runtime import AutheliaRuntime
 from app.apply.validate import validate_candidate
-from app.rules.store import DraftStore, sha256
+from app.rules.store import DraftStore
 
 s = load_settings()
 store = DraftStore(s.CONFIG_MANAGED_DIR)
@@ -41,7 +42,7 @@ idx = next(i for i, r in enumerate(doc.rules())
 node = doc.blocks[idx].node()
 node["policy"] = new
 store.save(doc.replace_rule(idx, node, note=os.environ.get("T_NOTE") or None))
-rev = sha256(store.current().render())[:16]
+rev = store.current_sha()[:16]
 engine = ApplyEngine(s, AutheliaRuntime(s.DOCKER_PROXY_URL, s.AUTHELIA_CONTAINER),
                      JobBoard(s.CONFIG_MANAGED_DIR), validate_candidate)
 job = engine.board.new("alice")
@@ -149,3 +150,38 @@ def test_unhealthy_apply_is_rolled_back_for_real(stack: dict[str, str]) -> None:
     assert subjects[0].startswith("Rollback:")
     # the failed change waits in the draft for the user to fix
     assert (STACK / "managed" / ".draft" / "access_control.yml").is_file()
+    from app.rules.store import DraftStore
+
+    DraftStore(STACK / "managed").discard()  # leave no draft behind for the next test
+
+
+def test_verify_step_checks_seeded_access_tests_against_real_authelia(
+    stack: dict[str, str],
+) -> None:
+    """The stack seeds anonymous access tests; after a real apply they are probed live."""
+    change = {"T_DOMAIN": "cloud.example.test", "T_FROM": "bypass", "T_TO": "bypass",
+              "T_NOTE": "verify step integration test"}  # fmt: skip
+    proc = exec_python(stack, "configurator", APPLY_SCRIPT, change)
+    assert proc.returncode == 0, proc.stderr[-1500:]
+    job = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert job["result"] == "applied", job
+    assert ["verify", "done"] in job["steps"], job["steps"]
+
+
+def test_migration_script_runs_inside_the_image(stack: dict[str, str], tmp_path: Path) -> None:
+    """docs/migration.md runs the split script from the image, validated by its own Authelia."""
+    from tests.fixtures.generate import GENERATED
+
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "configuration.yml").write_text((GENERATED / "configuration.yml").read_text())
+    proc = subprocess.run(
+        ["docker", "run", "--rm", "--user", f"{os.getuid()}:{os.getgid()}",
+         "-v", f"{work}:/work", "authelia-configurator:stack",
+         "python", "-m", "scripts.split_config", "--config", "/work/configuration.yml",
+         "--out", "/work/out"],
+        capture_output=True, text=True, check=False, timeout=180,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr[-1500:]
+    assert "authelia validate split   : ok" in proc.stdout
+    assert (work / "out" / "managed" / "access_control.yml").is_file()

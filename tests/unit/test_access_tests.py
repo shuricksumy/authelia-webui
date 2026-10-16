@@ -231,3 +231,25 @@ def test_external_commit_outside_apply_records_state_and_audit(env: dict[str, An
     sha = engine.commit_external_changes()
     assert sha and apply_state.load(env["managed"])["external"]["commit"] == sha
     assert git(env["managed"], "log", "--format=%an", "-n1").strip() == "external"
+
+
+def test_version_mismatch_is_notified_once_per_running_version(
+    env: dict[str, Any],  # noqa: F811
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.apply.status import StatusCache
+    from tests.unit.test_apply import FakeRuntime
+
+    sent: list[dict[str, Any]] = []
+    monkeypatch.setattr(notify, "_post", lambda url, body: sent.append(body))
+    env["settings"].NOTIFY_WEBHOOK_URL = SecretStr("https://hooks.example.com/x")
+    runtime = FakeRuntime(version="4.40.0")
+    for _ in range(3):
+        StatusCache(env["settings"], runtime, check=lambda url: True).get(fresh=True)  # type: ignore[arg-type]
+    runtime.version = "4.41.0"
+    StatusCache(env["settings"], runtime, check=lambda url: True).get(fresh=True)  # type: ignore[arg-type]
+    import time
+
+    time.sleep(0.2)
+    assert [b["event"] for b in sent] == ["version-mismatch", "version-mismatch"]
+    assert "4.40.0" in sent[0]["message"] and "4.41.0" in sent[1]["message"]

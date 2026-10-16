@@ -8,6 +8,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.apply import notify
+from app.apply import state as apply_state
 from app.apply.health import probe
 from app.apply.runtime import AutheliaRuntime, RuntimeUnavailable
 from app.settings import Settings, VersionMismatch
@@ -77,6 +79,23 @@ class StatusCache:
         with self._lock:
             self._value = None
 
+    def _notify_mismatch_once(self, running: str) -> None:
+        """One notification per running version, remembered across restarts (state.json)."""
+        managed = self.settings.CONFIG_MANAGED_DIR
+        try:
+            if apply_state.load(managed).get("mismatch_notified") == running:
+                return
+            apply_state.update(managed, mismatch_notified=running)
+        except OSError:
+            return
+        blocked = self.settings.VERSION_MISMATCH == VersionMismatch.BLOCK
+        effect = "disabled." if blocked else "allowed (warn)."
+        notify.send(
+            self.settings, "version-mismatch", "detected", "-",
+            f"Authelia {running} is running but the configurator bundles "
+            f"{self.settings.AUTHELIA_VERSION}; applying is {effect}",
+        )  # fmt: skip
+
     def _compute(self) -> RuntimeStatus:
         s = self.settings
         block = s.VERSION_MISMATCH == VersionMismatch.BLOCK
@@ -88,6 +107,8 @@ class StatusCache:
             error = str(exc)
         healthy = None if error else self._check(s.AUTHELIA_HEALTH_URL)
         mismatch = version is not None and version != s.AUTHELIA_VERSION
+        if mismatch:
+            self._notify_mismatch_once(str(version))
         return RuntimeStatus(
             running_version=version,
             healthy=healthy,

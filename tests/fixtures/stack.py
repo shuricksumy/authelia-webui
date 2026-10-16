@@ -57,6 +57,27 @@ X_AUTHELIA_CONFIG = ",".join(
 )
 
 
+# Seeded access tests (SPEC §16.2). Chosen so the changes the e2e/integration tests apply never
+# alter their outcome; anonymous ones are probed against the real Authelia after each apply.
+ACCESS_TESTS = f"""# Access tests: each request and the policy it must get.
+- name: Photos server ping is public
+  url: https://photos.{DOMAIN}/api/server/ping
+  expect: bypass
+- name: Home Assistant API is public
+  url: https://home.{DOMAIN}/api/states
+  expect: bypass
+- name: Configurator is denied outside the allowed networks
+  url: https://{CONFIGURATOR_HOST}/
+  ip: 203.0.113.9
+  expect: deny
+- name: Admin reaches the configurator with 2FA
+  url: https://{CONFIGURATOR_HOST}/
+  user: alice
+  groups: [admin]
+  expect: two_factor
+"""
+
+
 def adapt_main(text: str) -> str:
     text = text.replace("example.com", DOMAIN)
     portal = f"authelia_url: 'https://{AUTH_HOST}'"
@@ -165,6 +186,7 @@ def prepare(authelia: str = "auto") -> Path:
         result.oidc_clients_text.replace("example.com", DOMAIN)
     )
     shutil.copy(files["users.yml"], STACK / "users.yml")
+    (managed / "access_tests.yml").write_text(ACCESS_TESTS)
 
     certs = STACK / "certs"
     cli.rsa_certificate(certs, f"*.{DOMAIN}", sans=(f"*.{DOMAIN}", DOMAIN))

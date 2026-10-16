@@ -98,7 +98,9 @@ def tester() -> RuleTester:
     from ruamel.yaml import YAML
 
     yaml = YAML(typ="safe", pure=True)
-    files = [STACK / "configuration.yml", *sorted((STACK / "managed").glob("*.yml"))]
+    # exactly the files Authelia loads (X_AUTHELIA_CONFIG), not every YAML in the managed dir
+    files = [STACK / "configuration.yml", STACK / "managed" / "access_control.yml",
+             STACK / "managed" / "oidc_clients.yml"]  # fmt: skip
     return RuleTester(merge_all(yaml.load(f.read_text()) for f in files))
 
 

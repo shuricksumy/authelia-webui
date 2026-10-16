@@ -6,6 +6,8 @@ tests
 docs
 examples
 scripts
+!scripts/__init__.py
+!scripts/split_config.py
 **/__pycache__
 .mypy_cache
 .ruff_cache
