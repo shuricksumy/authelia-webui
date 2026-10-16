@@ -48,7 +48,8 @@ suite, external changes (auto-commit hand edits), notifications; signal restart 
   annotated screenshot.
 
 ## Local dev login
-`make dev` then `make totp`. Add `127.0.0.1 auth.example.test authcfg.example.test
+`make dev`, then `make browse` (a browser already logged in as alice) or `make totp`.
+The admin page always needs 2FA: it is a protected rule, and weakening it blocks every apply. Add `127.0.0.1 auth.example.test authcfg.example.test
 locked.example.test` to `/etc/hosts`; open https://authcfg.example.test:8444 (self-signed cert).
 Credentials and the TOTP seed are generated per run into the gitignored
 `tests/fixtures/generated/`. Authelia rejects a TOTP code used twice

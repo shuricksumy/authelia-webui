@@ -8,7 +8,7 @@ export DEV_GID := $(shell id -g)
 export DOCKER_GID := $(shell stat -c %g /var/run/docker.sock 2>/dev/null || echo 0)
 COMPOSE := docker compose -f compose.test.yml
 
-.PHONY: help version sync fixtures stack dev totp dev-logs dev-down test test-integration test-e2e lint hygiene scan screenshots image
+.PHONY: help version sync fixtures stack dev totp browse dev-logs dev-down test test-integration test-e2e lint hygiene scan screenshots image
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -34,6 +34,9 @@ dev: stack ## full local stack with hot reload: Traefik + Authelia + the app (th
 
 totp: ## print the dev login: URL, user, password and the current 2FA code
 	@uv run python -m tests.fixtures.totp
+
+browse: ## open a browser window already logged in as alice (no hosts entry, no typing)
+	uv run python -m tests.fixtures.browse
 
 dev-logs:
 	TEST_APP_SECRET_KEY=x $(COMPOSE) logs -f --tail=50 configurator authelia traefik

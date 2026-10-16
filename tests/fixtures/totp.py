@@ -26,6 +26,12 @@ def main() -> int:
     print(f"password: {creds['password']}")
     print(f"2FA code: {totp.now()}   (valid for {remaining}s; Authelia rejects a code used twice)")
     print(f"hosts:    127.0.0.1 {AUTH_HOST} {CONFIGURATOR_HOST} locked.example.test")
+    issuer = "example.test"  # totp.issuer of the stack (fixture value, rewritten to .test)
+    print(
+        f"authenticator app (paste or turn into a QR code): otpauth://totp/{issuer}:"
+        f"{creds['username']}?secret={creds['totp_secret']}&issuer={issuer}"
+        "&algorithm=SHA1&digits=6&period=30"
+    )
     return 0
 
 

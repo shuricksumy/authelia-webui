@@ -33,7 +33,8 @@ Needs Docker and [uv](https://docs.astral.sh/uv/). Everything is synthetic (`*.e
 ```sh
 uv sync
 make dev      # Traefik + Authelia + the app, with generated test data and a seeded 2FA secret
-make totp     # prints the URL, the login and the current 2FA code again
+make totp     # prints the URL, the login, the current 2FA code and an authenticator link
+make browse   # opens a browser window already logged in as alice (no hosts entry needed)
 make dev-down
 ```
 
