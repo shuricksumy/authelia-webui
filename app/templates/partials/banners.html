@@ -17,3 +17,19 @@
   </div>
   {% endif %}
 {% endif %}
+{% if notices.external %}
+<div class="banner warn" role="status" id="notice-external">
+  <span><strong>Files were edited outside the configurator.</strong> The changes were recorded as
+    commit <code>{{ notices.external.commit[:7] }}</code>. <a href="/history">See History</a>. A draft started before this may be out of date.</span>
+  <button type="button" class="outline secondary small" hx-post="/notices/external/seen" hx-target="#notice-external" hx-swap="outerHTML">Mark as seen</button>
+</div>
+{% endif %}
+{% if notices.main_changed %}
+<div class="banner warn" role="status" id="notice-main">
+  <span><strong>The main Authelia configuration changed since the last apply.</strong> Check that the rules still validate with it.</span>
+  <span class="banner-actions">
+    <button type="button" class="outline small" hx-post="/notices/main/revalidate" hx-target="#notice-main" hx-swap="outerHTML">Re-validate</button>
+    <button type="button" class="outline secondary small" hx-post="/notices/main/seen" hx-target="#notice-main" hx-swap="outerHTML">Mark as seen</button>
+  </span>
+</div>
+{% endif %}

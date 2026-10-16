@@ -18,6 +18,9 @@
         {% if changes.added %}<span class="chip add">+{{ changes.added }} added</span>{% endif %}
         {% if changes.edited %}<span class="chip edit">~{{ changes.edited }} edited</span>{% endif %}
         {% if changes.removed %}<span class="chip del">-{{ changes.removed }} removed</span>{% endif %}
+        {% if changes.disabled %}<span class="chip move">{{ changes.disabled }} disabled</span>{% endif %}
+        {% if changes.enabled %}<span class="chip move">{{ changes.enabled }} enabled</span>{% endif %}
+        {% if changes.deleted_disabled %}<span class="chip del">{{ changes.deleted_disabled }} disabled rule(s) deleted</span>{% endif %}
         {% if changes.order_changed %}<span class="chip move">&updownarrow; order changed</span>{% endif %}
         {% if changes.default_policy_changed %}<span class="chip edit">default policy &rarr; {{ default_policy }}</span>{% endif %}
         {% if not changes.any %}<span class="muted">no difference from live</span>{% endif %}
@@ -60,6 +63,34 @@
   </section>
   {% endif %}
 
+  {% if test_results %}
+  <section aria-label="Access tests">
+    <h2>Access tests <small>live &rarr; draft</small></h2>
+    <div class="table-scroll"><table class="tests">
+      <thead><tr><th>Request</th><th>Who</th><th>Expected</th><th>Live</th><th>Draft</th></tr></thead>
+      <tbody>
+        {% for r in test_results %}{% set c = r.case %}
+        <tr{% if r.fails %} class="status-fail"{% elif r.changed %} class="status-edited"{% endif %}>
+          <td data-label="Request"><span class="domain">{{ c.method }} {{ c.url }}</span>{% if c.name %}<small class="note">{{ c.name }}</small>{% endif %}</td>
+          <td data-label="Who">{{ c.user or 'anonymous' }}</td>
+          <td data-label="Expected"><span class="badge {{ c.expect }}">{{ labels[c.expect] }}</span></td>
+          <td data-label="Live"><span class="badge {{ r.live.policy }}">{{ labels[r.live.policy] }}</span></td>
+          <td data-label="Draft"><span class="badge {{ r.draft.policy }}">{{ labels[r.draft.policy] }}</span>
+            {% if r.fails %}<span class="err-text">&#10007; would fail</span>{% elif r.changed %}<small>changed</small>{% else %}<span class="ok-text">&#10003;</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% if tests_failing %}
+    <article class="notice error" role="alert">
+      <strong>{{ tests_failing|length }} test{{ '' if tests_failing|length == 1 else 's' }} would not get the expected result.</strong>
+      If that is intended (you are changing the rule on purpose), accept it to enable Apply. Edit the tests afterwards on the Access tests page.
+      <label><input type="checkbox" id="accept-tests" name="accept_tests" value="1" data-enables="apply-button"> I accept these changes</label>
+    </article>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section>
     <h2>Diff <small>access_control.yml, live &rarr; draft</small></h2>
     <pre class="diff" aria-label="Diff">{% for kind, text in diff %}<span class="d-{{ kind }}">{{ text }}</span>{% endfor %}</pre>
@@ -73,7 +104,7 @@
     {% if apply_reasons %}
     <button type="button" disabled aria-disabled="true" title="See the reasons below">Validate &amp; apply</button>
     {% else %}
-    <button type="button" hx-post="/apply" hx-target="#apply-panel" hx-swap="innerHTML" hx-disabled-elt="this">Validate &amp; apply</button>
+    <button type="button" id="apply-button" hx-post="/apply" hx-include="#accept-tests" hx-target="#apply-panel" hx-swap="innerHTML" hx-disabled-elt="this"{% if tests_failing %} disabled{% endif %}>Validate &amp; apply</button>
     {% endif %}
   </div>
   {% if apply_reasons %}

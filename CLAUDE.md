@@ -8,12 +8,15 @@ Read `SPEC.md` before doing anything. It is the source of truth; if something
 here conflicts with it, ask.
 
 ## Current state
-Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; steps **1a** and
-**1b** (apply/rollback/history/audit/version check, see below) are implemented. Step 1a is: security layer (`app/security.py`), rule tester (`app/rules/tester.py`), rules
-document/form/lint/protected/store (`app/rules/`), the UI (`app/web.py`, `app/ui.py`,
-`app/templates/`, `app/static/`) and the Traefik dev stack. The UI edits a **draft** only
-(`CONFIG_MANAGED_DIR/.draft/`); the live file is never written. Next: **1c** disabled rules, access test
-suite, external changes (auto-commit hand edits), notifications; signal restart mode later. Target layout: SPEC §14.
+Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; **1a** (draft UI),
+**1b** (apply/rollback/history/audit/version check) and **1c** (disabled rules, access tests with a
+live probe after restart, external-change auto-commit, main-config banner, notifications, production
+examples in `examples/`, `docs/migration.md`) are implemented; 1c awaits the owner's review.
+Next: Phase 2 (OIDC clients); signal restart mode later. Target layout: SPEC §14.
+The UI edits a **draft** only (`CONFIG_MANAGED_DIR/.draft/`: rules + disabled rules, one combined
+revision); the live files are written only by `app/apply/engine.py`. Access tests are the exception:
+they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).
+Protection of the configurator rules is derived from env (there is no `protected_rules.yml`).
 
 ## Architecture notes (Phase 1b: apply)
 - `app/apply/engine.py` is the only code that writes the live file. Order: preconditions ->
@@ -51,8 +54,9 @@ suite, external changes (auto-commit hand edits), notifications; signal restart 
 `make dev`, then `make browse` (a browser already logged in as alice) or `make totp`.
 The admin page always needs 2FA: it is a protected rule, and weakening it blocks every apply. Add `127.0.0.1 auth.example.test authcfg.example.test
 locked.example.test` to `/etc/hosts`; open https://authcfg.example.test:8444 (self-signed cert).
-Credentials and the TOTP seed are generated per run into the gitignored
-`tests/fixtures/generated/`. Authelia rejects a TOTP code used twice
+The fake test user is `alice` with the static, test-only password `alice-test-only-password`
+(`tests/fixtures/generate.py`; only its hash is written, into the gitignored
+`tests/fixtures/generated/`) and a fixed TOTP seed (`tests/fixtures/stack.py`). Authelia rejects a TOTP code used twice
 (`tests/e2e/auth.py::fresh_totp` waits for the next one).
 
 ## Real-world reference

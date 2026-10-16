@@ -10,6 +10,7 @@
   {% endif %}
   {% if skipped %}<ul class="skipped">{% for s in skipped %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
   {% for u in result.uncertain %}<p class="notice info"><small>Cannot be evaluated exactly here: {{ u }}.</small></p>{% endfor %}
+  <button type="button" class="outline small" hx-get="/tests/new?{{ test_query|urlencode }}" hx-target="#modal">Add as test</button>
   <p class="muted"><small>Preview of Authelia's rule matching, not Authelia itself. First matching rule wins; otherwise the default policy ({{ default_policy }}).</small></p>
 </div>
 {% endif %}

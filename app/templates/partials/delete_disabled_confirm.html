@@ -1,0 +1,10 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Delete disabled rule permanently?</h3></header>
+    <p>This removes the disabled rule for <strong>{{ row.domains|join(', ') }}</strong> ({{ row.who }}, <span class="badge {{ row.policy }}">{{ row.policy_label }}</span>) from the <em>draft</em>. It cannot be enabled again afterwards. Nothing is applied until you review and apply.</p>
+    <footer>
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="danger" hx-post="/disabled/{{ row.index }}/delete" hx-target="#rules-section" hx-swap="outerHTML">Delete permanently</button>
+    </footer>
+  </article>
+</dialog>

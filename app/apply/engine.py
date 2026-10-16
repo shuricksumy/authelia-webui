@@ -138,6 +138,43 @@ class ApplyEngine:
         ))  # fmt: skip
         return sha
 
+    def save_tests(self, cases: list[access_tests.AccessCase], user: str, subject: str) -> str:
+        """Write access_tests.yml and commit it at once. Authelia never reads the file, so there
+        is no draft, no restart and nothing to roll back. Refused while an apply runs."""
+        with self._exclusive():
+            self.repo.ensure(TRACKED)
+            self._commit_external_unlocked()
+            self._atomic_write(self.managed / access_tests.TESTS_NAME, access_tests.render(cases))
+            sha = self.repo.commit([access_tests.TESTS_NAME], subject, "", author=user)
+            audit.append(self.managed, audit.AuditEntry(
+                ts=audit.now(), user=user, client_ip="-", action="tests", result="saved",
+                commit=sha[:12], summary=subject,
+            ))  # fmt: skip
+            return sha
+
+    def notices(self) -> dict[str, Any]:
+        """Banners for the page shell: hand edits found (and committed), main config changed."""
+        with contextlib.suppress(RepoError, OSError):  # a banner must never break a page
+            self.commit_external_changes()
+        data = apply_state.load(self.managed)
+        external = data.get("external") if isinstance(data.get("external"), dict) else None
+        if external and external.get("commit") == data.get("external_seen"):
+            external = None
+        baseline = data.get("main_sha")
+        main_changed = bool(baseline) and baseline != self.main_config_sha()
+        return {"external": external, "main_changed": main_changed}
+
+    def acknowledge(self, what: str) -> None:
+        """Dismiss a banner: the hand edit is recorded as seen, or the main config becomes the
+        new baseline."""
+        data = apply_state.load(self.managed)
+        if what == "external":
+            external = data.get("external")
+            if isinstance(external, dict):
+                apply_state.update(self.managed, external_seen=external.get("commit"))
+        elif what == "main":
+            apply_state.update(self.managed, main_sha=self.main_config_sha())
+
     def main_config_sha(self) -> str:
         try:
             return sha256(self.settings.CONFIG_MAIN.read_text())

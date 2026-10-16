@@ -1,0 +1,87 @@
+# Production-style example: Authelia (multi-file config) + the configurator + a socket proxy.
+# Copy, then replace example.com / paths / the VPN range with your own. Nothing here is secret:
+# put the secrets in an .env file next to this one (see configurator.env.example).
+#
+# Traefik is assumed to run elsewhere (see traefik-*.example.yml) and to share the `edge` network.
+#
+#   docker compose -f compose.example.yml --env-file configurator.env config   # sanity check
+name: authelia
+
+x-hardened: &hardened
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+networks:
+  edge:
+    external: true # the network Traefik is attached to
+  proxy:
+    internal: true # only the configurator and the socket proxy; no route out
+
+services:
+  authelia:
+    image: authelia/authelia:${AUTHELIA_VERSION:?set AUTHELIA_VERSION, e.g. 4.39.28}
+    container_name: authelia # AUTHELIA_CONTAINER below and the proxy rules use this name
+    restart: unless-stopped
+    environment:
+      # Order matters: later files override earlier ones; maps merge, lists are replaced.
+      # access_control and OIDC clients are owned by the configurator, so they must not also
+      # appear in configuration.yml.
+      X_AUTHELIA_CONFIG: /config/configuration.yml,/config/managed/access_control.yml,/config/managed/oidc_clients.yml
+    volumes:
+      - ./authelia:/config # configuration.yml, users.yml, db, and managed/ (written by the configurator)
+    networks: [edge]
+
+  socket-proxy:
+    image: wollomatic/socket-proxy:1.13.1
+    restart: unless-stopped
+    user: "65534:${DOCKER_GID:?set DOCKER_GID to the group id of /var/run/docker.sock}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64M
+    command:
+      - -loglevel=info
+      - -listenip=0.0.0.0
+      - -allowfrom=configurator
+      # Exactly two calls: inspect and restart of the Authelia container. Nothing else.
+      - -allowGET=/v1\..{1,2}/containers/authelia/json
+      - -allowPOST=/v1\..{1,2}/containers/authelia/restart
+      - -allowhealthcheck
+      - -shutdowngracetime=5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # only this container ever sees the socket
+    healthcheck:
+      test: ["CMD", "./healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [proxy]
+
+  configurator:
+    <<: *hardened
+    # Use the tag that matches your Authelia version: the image bundles that exact binary.
+    image: ghcr.io/OWNER/authelia-configurator:authelia-${AUTHELIA_VERSION}
+    restart: unless-stopped
+    user: "${AUTHELIA_UID:-1000}:${AUTHELIA_GID:-1000}" # must be able to write ./authelia/managed
+    environment:
+      AUTH_DOMAIN: auth.example.com
+      CONFIGURATOR_DOMAIN: authcfg.example.com
+      ADMIN_GROUP: admin
+      # Only these clients may reach the UI at all (fails closed when unset): your VPN range.
+      ALLOWED_CLIENT_CIDRS: 10.8.0.0/24
+      # Only this peer's X-Forwarded-For / Remote-* headers are believed: Traefik's address.
+      TRUSTED_PROXY_CIDRS: 172.30.0.0/24
+      AUTHELIA_CONTAINER: authelia
+      AUTHELIA_HEALTH_URL: http://authelia:9091/api/health
+      DOCKER_PROXY_URL: http://socket-proxy:2375
+      APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY (openssl rand -base64 48)}
+      # NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL}   # optional, see the README
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro # never written by the configurator
+      - ./authelia/users.yml:/config/users.yml:ro
+      - ./authelia/managed:/config/managed # the only place the configurator writes
+    networks: [edge, proxy]
+    depends_on:
+      socket-proxy: {condition: service_healthy}

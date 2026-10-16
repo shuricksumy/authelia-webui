@@ -56,7 +56,6 @@ to start (fail closed).
 | `USERS_FILE` | `/config/users.yml` | Phase 3 |
 | `RESTART_MODE` | `socket-proxy` \| `signal` | §7 |
 | `DOCKER_PROXY_URL` | `http://socket-proxy:2375` | §7 |
-| `PROTECTED_RULES_FILE` | `/config/managed/protected_rules.yml` | §4 |
 | `VERSION_MISMATCH` | `block` \| `warn` | §11.5, default `block` |
 | `APP_SECRET_KEY` | (random, ≥ 32 bytes) | **Required.** Session/CSRF signing (§16.7) |
 | `AUTHELIA_LOG_FILE` | `/config/authelia.log` | Optional, read-only, for rollback diagnosis (§16.4) |
@@ -78,7 +77,8 @@ writes the main configuration file.
 └── managed/                   # local git repo, owned by the configurator
     ├── access_control.yml     # whole `access_control:` block
     ├── oidc_clients.yml       # `identity_providers.oidc.clients:` only
-    └── protected_rules.yml    # which rules are locked (§4)
+    ├── disabled_rules.yml     # rules switched off in the UI (never read by Authelia)
+    └── access_tests.yml       # saved access tests (§16.2)
 ```
 
 Authelia container:
@@ -148,9 +148,9 @@ Plus top-level `default_policy` and `networks` (raw YAML).
 - Duplicate rules.
 
 ### Protected rules
-Defined in `protected_rules.yml` (deployment-specific, created by the user,
-not in the repo; an `examples/protected_rules.example.yml` is). Default
-protected set generated on first run from env:
+Derived from the environment, not from a file (a `protected_rules.yml` was dropped in Phase 1a:
+protection is checked by *behaviour* through the rule tester, so a reordered or widened rule is
+caught too, and nothing deployment-specific can drift out of sync). The protected set:
 - `${AUTH_DOMAIN}` bypass for `/.well-known/openid-configuration`,
   `/jwks.json`, `/api/oidc/.*`.
 - The rule protecting `${CONFIGURATOR_DOMAIN}`: must remain `two_factor`,
@@ -472,12 +472,11 @@ authelia-webui/                # repo name; product "Authelia Configurator",
 ├── compose.test.yml           # integration stack (example.test domains)
 ├── examples/
 │   ├── compose.example.yml    # configurator + socket-proxy + Authelia changes
-│   ├── traefik-internal-entrypoint.example.yml
-│   ├── traefik-ipallowlist.example.yml
+│   ├── traefik-static.example.yml     # internal entrypoint bound to the VPN address
+│   ├── traefik-dynamic.example.yml    # router + forwardAuth (+ ipAllowList variant)
 │   ├── authelia-rules.example.yml
-│   ├── protected_rules.example.yml
-│   ├── restart-authelia.path / .service   # signal mode
-│   └── .env.example
+│   ├── restart-authelia.path / .service   # signal mode (later)
+│   └── configurator.env.example
 ├── app/
 ├── templates/oidc/
 ├── scripts/split_config.py

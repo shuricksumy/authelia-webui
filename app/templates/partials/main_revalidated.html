@@ -1,0 +1,9 @@
+<div class="banner {{ 'info' if result and result.ok else 'error' }}" role="status" id="notice-main">
+  <span>
+    {% if result is none %}<strong>The Authelia validator is not available here.</strong>
+    {% elif result.ok %}<strong>Authelia accepts the current configuration</strong>{% if result.warnings %} with {{ result.warnings|length }} warning(s){% endif %}.
+    {% else %}<strong>Authelia rejects the current configuration.</strong>{% endif %}
+    {% if result %}{% for e in result.errors %}<br><small>{{ e }}</small>{% endfor %}{% for w in result.warnings %}<br><small>{{ w }}</small>{% endfor %}{% endif %}
+  </span>
+  <button type="button" class="outline secondary small" hx-post="/notices/main/seen" hx-target="#notice-main" hx-swap="outerHTML">Mark as seen</button>
+</div>

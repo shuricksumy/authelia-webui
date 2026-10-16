@@ -52,12 +52,13 @@ async def start_apply(request: Request) -> Response:
     except Conflict as exc:
         return conflict_response(exc)
     identity = identity_of(request.state)
-    apply_request = ApplyRequest(identity.username, str(identity.client_ip), v.rev)
+    accept_tests = str(data.get("accept_tests", "")) == "1"
+    apply_request = ApplyRequest(identity.username, str(identity.client_ip), v.rev, accept_tests)
 
     def check_and_start() -> list[str]:
         # Blocking (container inspect, lint, file I/O): runs in a worker thread, not on the loop.
         with services.start_lock:
-            reasons = services.engine.preconditions(rev=v.rev)
+            reasons = services.engine.preconditions(rev=v.rev, accept_tests=accept_tests)
             if not reasons:
                 job = services.board.new(identity.username)
                 threading.Thread(
@@ -97,6 +98,27 @@ def apply_result(request: Request) -> Response:
     return templates(request).TemplateResponse(request, "apply_result.html", ctx)
 
 
+# --------------------------------------------------------------------------- notices
+
+
+@router.post("/notices/{what}/seen", response_class=HTMLResponse)
+def notice_seen(request: Request, what: str) -> Response:
+    if what not in ("external", "main"):
+        return Response("Unknown notice.", status_code=404)
+    services_of(request).engine.acknowledge(what)
+    return HTMLResponse("")
+
+
+@router.post("/notices/main/revalidate", response_class=HTMLResponse)
+def revalidate_main(request: Request) -> Response:
+    """Validate the live rules together with the (changed) main configuration."""
+    services = services_of(request)
+    result = services.engine.validator(services.engine.settings, services.engine.store.live_text())
+    return templates(request).TemplateResponse(
+        request, "partials/main_revalidated.html", {"request": request, "result": result}
+    )
+
+
 # --------------------------------------------------------------------------- history
 
 
@@ -121,7 +143,11 @@ def history_rows(request: Request) -> list[HistoryRow]:
     rows = []
     for i, commit in enumerate(commits):
         newer = commits[i - 1] if i > 0 else None
-        if commit.subject.startswith("Rollback:"):
+        if commit.author == "external" or commit.subject.startswith("External change"):
+            kind, label = "external", "edited outside the configurator"
+        elif commit.subject.startswith("Tests:"):
+            kind, label = "tests", "access tests (no restart)"
+        elif commit.subject.startswith("Rollback:"):
             kind, label = "rollback", "automatic rollback"
         elif commit.subject.startswith("Initial import"):
             kind, label = "initial", "initial import"

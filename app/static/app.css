@@ -306,3 +306,22 @@ table.history .col-actions button { white-space: nowrap; margin: 0; width: auto;
   table.history:not(.audit) { table-layout: auto; }
   table.history .col-actions { text-align: left; padding-top: 0.4rem; }
 }
+
+/* Access tests, banners with actions, history kinds (Phase 1c) */
+tr.status-fail { box-shadow: inset 3px 0 0 var(--app-err-fg); }
+.banner { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.banner-actions { display: inline-flex; gap: .5rem; }
+.disabled-rules { opacity: .75; }
+table.tests td { vertical-align: top; }
+.result-badge.external, .result-badge.tests { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+table.tests .note { display: block; }
+@media (max-width: 720px) {
+  table.tests, table.tests tbody { display: block; }
+  table.tests thead { display: none; }
+  table.tests tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
+  table.tests td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
+  table.tests td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4.2rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  table.tests .col-actions { display: flex; gap: 0.4rem; padding-top: 0.4rem; }
+  table.tests .col-actions > * { margin: 0; }
+}
+dialog > article { max-height: 92vh; overflow-y: auto; }

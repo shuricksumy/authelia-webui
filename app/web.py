@@ -39,6 +39,8 @@ from app.rules.tester import POLICIES, RequestObject, RuleTester, Subject
 from app.security import Identity, identity_of
 from app.settings import Settings
 from app.ui import (
+    POLICY_LABEL,
+    build_disabled_rows,
     build_rows,
     diff_lines,
     filter_rows,
@@ -144,15 +146,13 @@ def shell_context(request: Request) -> dict[str, Any]:
         "bundled_version": request.app.state.settings.AUTHELIA_VERSION,
         "runtime": services.status.get(),
         "last_job": services.board.snapshot(),
+        "notices": services.engine.notices(),
     }
 
 
 def base_context(v: View, **extra: Any) -> dict[str, Any]:
     changes = v.store.changes()
-    count = (
-        changes.added + changes.removed + changes.edited
-        + int(changes.order_changed) + int(changes.default_policy_changed)
-    )  # fmt: skip
+    count = changes.count
     return {
         **shell_context(v.request),
         "has_draft": v.store.has_draft(),
@@ -258,6 +258,7 @@ def rules_context(v: View, view: str = "order", query: str = "", flash: str = ""
         "protected_violations": report.violations,
         "flash": flash,
         "sortable": view == "order" and not query.strip(),
+        "disabled_rows": build_disabled_rows(v.disabled),
     }
 
 
@@ -514,6 +515,68 @@ async def delete_rule(request: Request, index: int) -> Response:
     return section_response(v, flash=f"Rule #{index + 1} deleted from the draft.")
 
 
+@router.post("/rules/{index}/disable", response_class=HTMLResponse)
+async def disable_rule(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
+    v = load_view(request)
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        check_index(v, index)
+        refuse_locked(v, index)
+        commit(v, v.doc.delete(index), disabled=v.disabled.add(index, v.doc.blocks[index]))
+    except Conflict as exc:
+        return conflict_response(exc)
+    return section_response(
+        v, flash=f"Rule #{index + 1} disabled in the draft. Authelia ignores it."
+    )
+
+
+def check_disabled_index(v: View, index: int) -> None:
+    if not 0 <= index < len(v.disabled.entries):
+        raise Conflict("That disabled rule no longer exists. Reload the page.", 404)
+
+
+@router.post("/disabled/{index}/enable", response_class=HTMLResponse)
+async def enable_rule(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
+    v = load_view(request)
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        check_disabled_index(v, index)
+        rest, entry = v.disabled.remove(index)
+        position = min(entry.position, len(v.doc.blocks))
+        commit(v, v.doc.insert_block(position, entry.block), disabled=rest)
+    except (Conflict, DocumentError) as exc:
+        return conflict_response(exc if isinstance(exc, Conflict) else Conflict(str(exc), 422))
+    return section_response(v, flash=f"Rule enabled again at position {position + 1} in the draft.")
+
+
+@router.get("/disabled/{index}/delete", response_class=HTMLResponse)
+def delete_disabled_confirm(request: Request, index: int) -> Response:
+    v = load_view(request)
+    try:
+        check_disabled_index(v, index)
+    except Conflict as exc:
+        return conflict_response(exc)
+    return render(
+        v, "partials/delete_disabled_confirm.html", row=build_disabled_rows(v.disabled)[index]
+    )
+
+
+@router.post("/disabled/{index}/delete", response_class=HTMLResponse)
+async def delete_disabled(request: Request, index: int) -> Response:
+    data = await request.form()  # before load_view: no await between reading and saving
+    v = load_view(request)
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        check_disabled_index(v, index)
+        rest, _ = v.disabled.remove(index)
+        commit(v, v.doc, disabled=rest)
+    except Conflict as exc:
+        return conflict_response(exc)
+    return section_response(v, flash="Disabled rule deleted permanently from the draft.")
+
+
 @router.post("/rules/default-policy", response_class=HTMLResponse)
 async def set_default_policy(request: Request) -> Response:
     data = await request.form()  # before load_view: no await between reading and saving
@@ -625,6 +688,8 @@ async def tester_run(request: Request) -> Response:
         v, "partials/tester_result.html", result=result, matched=matched, message=message,
         skipped=skipped_summary(result) if result else [], user=user,
         default_policy=v.doc.default_policy(),
+        test_query={"url": url, "method": method, "user": user, "groups": ", ".join(groups),
+                    "ip": ip_text, "expect": result.policy if result else ""},
     )  # fmt: skip
 
 
@@ -643,13 +708,21 @@ def review(request: Request) -> Response:
     reasons: list[str] = []
     if v.store.has_draft():
         validator = validate_candidate(v.settings, v.doc.render())
-        reasons = services_of(request).engine.preconditions(rev=v.rev)
+        # The tests gate is shown separately (checkbox), so it is not a reason here.
+        reasons = services_of(request).engine.preconditions(rev=v.rev, accept_tests=True)
+    try:
+        test_results = services_of(request).engine.test_results() if v.store.has_draft() else []
+    except DocumentError:
+        test_results = []
     rows = build_rows(v.doc, v.live, issues, report.locked)
     return render(
         v, "review.html", changes=changes, issues=issues, errors=blocking(issues),
         warnings=[i for i in issues if i.severity == "warning"], report=report, rows=rows,
         diff=diff_lines(v.store.diff()), validator=validator, apply_reasons=reasons,
-        default_policy=v.doc.default_policy(),
+        default_policy=v.doc.default_policy(), test_results=test_results,
+        tests_failing=[r for r in test_results if r.fails],
+        tests_changed=[r for r in test_results if r.changed and not r.fails],
+        labels=POLICY_LABEL,
     )  # fmt: skip
 
 

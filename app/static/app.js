@@ -37,6 +37,14 @@
       : "The request failed (" + event.detail.xhr.status + "). Reload the page and try again.";
   });
 
+  // A checkbox that unlocks a button (e.g. "I accept these changes" -> Apply).
+  document.addEventListener("change", function (event) {
+    var box = event.target;
+    if (!box.matches || !box.matches("input[data-enables]")) { return; }
+    var target = document.getElementById(box.getAttribute("data-enables"));
+    if (target) { target.disabled = !box.checked; }
+  });
+
   // Close dialogs.
   document.addEventListener("click", function (event) {
     var closer = event.target.closest("[data-close]");

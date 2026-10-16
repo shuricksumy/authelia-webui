@@ -59,4 +59,21 @@
     </div>
     {% if not sortable %}<p class="muted"><small>Clear the filter to reorder rules by dragging.</small></p>{% endif %}
   {% endif %}
+  {% if disabled_rows %}
+  <h2 class="group-title">Disabled rules <small>({{ disabled_rows|length }}) &middot; Authelia ignores these</small></h2>
+  <div class="table-scroll"><table class="rules disabled-rules"><tbody>
+    {% for d in disabled_rows %}
+    <tr>
+      <td class="col-domain"><span class="domain">{{ d.domains|join(', ') }}</span>
+        {% if d.note %}<small class="note">{{ d.note.splitlines()[0]|truncate(70) }}</small>{% endif %}</td>
+      <td class="col-who" data-label="Who">{{ d.who }}</td>
+      <td class="col-policy" data-label="Policy"><span class="badge {{ d.policy }}">{{ d.policy_label }}</span></td>
+      <td class="col-actions">
+        <button type="button" class="outline small" hx-post="/disabled/{{ d.index }}/enable" hx-target="#rules-section" hx-swap="outerHTML">Enable</button>
+        <button type="button" class="outline secondary small" hx-get="/disabled/{{ d.index }}/delete" hx-target="#modal">Delete permanently</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody></table></div>
+  {% endif %}
 </section>

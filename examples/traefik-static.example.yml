@@ -1,0 +1,16 @@
+# Traefik static configuration (excerpt). The configurator gets its own entrypoint, bound to the
+# VPN/internal address only, so it is not reachable from the internet even if a router is wrong.
+entryPoints:
+  websecure:
+    address: ":443"
+  internal:
+    address: "10.8.0.1:8443" # the host's VPN address, not 0.0.0.0
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+# Needed so the client IP seen by the configurator is the real one. List only the proxies in
+# front of Traefik (none when clients connect directly).
+# entryPoints.internal.forwardedHeaders.trustedIPs: ["10.8.0.0/24"]

@@ -7,6 +7,7 @@ from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e.auth import BASE, login
 from tests.e2e.conftest import AliceSession, live_rules, open_rules, rule_number
+from tests.fixtures.stack import STACK
 
 pytestmark = pytest.mark.e2e
 
@@ -162,3 +163,61 @@ def test_no_inline_script_or_style_violations_in_the_browser(admin: Page) -> Non
     admin.get_by_role("button", name="Test a URL").click()
     admin.wait_for_timeout(300)
     assert violations == []
+
+
+# --------------------------------------------------------------------- Phase 1c (no restart)
+
+
+def test_access_tests_can_be_added_and_deleted(admin: Page) -> None:
+    admin.goto(f"{BASE}/tests", wait_until="networkidle")
+    expect(admin.locator("table.tests")).to_contain_text("Photos server ping is public")
+    admin.get_by_role("button", name="+ Add test").click()
+    admin.get_by_label("Name").fill("e2e: scratch test")
+    admin.get_by_label("URL").fill("https://scratch.example.test/")
+    admin.get_by_label("Must get").select_option("two_factor")
+    admin.get_by_role("button", name="Save test").click()
+    admin.wait_for_url(f"{BASE}/tests")
+    row = admin.locator("table.tests tbody tr", has_text="e2e: scratch test")
+    expect(row).to_have_count(1)
+    admin.once("dialog", lambda dialog: dialog.accept())
+    row.get_by_role("button", name="Delete").click()
+    expect(admin.locator("table.tests tbody tr", has_text="e2e: scratch test")).to_have_count(0)
+
+
+def test_tester_result_can_become_a_test(admin: Page) -> None:
+    open_rules(admin)
+    admin.get_by_role("button", name="Test a URL").click()
+    admin.fill("#tester-url", "https://photos.example.test/api/server/ping")
+    admin.get_by_role("button", name="Test", exact=True).click()
+    admin.get_by_role("button", name="Add as test").click()
+    expect(admin.locator("#t-url")).to_have_value("https://photos.example.test/api/server/ping")
+    expect(admin.locator("#t-expect")).to_have_value("bypass")
+
+
+def test_disable_and_enable_roundtrip_in_the_draft(admin: Page) -> None:
+    index = rule_number("home.example.test", "bypass") - 1
+    open_rules(admin)
+    count = admin.locator("#rules-body tr").count()
+    admin.locator(f'tr[data-index="{index}"]').get_by_role("button", name="Disable").click()
+    expect(admin.locator("#rules-body tr")).to_have_count(count - 1)
+    expect(admin.locator("table.disabled-rules")).to_contain_text("home.example.test")
+    admin.get_by_role("button", name="Enable").click()
+    expect(admin.locator("#rules-body tr")).to_have_count(count)
+    expect(admin.locator("table.disabled-rules")).to_have_count(0)
+    expect(admin.locator(".draftbar")).to_have_count(0)  # byte-identical to live: no draft left
+
+
+def test_a_hand_edit_is_recorded_and_announced(admin: Page) -> None:
+    live = STACK / "managed" / "access_control.yml"
+    original = live.read_text()
+    try:
+        live.write_text(original + "# edited over ssh (e2e)\n")
+        open_rules(admin)
+        expect(admin.get_by_text("Files were edited outside the configurator")).to_be_visible()
+        admin.goto(f"{BASE}/history", wait_until="networkidle")
+        expect(admin.locator("table.history:not(.audit)")).to_contain_text("edited outside")
+        admin.goto(f"{BASE}/rules", wait_until="networkidle")
+        admin.get_by_role("button", name="Mark as seen").click()
+        expect(admin.get_by_text("Files were edited outside")).to_have_count(0)
+    finally:
+        live.write_text(original)

@@ -1,0 +1,37 @@
+# Traefik dynamic configuration (file provider). Variant A: the router is only on the `internal`
+# entrypoint and goes through Authelia. The configurator additionally checks the client network
+# and the admin group itself, so a misconfigured router alone does not expose it.
+http:
+  routers:
+    authcfg:
+      rule: Host(`authcfg.example.com`)
+      entryPoints: [internal]
+      service: configurator
+      middlewares: [authelia] # Variant B: [vpn-only, authelia]
+      tls: {}
+
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        trustForwardHeader: true
+        # The configurator trusts these only from Traefik, and Traefik overwrites any copy a
+        # client sends, because they are listed here.
+        authResponseHeaders: [Remote-User, Remote-Groups, Remote-Email, Remote-Name]
+
+    # Variant B: also enforce the network in Traefik (defence in depth).
+    # Pitfall: ipAllowList looks at the connecting address unless `ipStrategy` says otherwise.
+    # Behind another proxy or a Docker NAT that is the proxy's address, not the client's, so set
+    # ipStrategy.depth (number of trusted proxies) or excludedIPs to match your topology, and
+    # test it from an address that must be refused.
+    vpn-only:
+      ipAllowList:
+        sourceRange: ["10.8.0.0/24"]
+        # ipStrategy:
+        #   depth: 1
+
+  services:
+    configurator:
+      loadBalancer:
+        servers:
+          - url: http://configurator:8080

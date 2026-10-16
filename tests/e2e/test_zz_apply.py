@@ -13,7 +13,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e.auth import BASE, sign_in
-from tests.e2e.conftest import AliceSession, open_rules
+from tests.e2e.conftest import AliceSession, open_rules, rule_number
 from tests.fixtures.stack import AUTH_HOST, PORTAL_PORT, STACK
 
 pytestmark = pytest.mark.e2e
@@ -22,21 +22,28 @@ LAST_JOB = STACK / "managed" / ".apply" / "last.json"
 FORWARD_AUTH = "http://127.0.0.1:19091/api/authz/forward-auth"
 
 
-def forward_auth_status(host: str) -> int:
+def forward_auth_status(host: str, uri: str = "/") -> int:
     headers = {"X-Forwarded-Method": "GET", "X-Forwarded-Proto": "https",
-               "X-Forwarded-Host": host, "X-Forwarded-URI": "/",
+               "X-Forwarded-Host": host, "X-Forwarded-URI": uri,
                "X-Forwarded-For": "10.8.0.5"}  # fmt: skip
     return httpx.get(FORWARD_AUTH, headers=headers, timeout=10).status_code
 
 
+def last_job_id() -> str:
+    try:
+        return str(json.loads(LAST_JOB.read_text()).get("id", ""))
+    except (OSError, ValueError):
+        return ""
+
+
 def wait_for_job(result_in: tuple[str, ...] = ("applied", "rolled-back", "failed"),
-                 timeout: float = 120) -> dict[str, object]:  # fmt: skip
+                 timeout: float = 120, not_id: str = "") -> dict[str, object]:  # fmt: skip
     """Poll the persisted job from the host: the browser session is gone during the restart."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             job = json.loads(LAST_JOB.read_text())
-            if job.get("result") in result_in:
+            if job.get("result") in result_in and job.get("id") != not_id:
                 return job  # type: ignore[no-any-return]
         except (OSError, ValueError):
             pass
@@ -166,5 +173,46 @@ def test_unhealthy_apply_is_rolled_back_and_the_user_is_told(
         commits = page.locator("table.history:not(.audit)")
         expect(commits.locator(".result-badge.rolled-back")).to_have_count(1)
         expect(commits).to_contain_text("automatic rollback")
+    finally:
+        context.close()
+
+
+def test_disabling_a_rule_needs_acceptance_applies_and_enabling_restores_it(
+    browser: Browser, alice_state: AliceSession
+) -> None:
+    """Disabling the public home API rule would fail the seeded 'API is public' test, so Apply
+    stays locked until accepted. Afterwards real Authelia agrees; enabling it restores it."""
+    live_before = (STACK / "managed" / "access_control.yml").read_text()
+    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state.state())
+    page = context.new_page()
+    try:
+        assert forward_auth_status("home.example.test", "/api/states") == 200
+        index = rule_number("home.example.test", "bypass") - 1
+        open_rules(page)
+        page.locator(f'tr[data-index="{index}"]').get_by_role("button", name="Disable").click()
+        expect(page.get_by_text("disabled in the draft")).to_be_visible()
+        expect(page.locator("table.disabled-rules")).to_contain_text("home.example.test")
+
+        page.goto(f"{BASE}/review", wait_until="networkidle")
+        expect(page.get_by_text("would not get the expected result")).to_be_visible()
+        apply_button = page.get_by_role("button", name="Validate & apply")
+        expect(apply_button).to_be_disabled()
+        page.get_by_label("I accept these changes").check()
+        expect(apply_button).to_be_enabled()
+        before = last_job_id()
+        apply_button.click()
+        assert wait_for_job(not_id=before)["result"] == "applied"
+        log_back_in_after_restart(page)
+        assert forward_auth_status("home.example.test", "/api/states") in (302, 401)  # now login
+
+        open_rules(page)  # enable it again: the tests pass again, so no acceptance is needed
+        page.get_by_role("button", name="Enable").click()
+        expect(page.get_by_text("enabled again")).to_be_visible()
+        before = last_job_id()
+        review_and_apply(page)
+        assert wait_for_job(not_id=before)["result"] == "applied"
+        log_back_in_after_restart(page)
+        assert forward_auth_status("home.example.test", "/api/states") == 200
+        assert (STACK / "managed" / "access_control.yml").read_text() == live_before
     finally:
         context.close()

@@ -32,14 +32,19 @@ def make_cli(mode: str) -> AutheliaCLI:
     return AutheliaCLI.via_docker(version)
 
 
+TEST_USER_PASSWORD = "alice-test-only-password"
+
+
 class Generator:
     def __init__(self, cli: AutheliaCLI, workdir: Path) -> None:
         self.cli = cli
         self.workdir = workdir
         self._cache: dict[str, str] = {}
-        # Plaintext for the users file: needed to log in (dev stack, e2e, differential
-        # tests). Lives only in the gitignored generated dir.
-        self.user_password = cli.rand(24)
+        # Plaintext for the fake test user (alice) of the local/CI test stack only: needed to log
+        # in (dev stack, e2e, differential tests). Deliberately static so the owner can sign in
+        # without a lookup; it protects nothing real. Only its hash (made by the authelia
+        # binary) is written, to the gitignored generated dir.
+        self.user_password = TEST_USER_PASSWORD
 
     def _cached(self, name: str, make: object) -> str:
         if name not in self._cache:

@@ -106,6 +106,38 @@ Applying changes is blocked while the bundled and running Authelia versions diff
 The audit log (`audit.log`, who/when/from where/result, never config content) and the git history
 live in `CONFIG_MANAGED_DIR` and are never pushed anywhere.
 
+## Access tests, disabled rules, hand edits
+
+- **Disabled rules**: *Disable* switches a rule off without deleting it; *Enable* puts it back
+  at its old position, byte for byte. Authelia never sees disabled rules.
+- **Access tests**: saved "this request must get this policy" checks (page *Access tests*, or
+  *Add as test* in the URL tester). Review shows each test live → draft; a test that would fail
+  blocks Apply until you tick *I accept these changes*. After every restart the anonymous tests
+  are also probed against the real Authelia and compared with the preview; a mismatch rolls back.
+- **Hand edits**: files edited outside the configurator are committed as "External change" the
+  next time a page loads or an apply starts, and announced in a banner. A change to the main
+  `configuration.yml` shows a banner with *Re-validate*.
+
+## Notifications (optional)
+
+Set `NOTIFY_WEBHOOK_URL` to get a message when an apply finishes (applied, rolled back, failed)
+and when the Authelia version mismatch is first seen. The configurator POSTs JSON with a 5 s
+timeout and never sends diffs, rules or secrets:
+`{"title", "message", "text", "event", "result", "user", "commit", "ts", "host"}`. A failing
+webhook never breaks an apply. The URL may contain a token, so keep it in your `.env`.
+
+| Service | `NOTIFY_WEBHOOK_URL` |
+|---|---|
+| Gotify | `https://gotify.example.com/message?token=APP_TOKEN` (uses `title` and `message`) |
+| Home Assistant | `https://ha.example.com/api/webhook/WEBHOOK_ID` (read `trigger.json.message`) |
+| Telegram | `https://TELEGRAM_BOT_API_HOST/botTOKEN/sendMessage?chat_id=CHAT_ID` (uses `text`) |
+| ntfy | `https://ntfy.example.com/TOPIC?tpl=1&t={{.title}}&m={{.message}}` |
+
+## Production setup
+
+See [`docs/migration.md`](docs/migration.md) and the commented files in [`examples/`](examples/)
+(compose with the socket proxy, Traefik static and dynamic configuration, the protected rules).
+
 ## Lockout recovery
 
 If a bad change locks you out, over SSH on the Docker host:

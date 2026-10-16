@@ -8,6 +8,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.rules.disabled import DisabledRules
 from app.rules.document import RuleBlock, RulesDocument
 from app.rules.lint import Issue
 from app.rules.tester import MatchResult, as_list, normalise_subjects
@@ -116,6 +117,32 @@ def build_rows(
                 inner_comments=block.has_inner_comments,
             )
         )
+    return rows
+
+
+@dataclass
+class DisabledRow:
+    index: int
+    position: int
+    domains: list[str]
+    who: str
+    policy: str
+    note: str
+
+    @property
+    def policy_label(self) -> str:
+        return POLICY_LABEL.get(self.policy, self.policy.upper() or "?")
+
+
+def build_disabled_rows(disabled: DisabledRules) -> list[DisabledRow]:
+    rows = []
+    for i, entry in enumerate(disabled.entries):
+        data = entry.data()
+        domains = [str(d) for d in as_list(data.get("domain"))] or [
+            f"regex: {d}" for d in as_list(data.get("domain_regex"))
+        ]
+        rows.append(DisabledRow(i, entry.position, domains, who_summary(data.get("subject")),
+                                str(data.get("policy", "")), entry.block.note))  # fmt: skip
     return rows
 
 
