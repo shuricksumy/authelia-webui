@@ -65,11 +65,21 @@
     <pre class="diff" aria-label="Diff">{% for kind, text in diff %}<span class="d-{{ kind }}">{{ text }}</span>{% endfor %}</pre>
   </section>
 
-  <p class="muted">Applying will restart Authelia (about 5 seconds of errors on protected apps).</p>
+  <p class="muted">Applying restarts Authelia (about 5 seconds of errors on protected apps) and signs
+    everyone out of Authelia once: you will be asked to log in again and the result is shown after that.
+    If Authelia is not healthy afterwards the change is rolled back automatically.</p>
   <div class="editor-actions">
     <a role="button" class="secondary outline" href="/rules">Back to the rules</a>
-    <button type="button" disabled aria-disabled="true" title="Applying arrives in step 1b">Validate &amp; apply</button>
+    {% if apply_reasons %}
+    <button type="button" disabled aria-disabled="true" title="See the reasons below">Validate &amp; apply</button>
+    {% else %}
+    <button type="button" hx-post="/apply" hx-target="#apply-panel" hx-swap="innerHTML" hx-disabled-elt="this">Validate &amp; apply</button>
+    {% endif %}
   </div>
-  <p class="muted"><small>Apply is disabled: applying changes (validate, write, git commit, restart, health check, rollback) is step 1b.</small></p>
+  {% if apply_reasons %}
+  <article class="notice error" role="alert"><strong>Apply is disabled:</strong>
+    <ul>{% for r in apply_reasons %}<li>{{ r }}</li>{% endfor %}</ul></article>
+  {% endif %}
+  <div id="apply-panel" aria-live="polite"></div>
 {% endif %}
 {% endblock %}

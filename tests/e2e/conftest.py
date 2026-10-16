@@ -74,10 +74,38 @@ def stack() -> Iterator[dict[str, str]]:
         compose("down", "-v", "--remove-orphans", env=env)
 
 
+class AliceSession:
+    """A real admin login (password + TOTP) shared by the tests that need one.
+
+    Authelia keeps sessions in memory, so every apply (which restarts it) invalidates them:
+    `state()` checks the session and logs in again when it is gone.
+    """
+
+    def __init__(self, browser: Browser) -> None:
+        self._browser = browser
+        self._state: dict[str, Any] | None = None
+
+    def _valid(self) -> bool:
+        context = self._browser.new_context(
+            ignore_https_errors=True,
+            storage_state=self._state,  # type: ignore[arg-type]
+        )
+        try:
+            page = context.new_page()
+            response = page.goto(f"{BASE}/healthz")
+            return response is not None and response.ok and page.url.startswith(BASE)
+        finally:
+            context.close()
+
+    def state(self) -> dict[str, Any]:
+        if self._state is None or not self._valid():
+            self._state = login(self._browser)
+        return self._state
+
+
 @pytest.fixture(scope="session")
-def alice_state(stack: dict[str, str], browser: Browser) -> dict[str, Any]:
-    """One real login (password + TOTP) shared by the tests that need an admin session."""
-    return login(browser)
+def alice_state(stack: dict[str, str], browser: Browser) -> AliceSession:
+    return AliceSession(browser)
 
 
 @pytest.fixture(autouse=True)
@@ -88,9 +116,9 @@ def clean_draft(stack: dict[str, str]) -> Iterator[None]:
 
 
 @pytest.fixture
-def admin(browser: Browser, alice_state: dict[str, Any]) -> Iterator[Page]:
+def admin(browser: Browser, alice_state: AliceSession) -> Iterator[Page]:
     context: BrowserContext = browser.new_context(
-        ignore_https_errors=True, storage_state=alice_state,  # type: ignore[arg-type]
+        ignore_https_errors=True, storage_state=alice_state.state(),  # type: ignore[arg-type]
         viewport={"width": 1280, "height": 900},
     )  # fmt: skip
     page = context.new_page()

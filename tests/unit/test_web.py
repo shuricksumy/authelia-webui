@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -68,7 +69,13 @@ def env(tmp_path: Path) -> dict[str, Path]:
 
 
 class UI:
-    def __init__(self, env: dict[str, Path], user: str = "alice", groups: str = "admin") -> None:
+    def __init__(
+        self,
+        env: dict[str, Path],
+        user: str = "alice",
+        groups: str = "admin",
+        services: Any = None,
+    ) -> None:
         settings = Settings(
             AUTH_DOMAIN="auth.example.com",
             CONFIGURATOR_DOMAIN="authcfg.example.com",
@@ -84,9 +91,11 @@ class UI:
             AUTHELIA_BINARY="authelia-not-installed",
             AUTHELIA_VERSION="4.39.28",
         )
+        self.settings = settings
         self.client = TestClient(
-            create_app(settings), client=(PROXY, 5000), base_url="https://authcfg.example.com"
-        )
+            create_app(settings, services), client=(PROXY, 5000),
+            base_url="https://authcfg.example.com",
+        )  # fmt: skip
         self.headers = {"Remote-User": user, "Remote-Groups": groups, "X-Forwarded-For": VPN}
         self.env = env
 

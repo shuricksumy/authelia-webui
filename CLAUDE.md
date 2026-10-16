@@ -8,13 +8,27 @@ Read `SPEC.md` before doing anything. It is the source of truth; if something
 here conflicts with it, ask.
 
 ## Current state
-Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; step **1a** is
-implemented: security layer (`app/security.py`), rule tester (`app/rules/tester.py`), rules
+Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; steps **1a** and
+**1b** (apply/rollback/history/audit/version check, see below) are implemented. Step 1a is: security layer (`app/security.py`), rule tester (`app/rules/tester.py`), rules
 document/form/lint/protected/store (`app/rules/`), the UI (`app/web.py`, `app/ui.py`,
 `app/templates/`, `app/static/`) and the Traefik dev stack. The UI edits a **draft** only
-(`CONFIG_MANAGED_DIR/.draft/`); the live file is never written. Next: **1b** apply/restart/
-rollback + history + audit + version check + socket proxy; **1c** disabled rules, access test
-suite, external changes, notifications. Target layout: SPEC §14.
+(`CONFIG_MANAGED_DIR/.draft/`); the live file is never written. Next: **1c** disabled rules, access test
+suite, external changes (auto-commit hand edits), notifications; signal restart mode later. Target layout: SPEC §14.
+
+## Architecture notes (Phase 1b: apply)
+- `app/apply/engine.py` is the only code that writes the live file. Order: preconditions ->
+  `authelia config validate` -> atomic write -> git commit -> restart -> wait until `StartedAt`
+  changed **and** health is 200 -> else revert commit, restart, report. `.apply/in-progress.json`
+  marks an interrupted apply; `engine.recover()` resolves it at startup.
+- Docker is only reachable through the socket proxy (`app/apply/runtime.py`); nothing else
+  mounts the socket. The proxy allows exactly inspect + restart of `AUTHELIA_CONTAINER`.
+- Authelia restarts sign everyone out (memory sessions). `JobBoard` persists the last result
+  (`.apply/last.json`, re-read when it changes, so several instances agree); the progress panel's
+  script sends the browser to `/apply/result` once Authelia answers again.
+- Test-only pieces (never in examples/production): `configurator-broken` + `health-switch`
+  (unhealthy while the live rules contain `break-health`), and the bypassed `forge.example.test`
+  host. e2e tests that apply restart Authelia; `AliceSession` re-logs in when a session is gone,
+  and `tests/e2e/test_zz_apply.py` sorts last for that reason.
 
 ## Architecture notes (Phase 1a)
 - `app/rules/document.py` treats `access_control.yml` as **text blocks** (prefix | rule blocks |

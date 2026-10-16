@@ -5,10 +5,12 @@ configuration that change often: **access control rules** and **OIDC clients** (
 Everything else stays hand-edited YAML. Every change is validated by Authelia itself, committed to a
 local git repo, and rolled back automatically if Authelia is unhealthy after a restart.
 
-> **Status: Phase 1a.** The rules UI works on a **draft**: view, reorder (drag or buttons), add,
-> edit (form or raw YAML), lint, test a URL against the rules, and review the diff. **Nothing is
-> applied yet**: validate/write/restart/rollback (step 1b), history, OIDC clients and users come
-> later. The full design is in [SPEC.md](SPEC.md).
+> **Status: Phase 1b.** The rules UI edits a **draft** (view, reorder by drag or buttons, add, edit
+> as a form or raw YAML, lint, test a URL against the rules, review the diff) and **applies** it
+> safely: validate with Authelia, atomic write, git commit, restart through a locked-down socket
+> proxy, health check, and an automatic rollback if Authelia is not healthy. History with
+> revert-to-version, an audit log and a version check are included. Disabled rules, the access
+> test suite, OIDC clients and users come later. The full design is in [SPEC.md](SPEC.md).
 
 ## Internal-only tool
 
@@ -81,6 +83,26 @@ configurator: { image: "ghcr.io/<owner>/authelia-configurator:authelia-${AUTHELI
 ```
 
 Applying changes is blocked while the bundled and running Authelia versions differ.
+
+## How applying works
+
+1. **Review** shows the diff, lint, protected-rule status and Authelia's own verdict on the draft.
+2. **Validate & apply** is only enabled when everything is in order; otherwise it says why
+   (stale draft, blocking lint, a protected rule weakened, hand-edited files, a version mismatch...).
+3. The change is written atomically, committed to the local git repo in `CONFIG_MANAGED_DIR`
+   (author = the admin), and Authelia is restarted **through the socket proxy**
+   (`wollomatic/socket-proxy`, allowing exactly *inspect* and *restart* of the Authelia container).
+4. It counts as healthy only after Authelia really restarted **and** `/api/health` answers 200 within
+   30 s. Otherwise the commit is reverted, Authelia is restarted again, and your change comes back
+   into the draft with the reason.
+5. Without Redis, Authelia keeps sessions in memory, so **every restart signs everyone out**. The
+   apply keeps running on the server; after you log in again the result is shown (banner, `History`).
+6. The running Authelia version must match the version bundled in this image
+   (`VERSION_MISMATCH=block`, the default), otherwise applying is disabled and the banner names the
+   image tag to deploy.
+
+The audit log (`audit.log`, who/when/from where/result, never config content) and the git history
+live in `CONFIG_MANAGED_DIR` and are never pushed anywhere.
 
 ## Lockout recovery
 

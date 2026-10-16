@@ -16,6 +16,11 @@ from pathlib import Path
 
 from playwright.sync_api import BrowserContext, Page, sync_playwright
 
+from app.apply import audit
+from app.apply.engine import TRACKED
+from app.apply.jobs import JobBoard
+from app.apply.repo import ManagedRepo
+from app.rules.document import RulesDocument
 from tests.e2e.auth import BASE, login
 from tests.e2e.conftest import rule_number
 from tests.fixtures.stack import STACK
@@ -26,8 +31,63 @@ VIEWPORTS = {"1280": {"width": 1280, "height": 900}, "390": {"width": 390, "heig
 SCHEMES = ("light", "dark")
 
 
+MANAGED = STACK / "managed"
+LIVE = MANAGED / "access_control.yml"
+ORIGINAL = ""  # the stack's access_control.yml, restored after every scenario
+
+
 def reset_draft() -> None:
-    shutil.rmtree(STACK / "managed" / ".draft", ignore_errors=True)
+    """Back to a pristine stack: no draft, no apply state, no git history, original rules."""
+    shutil.rmtree(MANAGED / ".draft", ignore_errors=True)
+    shutil.rmtree(MANAGED / ".apply", ignore_errors=True)
+    shutil.rmtree(MANAGED / ".git", ignore_errors=True)
+    for name in (".gitignore", "audit.log"):
+        (MANAGED / name).unlink(missing_ok=True)
+    if ORIGINAL:
+        LIVE.write_text(ORIGINAL)
+
+
+def repo() -> ManagedRepo:
+    return ManagedRepo(MANAGED, "authcfg.example.test")
+
+
+def seed_history() -> None:
+    """Synthetic past: an initial import, one applied change, one change that was rolled back."""
+    git = repo()
+    git.ensure(TRACKED)
+    doc = RulesDocument.parse(ORIGINAL)
+    applied = doc.move(8, 9)
+    LIVE.write_text(applied.render())
+    first = git.commit(["access_control.yml"], "Rules: order changed",
+                       "Applied-by: alice\nClient-IP: 10.8.0.5", "alice")  # fmt: skip
+    LIVE.write_text(applied.move(4, 5).render())
+    git.commit(["access_control.yml"], "Rules: order changed",
+               "Applied-by: alice\nClient-IP: 10.8.0.5", "alice")  # fmt: skip
+    rollback = git.revert_head("Authelia did not come back up within 30 s.", author="alice")
+    now = audit.now()
+    entries = [
+        (now - 3600, "apply", "applied", first, "Applied. Authelia is healthy."),
+        (now - 600, "rollback", "rolled-back", rollback,
+         "Authelia did not come back up within 30 s. The previous version is live again."),
+    ]  # fmt: skip
+    for ts, action, result, commit, summary in entries:
+        audit.append(
+            MANAGED,
+            audit.AuditEntry(ts, "alice", "10.8.0.5", action, result, commit[:12], summary),
+        )
+
+
+def seed_job(
+    result: str | None, statuses: list[str], message: str = "", details: list[str] | None = None
+) -> None:
+    board = JobBoard(MANAGED)
+    job = board.new("alice")
+    for step, status in zip(job.steps, statuses, strict=True):
+        step.status = status
+    fields: dict[str, object] = {"message": message, "details": details or [], "commit": "9f3c2ab"}
+    if result:
+        fields["result"] = result
+    board.update(job, **fields)
 
 
 def settle(page: Page) -> None:
@@ -88,6 +148,43 @@ def delete_confirm(page: Page) -> None:
     page.wait_for_selector("dialog[open]")
 
 
+def apply_running(page: Page) -> None:
+    seed_job(None, ["done", "done", "running", "pending", "pending"])
+    page.goto(f"{BASE}/apply/result", wait_until="networkidle")
+
+
+def apply_applied(page: Page) -> None:
+    seed_job("applied", ["done", "done", "done", "done", "skipped"],
+             "Applied. Authelia is healthy.")  # fmt: skip
+    page.goto(f"{BASE}/rules", wait_until="networkidle")
+
+
+def apply_rolled_back(page: Page) -> None:
+    seed_job(
+        "rolled-back", ["done", "done", "done", "failed", "done"],
+        "Authelia did not come back up within 30 s. The previous version is live again; your "
+        "change is back in the draft so you can fix it.",
+        ["error loading rule 3: option 'policy' must be one of 'bypass', 'one_factor'"],
+    )  # fmt: skip
+    page.goto(f"{BASE}/apply/result", wait_until="networkidle")
+
+
+def history(page: Page) -> None:
+    seed_history()
+    page.goto(f"{BASE}/history", wait_until="networkidle")
+    page.get_by_text("Show diff").nth(1).click()
+    page.wait_for_selector("pre.diff")
+
+
+def review_blocked(page: Page) -> None:
+    """A hand edit on the host (uncommitted change to a tracked file) blocks apply."""
+    git = repo()
+    git.ensure(TRACKED)
+    LIVE.write_text(RulesDocument.parse(ORIGINAL).move(8, 9).render())
+    draft_with_changes(page)
+    page.goto(f"{BASE}/review", wait_until="networkidle")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
     "rules": rules,
     "rules-by-domain": by_domain,
@@ -98,6 +195,11 @@ SCREENS: dict[str, Callable[[Page], None]] = {
     "draft-rules": draft_with_changes,
     "tester": tester,
     "delete-confirm": delete_confirm,
+    "review-blocked": review_blocked,
+    "apply-running": apply_running,
+    "apply-applied": apply_applied,
+    "apply-rolled-back": apply_rolled_back,
+    "history": history,
 }
 
 
@@ -119,6 +221,8 @@ def shoot(context: BrowserContext, name: str, width: str, scheme: str) -> None:
 
 
 def main(only: list[str] | None = None) -> int:
+    global ORIGINAL
+    ORIGINAL = LIVE.read_text()
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--host-resolver-rules=MAP *.example.test 127.0.0.1"])

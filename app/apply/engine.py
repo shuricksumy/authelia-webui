@@ -228,7 +228,7 @@ class ApplyEngine:
             self.runtime.restart()
         except RuntimeUnavailable as exc:
             # Authelia never loaded the new file: undo the commit so file == running config.
-            self.repo.revert_head(f"could not restart Authelia ({exc})")
+            self.repo.revert_head(f"could not restart Authelia ({exc})", author=request.user)
             self._marker().unlink(missing_ok=True)
             board.update(job, "restart", "failed", str(exc))
             self._restore_draft(text)
@@ -256,7 +256,7 @@ class ApplyEngine:
         details = self._authelia_errors()
         try:
             before = self.runtime.inspect(timeout_s=5).started_at
-            revert = self.repo.revert_head(reason)
+            revert = self.repo.revert_head(reason, author=request.user)
             self.runtime.restart()
             health = self._wait(before)
         except (RuntimeUnavailable, RepoError) as exc:
@@ -275,8 +275,8 @@ class ApplyEngine:
         self._restore_draft(failed_text)
         board.update(job, "rollback", "done", "previous version restored", details=details)
         self._finish(job, request, "rolled-back",
-                     f"Rolled back: {reason} The previous version is live again; your change is "
-                     "back in the draft so you can fix it.", "rollback", revert)  # fmt: skip
+                     f"{reason} The previous version is live again; your change is back in the "
+                     "draft so you can fix it.", "rollback", revert)  # fmt: skip
 
     def _wait(self, previous_started_at: str) -> HealthResult:
         return self.health_waiter(

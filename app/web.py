@@ -10,9 +10,7 @@ Conventions:
 from __future__ import annotations
 
 import ipaddress
-import tempfile
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -22,7 +20,9 @@ from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.error import YAMLError
 
-from app.authelia_cli import AutheliaCLI, AutheliaCLIError, ValidationResult, redact
+from app.apply.services import ApplyServices
+from app.apply.validate import validate_candidate
+from app.authelia_cli import ValidationResult
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.form import FormError, RuleForm, apply_form
 from app.rules.lint import Issue, UsersInfo, blocking, lint
@@ -95,6 +95,11 @@ class View:
         return issues, check_protected(self.effective(doc), self.settings)
 
 
+def services_of(request: Request) -> ApplyServices:
+    services: ApplyServices = request.app.state.services
+    return services
+
+
 def templates(request: Request) -> Jinja2Templates:
     t: Jinja2Templates = request.app.state.templates
     return t
@@ -121,6 +126,19 @@ def is_htmx(request: Request) -> bool:
     return request.headers.get("hx-request") == "true"
 
 
+def shell_context(request: Request) -> dict[str, Any]:
+    """What every page shows around its content: identity, footer status, last apply result."""
+    services = services_of(request)
+    return {
+        "request": request,
+        "identity": identity_of(request.state),
+        "csrf_token": request.state.csrf_token,
+        "bundled_version": request.app.state.settings.AUTHELIA_VERSION,
+        "runtime": services.status.get(),
+        "last_job": services.board.current(),
+    }
+
+
 def base_context(v: View, **extra: Any) -> dict[str, Any]:
     changes = v.store.changes()
     count = (
@@ -128,14 +146,11 @@ def base_context(v: View, **extra: Any) -> dict[str, Any]:
         + int(changes.order_changed) + int(changes.default_policy_changed)
     )  # fmt: skip
     return {
-        "request": v.request,
-        "identity": v.identity,
-        "csrf_token": v.request.state.csrf_token,
+        **shell_context(v.request),
         "has_draft": v.store.has_draft(),
         "stale": v.store.is_stale(),
         "change_count": count,
         "rev": v.rev,
-        "bundled_version": v.settings.AUTHELIA_VERSION,
         **extra,
     }
 
@@ -151,14 +166,11 @@ def error_page(request: Request, message: str, status: int = 503) -> HTMLRespons
         request,
         "error.html",
         {
-            "request": request,
+            **shell_context(request),
             "message": message,
-            "csrf_token": request.state.csrf_token,
-            "identity": identity_of(request.state),
             "has_draft": False,
             "change_count": 0,
             "stale": False,
-            "bundled_version": request.app.state.settings.AUTHELIA_VERSION,
         },
         status_code=status,
     )
@@ -611,27 +623,6 @@ async def tester_run(request: Request) -> Response:
 # --------------------------------------------------------------------------- review / discard
 
 
-def validate_draft(request: Request, v: View) -> ValidationResult | None:
-    """Ask Authelia whether main + draft + OIDC clients validate. Read-only: temp copy."""
-    settings = v.settings
-    try:
-        cli = AutheliaCLI.local(settings.AUTHELIA_BINARY)
-        with tempfile.TemporaryDirectory(prefix="draft-validate-") as tmp:
-            draft = Path(tmp) / "access_control.yml"
-            draft.write_text(v.doc.render())
-            draft.chmod(0o600)
-            paths = [settings.CONFIG_MAIN, draft]
-            clients = settings.CONFIG_MANAGED_DIR / "oidc_clients.yml"
-            if clients.is_file():
-                paths.append(clients)
-            result = cli.validate(paths)
-        return ValidationResult(
-            result.ok, [redact(e) for e in result.errors], [redact(w) for w in result.warnings], ""
-        )
-    except (AutheliaCLIError, OSError):
-        return None
-
-
 @router.get("/review", response_class=HTMLResponse)
 def review(request: Request) -> Response:
     try:
@@ -640,12 +631,16 @@ def review(request: Request) -> Response:
         return error_page(request, "The managed access control file could not be read.")
     issues, report = v.analyse()
     changes = v.store.changes()
-    validator = validate_draft(request, v) if v.store.has_draft() else None
+    validator: ValidationResult | None = None
+    reasons: list[str] = []
+    if v.store.has_draft():
+        validator = validate_candidate(v.settings, v.doc.render())
+        reasons = services_of(request).engine.preconditions(rev=v.rev)
     rows = build_rows(v.doc, v.live, issues, report.locked)
     return render(
         v, "review.html", changes=changes, issues=issues, errors=blocking(issues),
         warnings=[i for i in issues if i.severity == "warning"], report=report, rows=rows,
-        diff=diff_lines(v.store.diff()), validator=validator,
+        diff=diff_lines(v.store.diff()), validator=validator, apply_reasons=reasons,
         default_policy=v.doc.default_policy(),
     )  # fmt: skip
 

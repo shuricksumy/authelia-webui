@@ -51,6 +51,63 @@
     }
   });
 
+  // Dismissible result banners (per job id, remembered in this browser only).
+  function dismissed() {
+    try { return JSON.parse(localStorage.getItem("dismissed-jobs") || "[]"); } catch (e) { return []; }
+  }
+  function applyDismissals() {
+    var list = dismissed();
+    document.querySelectorAll("[data-dismissable]").forEach(function (el) {
+      if (list.indexOf(el.dataset.jobId) !== -1) { el.hidden = true; }
+    });
+  }
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-dismiss]");
+    if (!button) { return; }
+    var banner = button.closest("[data-dismissable]");
+    var list = dismissed();
+    list.push(banner.dataset.jobId);
+    try { localStorage.setItem("dismissed-jobs", JSON.stringify(list.slice(-20))); } catch (e) { /* private mode */ }
+    banner.hidden = true;
+  });
+  document.addEventListener("DOMContentLoaded", applyDismissals);
+
+  // Applying restarts Authelia, which signs everyone out (memory sessions): the progress poll then
+  // fails or is redirected to the portal. Wait until Authelia answers again (a redirect to the
+  // login means it is up), then continue on the result page, which survives the login.
+  var pollFailures = 0;
+  var restartMode = false;
+  function inProgressPanel(event) {
+    return event.target && event.target.closest && event.target.closest("#apply-progress");
+  }
+  document.addEventListener("htmx:afterRequest", function (event) {
+    if (inProgressPanel(event) && event.detail.successful) { pollFailures = 0; }
+  });
+  document.addEventListener("htmx:sendError", function (event) {
+    if (!inProgressPanel(event)) { return; }
+    pollFailures += 1;
+    if (pollFailures >= 3 && !restartMode) { enterRestartMode(); }
+  });
+  function enterRestartMode() {
+    restartMode = true;
+    var note = document.getElementById("restart-note");
+    if (note) { note.hidden = false; }
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries += 1;
+      fetch("/apply/result", { redirect: "manual", credentials: "same-origin", cache: "no-store" })
+        .then(function (response) {
+          // "opaqueredirect": Authelia is back and wants a login; ok: the session survived.
+          if (response.type === "opaqueredirect" || response.ok) {
+            clearInterval(timer);
+            window.location.href = "/apply/result";
+          }
+        })
+        .catch(function () { /* still restarting */ });
+      if (tries > 120) { clearInterval(timer); window.location.href = "/apply/result"; }
+    }, 1500);
+  }
+
   // Drag and drop ordering (buttons are the keyboard/touch alternative).
   function initSortable() {
     var body = document.getElementById("rules-body");

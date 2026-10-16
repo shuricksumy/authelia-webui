@@ -110,10 +110,10 @@ class ManagedRepo:
         """Put the committed version of `path` back into the working tree."""
         self._git("checkout", "--", path)
 
-    def revert_head(self, reason: str) -> str:
+    def revert_head(self, reason: str, author: str | None = None) -> str:
         """Undo the last commit with a new commit (history keeps both)."""
-        self._git("revert", "--no-edit", "--no-commit", "HEAD")
-        self._git("commit", "-q", "-m", f"Rollback: {reason}")
+        self._git("revert", "--no-edit", "--no-commit", "HEAD", author=author)
+        self._git("commit", "-q", "-m", f"Rollback: {reason}", author=author)
         return self.head()
 
     # ------------------------------------------------------------------ reads

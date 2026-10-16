@@ -1,0 +1,185 @@
+"""Apply, progress, result and history pages (SPEC §6, §15.6, §15.8).
+
+An apply runs in a background thread. Authelia's restart signs everyone out (memory sessions),
+so the browser may lose its session mid-apply: the outcome is persisted (JobBoard) and shown by
+/apply/result after the next login, and the progress panel's script sends the browser there.
+"""
+
+from __future__ import annotations
+
+import threading
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, Response
+
+from app.apply import audit
+from app.apply.engine import ApplyRequest
+from app.apply.jobs import Job
+from app.apply.repo import Commit, RepoError
+from app.rules.document import DocumentError, RulesDocument
+from app.rules.store import LIVE_NAME, sha256
+from app.security import identity_of
+from app.ui import diff_lines
+from app.web import (
+    STALE,
+    Conflict,
+    conflict_response,
+    load_view,
+    render,
+    require_rev,
+    services_of,
+    shell_context,
+    templates,
+)
+
+router = APIRouter()
+
+
+# --------------------------------------------------------------------------- apply
+
+
+@router.post("/apply", response_class=HTMLResponse)
+async def start_apply(request: Request) -> Response:
+    data = await request.form()  # before load_view: no await between reading and starting
+    v = load_view(request)
+    services = services_of(request)
+    try:
+        require_rev(v, str(data.get("rev", "")))
+    except Conflict as exc:
+        return conflict_response(exc)
+    identity = identity_of(request.state)
+    with services.start_lock:
+        reasons = services.engine.preconditions(rev=v.rev)
+        if reasons:
+            return render(v, "partials/apply_refused.html", status=422, reasons=reasons)
+        job = services.board.new(identity.username)
+        apply_request = ApplyRequest(identity.username, str(identity.client_ip), v.rev)
+        threading.Thread(
+            target=services.engine.apply, args=(apply_request, job), name="apply", daemon=True
+        ).start()
+    return render(v, "partials/apply_progress.html", **_progress_context(job))
+
+
+def _progress_context(job: Job | None) -> dict[str, Any]:
+    return {"job": job, "polling": job is not None and not job.done}
+
+
+@router.get("/apply/status", response_class=HTMLResponse)
+def apply_status(request: Request) -> Response:
+    services = services_of(request)
+    job = services.board.current()
+    if job is not None and job.done:
+        services.status.invalidate()  # the footer should reflect the restart that just happened
+    return templates(request).TemplateResponse(
+        request,
+        "partials/apply_progress.html",
+        {**shell_context(request), **_progress_context(job)},
+    )
+
+
+@router.get("/apply/result", response_class=HTMLResponse)
+def apply_result(request: Request) -> Response:
+    job = services_of(request).board.current()
+    ctx = {**shell_context(request), **_progress_context(job), "has_draft": False,
+           "change_count": 0, "stale": False}  # fmt: skip
+    return templates(request).TemplateResponse(request, "apply_result.html", ctx)
+
+
+# --------------------------------------------------------------------------- history
+
+
+@dataclass
+class HistoryRow:
+    commit: Commit
+    kind: str  # applied | rolled-back | rollback | initial | other
+    label: str
+    when: str
+    current: bool
+
+
+def _when(timestamp: int) -> str:
+    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d %H:%M")
+
+
+def history_rows(request: Request) -> list[HistoryRow]:
+    services = services_of(request)
+    if not services.repo.is_repo():
+        return []
+    commits = services.repo.log(100)
+    rows = []
+    for i, commit in enumerate(commits):
+        newer = commits[i - 1] if i > 0 else None
+        if commit.subject.startswith("Rollback:"):
+            kind, label = "rollback", "automatic rollback"
+        elif commit.subject.startswith("Initial import"):
+            kind, label = "initial", "initial import"
+        elif newer is not None and newer.subject.startswith("Rollback:"):
+            kind, label = "rolled-back", "rolled back (Authelia was unhealthy)"
+        else:
+            kind, label = "applied", "applied"
+        rows.append(HistoryRow(commit, kind, label, _when(commit.timestamp), current=(i == 0)))
+    return rows
+
+
+@router.get("/history", response_class=HTMLResponse)
+def history(request: Request) -> Response:
+    try:
+        v = load_view(request)
+    except (OSError, DocumentError):
+        return templates(request).TemplateResponse(
+            request, "error.html",
+            {**shell_context(request), "message": "The managed files could not be read.",
+             "has_draft": False, "change_count": 0, "stale": False},
+            status_code=503,
+        )  # fmt: skip
+    entries = audit.recent(v.settings.CONFIG_MANAGED_DIR, 50)
+    return render(v, "history.html", rows=history_rows(request), audit=list(reversed(entries)),
+                  active="history")  # fmt: skip
+
+
+@router.get("/history/{sha}/diff", response_class=HTMLResponse)
+def history_diff(request: Request, sha: str) -> Response:
+    services = services_of(request)
+    try:
+        text = services.repo.diff(sha, LIVE_NAME)
+    except RepoError:
+        return Response("Unknown commit.", status_code=404)
+    return templates(request).TemplateResponse(
+        request, "partials/history_diff.html", {"request": request, "diff": diff_lines(text)}
+    )
+
+
+@router.post("/history/{sha}/revert", response_class=HTMLResponse)
+async def revert_to(request: Request, sha: str) -> Response:
+    """Load an old version into the draft; it still goes through review and the safe apply."""
+    data = await request.form()  # before load_view: no await between reading and saving
+    v = load_view(request)
+    try:
+        require_rev(v, str(data.get("rev", "")))
+        if v.store.has_draft():
+            raise Conflict("There are unapplied changes. Apply or discard them first.", 422)
+        try:
+            text = services_of(request).repo.file_at(sha, LIVE_NAME)
+            target = RulesDocument.parse(text)
+        except (RepoError, DocumentError):
+            raise Conflict("That version could not be loaded.", 422) from None
+        if text == v.store.live_text():
+            raise Conflict("That version is already live.", 422)
+        v.store.save(target, expected_sha=sha256(v.doc.render()))
+    except Conflict as exc:
+        return conflict_response(exc)
+    except Exception:
+        return conflict_response(Conflict(STALE))
+    identity = identity_of(request.state)
+    audit.append(
+        v.settings.CONFIG_MANAGED_DIR,
+        audit.AuditEntry(
+            ts=audit.now(), user=identity.username, client_ip=str(identity.client_ip),
+            action="revert-to-draft", result="started", commit=sha[:12],
+            summary="Loaded an earlier version into the draft.",
+        ),
+    )  # fmt: skip
+    return Response(status_code=204, headers={"HX-Redirect": "/review"})

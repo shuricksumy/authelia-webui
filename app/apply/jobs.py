@@ -60,9 +60,17 @@ class JobBoard:
     def __init__(self, managed_dir: Path) -> None:
         self.path = managed_dir / ".apply" / "last.json"
         self._lock = threading.Lock()
+        self._mtime: int | None = None
         self._job: Job | None = self._load()
 
+    def _stamp(self) -> int | None:
+        try:
+            return self.path.stat().st_mtime_ns
+        except OSError:
+            return None
+
     def _load(self) -> Job | None:
+        self._mtime = self._stamp()
         try:
             raw = json.loads(self.path.read_text())
             raw["steps"] = [Step(**s) for s in raw["steps"]]
@@ -77,6 +85,7 @@ class JobBoard:
         with os.fdopen(fd, "w") as handle:
             json.dump(asdict(job), handle)
         os.replace(tmp, self.path)
+        self._mtime = self._stamp()
 
     def new(self, user: str) -> Job:
         job = Job(id=secrets.token_hex(6), user=user, started=int(time.time()))
@@ -100,7 +109,11 @@ class JobBoard:
             self._save(job)
 
     def current(self) -> Job | None:
+        """The latest job. Re-read when the file changed, so several instances or processes
+        sharing the managed directory (and a restarted app) all see the same result."""
         with self._lock:
+            if self._stamp() != self._mtime:
+                self._job = self._load()
             return self._job
 
     def running(self) -> bool:

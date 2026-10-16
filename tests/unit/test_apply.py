@@ -316,8 +316,9 @@ def test_recovery_after_crash_rolls_back_an_unhealthy_apply(env: dict[str, Any])
     (env["managed"] / ".apply" / "in-progress.json").write_text(
         json.dumps({"old_head": old, "started_at": "start-0", "user": "alice"})
     )
-    assert "Rolled back" in (engine.recover() or "")
+    assert "previous version is live again" in (engine.recover() or "")
     assert live(env) == original and runtime.restarts == 1
+    assert engine.board.current().result == "rolled-back"  # type: ignore[union-attr]
 
 
 def test_no_marker_no_recovery(env: dict[str, Any]) -> None:
@@ -371,3 +372,15 @@ def test_repo_basics(tmp_path: Path) -> None:
     for bad in ("HEAD; rm -rf /", "zzzzzzz", "--output=/tmp/x"):
         with pytest.raises(RepoError):
             repo.diff(bad, "access_control.yml")
+
+
+def test_job_board_sees_a_result_written_by_another_instance(env: dict[str, Any]) -> None:
+    """Two instances (or workers) share the managed dir; each must show the same latest job."""
+    first, second = JobBoard(env["managed"]), JobBoard(env["managed"])
+    assert first.current() is None and second.current() is None
+    job = first.new("alice")
+    first.update(job, result="applied", message="done")
+    seen = second.current()
+    assert seen is not None and seen.id == job.id and seen.result == "applied"
+    other = second.new("bob")
+    assert first.current() is not None and first.current().id == other.id  # type: ignore[union-attr]

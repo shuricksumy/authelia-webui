@@ -1,0 +1,19 @@
+{% if runtime.bad or runtime.mismatch_warns %}
+<div class="banner {{ 'error' if runtime.bad else 'warn' }}" role="alert">{{ runtime.explanation }}</div>
+{% endif %}
+{% if last_job %}
+  {% if not last_job.done %}
+  <div class="banner info" role="status">An apply is running. <a href="/apply/result">Show progress</a></div>
+  {% else %}
+  <div class="banner job {{ last_job.result }}" role="status" data-job-id="{{ last_job.id }}" data-dismissable>
+    <span>
+      {% if last_job.result == 'applied' %}<strong>Applied</strong> by {{ last_job.user }} at {{ last_job.finished|utc }}{% if last_job.commit %} (commit <code>{{ last_job.commit[:7] }}</code>){% endif %}. Authelia is healthy.
+      {% elif last_job.result == 'rolled-back' %}<strong>Rolled back.</strong> {{ last_job.message }}
+      {% elif last_job.result == 'failed' %}<strong>Needs your attention.</strong> {{ last_job.message }}
+      {% else %}<strong>Not applied.</strong> {{ last_job.message }}{% endif %}
+      <a href="/apply/result">Details</a> &middot; <a href="/history">History</a>
+    </span>
+    <button type="button" class="outline secondary small" data-dismiss aria-label="Dismiss this message">Dismiss</button>
+  </div>
+  {% endif %}
+{% endif %}

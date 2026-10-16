@@ -1,0 +1,22 @@
+<section id="apply-progress" class="apply-progress{% if job and job.done %} done {{ job.result }}{% endif %}"
+  {% if polling %}hx-get="/apply/status" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {% if not job %}
+    <p class="muted">No apply has run yet.</p>
+  {% else %}
+    <h2>{% if not job.done %}Applying&hellip;{% else %}{{ {'applied': 'Applied', 'rolled-back': 'Rolled back', 'failed': 'Failed - action needed', 'refused': 'Not applied'}[job.result] }}{% endif %}</h2>
+    <ol class="steps">
+      {% for s in job.steps %}
+      <li class="step {{ s.status }}"><span class="mark" aria-hidden="true">{{ {'done': '✓', 'failed': '✗', 'running': '…', 'skipped': '–', 'pending': '·'}[s.status] }}</span>
+        {{ s.label }}<span class="visually-hidden"> ({{ s.status }})</span>{% if s.detail %} <small>{{ s.detail }}</small>{% endif %}</li>
+      {% endfor %}
+    </ol>
+    {% if job.done %}
+      <p class="result-message">{{ job.message }}</p>
+      {% if job.details %}<ul class="problems">{% for d in job.details %}<li class="error">{{ d }}</li>{% endfor %}</ul>{% endif %}
+      <div class="editor-actions">
+        <a role="button" class="secondary outline" href="/history">History</a>
+        <a role="button" href="/rules">Back to the rules</a>
+      </div>
+    {% endif %}
+  {% endif %}
+</section>

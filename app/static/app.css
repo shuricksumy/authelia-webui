@@ -240,4 +240,69 @@ pre.diff span { display: block; padding: 0 0.75rem; white-space: pre; }
 /* --- editor: hint text must not overlap the field, and the actions stay reachable ------- */
 .editor textarea ~ small, .editor input ~ small, .editor select ~ small { margin-top: 0.3rem; display: block; }
 .editor label > small:first-child { display: inline; margin: 0; }
-.editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--pico-card-background-color); border-top: 1px solid var(--app-border); }
+/* only inside the editor panel; never on the review page, where Apply must come after the diff */
+.editor .editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--pico-card-background-color); border-top: 1px solid var(--app-border); }
+
+/* --- apply, banners, history (step 1b) -------------------------------------------------- */
+.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.55rem 1rem; border-bottom: 1px solid var(--app-border); }
+.banner > span { flex: 1 1 20rem; }
+.banner button { margin: 0; width: auto; }
+.banner.error, .banner.job.failed { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.banner.warn, .banner.job.rolled-back, .banner.job.refused { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.banner.job.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
+.banner.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
+.banner a { color: inherit; text-decoration: underline; }
+.banner[hidden], .flash[hidden] { display: none; }
+.flash.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
+.statusbar.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.err-text { color: var(--app-deny-fg); font-weight: 600; }
+.statusbar.bad .err-text, .statusbar.bad .ok-text { color: inherit; }
+
+.apply-progress { margin-top: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); background: var(--pico-card-background-color); }
+.apply-progress h2 { margin-top: 0; }
+.apply-progress.applied { border-color: var(--app-2fa-fg); }
+.apply-progress.rolled-back, .apply-progress.refused { border-color: var(--app-warn-fg); }
+.apply-progress.failed { border-color: var(--app-deny-fg); }
+ol.steps { list-style: none; padding: 0; margin: 0 0 1rem; }
+ol.steps li { padding: 0.2rem 0; }
+ol.steps .mark { display: inline-block; width: 1.4rem; text-align: center; font-weight: 700; }
+ol.steps li.done .mark { color: var(--app-ok-fg); }
+ol.steps li.failed .mark { color: var(--app-deny-fg); }
+ol.steps li.running { font-weight: 600; }
+ol.steps li.skipped, ol.steps li.pending { color: var(--pico-muted-color); }
+.result-message { font-size: 1.05rem; }
+
+table.history { margin: 0; font-size: 0.92rem; }
+table.history td, table.history th { vertical-align: top; padding: 0.5rem 0.6rem; }
+table.history details { margin: 0.3rem 0 0; }
+table.history details summary { cursor: pointer; color: var(--pico-primary); }
+table.history details summary::after { display: none; }
+table.history pre.diff { margin: 0.4rem 0 0; }
+.result-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.78rem; font-weight: 700; background: var(--app-hunk-bg); }
+.result-badge.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
+.result-badge.rolled-back, .result-badge.rollback { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+@container main (max-width: 760px) { table.history td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4rem; font-size: 0.72rem; text-transform: uppercase; color: var(--pico-muted-color); } }
+@media (max-width: 720px) {
+  table.history, table.history tbody { display: block; }
+  table.history thead { display: none; }
+  table.history tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; }
+  table.history td { display: block; padding: 0.1rem 0; border: 0; }
+  table.history td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4rem; font-size: 0.72rem; text-transform: uppercase; color: var(--pico-muted-color); }
+  .table-scroll { border: 0; }
+}
+
+/* history: fixed layout so a long diff scrolls inside its cell instead of widening the table */
+.nowrap { white-space: nowrap; }
+table.history:not(.audit) { table-layout: fixed; width: 100%; }
+table.history:not(.audit) .h-time { width: 8.5rem; }
+table.history:not(.audit) .h-author { width: 9.5rem; overflow-wrap: anywhere; }
+table.history:not(.audit) .h-result { width: 11rem; }
+table.history:not(.audit) .h-actions { width: 9rem; }
+table.history td { overflow-wrap: anywhere; }
+table.history pre.diff { max-width: 100%; overflow: auto; }
+table.history .col-actions { text-align: right; }
+table.history .col-actions button { white-space: nowrap; margin: 0; width: auto; }
+@media (max-width: 720px) {
+  table.history:not(.audit) { table-layout: auto; }
+  table.history .col-actions { text-align: left; padding-top: 0.4rem; }
+}

@@ -21,25 +21,34 @@
         <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
         <span class="soon" title="Arrives in a later phase">OIDC Clients</span>
         <span class="soon" title="Arrives in a later phase">Users</span>
-        <span class="soon" title="Arrives in step 1b">History</span>
+        <a href="/history" {% if active|default('rules') == 'history' %}aria-current="page"{% endif %}>History</a>
       </nav>
       <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>
     </div>
   </header>
 
   <div id="draftbar">{% include "partials/draftbar.html" %}</div>
+  {% include "partials/banners.html" %}
 
   <main class="container-fluid">
     <div id="flash" class="flash" role="status" aria-live="polite"></div>
+    <p id="restart-note" class="flash info" role="status" hidden>
+      Authelia is restarting and will sign you out. You will be asked to sign in again; the result
+      of the apply is shown right after.
+    </p>
     {% block content %}{% endblock %}
   </main>
 
   <div id="modal"></div>
 
-  <footer class="statusbar">
-    <span>Authelia running: <strong>unknown</strong> <small>(checked from step 1b)</small></span>
-    <span>bundled <strong>{{ bundled_version }}</strong></span>
-    <span>last apply: <strong>none</strong></span>
+  <footer class="statusbar{% if runtime.bad %} bad{% endif %}">
+    <span>Authelia running: <strong>{{ runtime.running_version or 'unknown' }}</strong>
+      {% if runtime.healthy %}<span class="ok-text">&#10003; healthy</span>
+      {% elif runtime.healthy is false %}<span class="err-text">&#10007; not healthy</span>
+      {% else %}<small>(cannot be determined)</small>{% endif %}</span>
+    <span>bundled <strong>{{ bundled_version }}</strong>
+      {% if runtime.running_version %}{% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003; matches</span>{% endif %}{% endif %}</span>
+    <span>last apply: {% if last_job and last_job.done %}<strong>{{ last_job.finished|utc }}</strong> ({{ last_job.result }}){% else %}<strong>none</strong>{% endif %}</span>
   </footer>
 </body>
 </html>

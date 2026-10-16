@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e.auth import BASE, login
-from tests.e2e.conftest import live_rules, open_rules, rule_number
+from tests.e2e.conftest import AliceSession, live_rules, open_rules, rule_number
 
 pytestmark = pytest.mark.e2e
 
@@ -32,19 +30,19 @@ def test_non_admin_is_denied(browser: Browser, stack: dict[str, str]) -> None:
 
 
 def test_valid_admin_is_still_denied_from_a_disallowed_network(
-    browser: Browser, alice_state: dict[str, Any]
+    browser: Browser, alice_state: AliceSession
 ) -> None:
     """locked.example.test allows only 192.0.2.0/24: Authelia lets alice in, the app says no."""
-    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state)  # type: ignore[arg-type]
+    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state.state())  # type: ignore[arg-type]
     response = context.new_page().goto("https://locked.example.test:8444/rules")
     context.close()
     assert response is not None and response.status == 403
 
 
 def test_configurator_is_not_routable_on_the_public_entrypoint(
-    browser: Browser, alice_state: dict[str, Any]
+    browser: Browser, alice_state: AliceSession
 ) -> None:
-    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state)  # type: ignore[arg-type]
+    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state.state())  # type: ignore[arg-type]
     response = context.new_page().goto("https://authcfg.example.test:8443/rules")
     context.close()
     assert response is not None and response.status == 404
@@ -86,7 +84,7 @@ def test_reorder_with_buttons_then_review_and_discard(admin: Page) -> None:
     expect(admin.get_by_text("Authelia accepts the draft")).to_be_visible()
     # regression: the app's own AUTHELIA_* variables must not leak into the validator
     expect(admin.get_by_text("environment variable not expected")).to_have_count(0)
-    expect(admin.get_by_role("button", name="Validate & apply")).to_be_disabled()
+    expect(admin.get_by_role("button", name="Validate & apply")).to_be_enabled()  # not clicked
 
     admin.get_by_role("button", name="Discard").click()
     admin.get_by_role("button", name="Discard draft").click()

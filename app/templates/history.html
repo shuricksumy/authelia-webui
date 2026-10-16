@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<h1>History</h1>
+{% if not rows %}
+  <article class="empty"><p>Nothing has been applied yet. Changes you apply appear here, each as a git commit you can inspect and revert to.</p></article>
+{% else %}
+<div class="table-scroll">
+  <table class="history">
+    <thead><tr><th class="h-time">Time (UTC)</th><th class="h-author">Author</th><th>Change</th><th class="h-result">Result</th><th class="col-actions h-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td data-label="Time" class="nowrap">{{ r.when }}</td>
+        <td data-label="Author">{{ r.commit.author }}</td>
+        <td data-label="Change">{{ r.commit.subject }} <small class="muted"><code>{{ r.commit.short }}</code></small>
+          <details><summary>Show diff</summary>
+            <div hx-get="/history/{{ r.commit.sha }}/diff" hx-trigger="intersect once" hx-swap="innerHTML"><span class="muted">Loading&hellip;</span></div>
+          </details></td>
+        <td data-label="Result"><span class="result-badge {{ r.kind }}">{{ r.label }}</span>{% if r.current %} <small class="muted">(live)</small>{% endif %}</td>
+        <td class="col-actions">{% if not r.current %}<button type="button" class="outline small" title="Load this version into the draft and open the review" hx-post="/history/{{ r.commit.sha }}/revert">Revert to this</button>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted"><small>"Revert to this version" loads it into the draft and opens the review, so it goes through the same checks and the same safe apply as any change.</small></p>
+{% endif %}
+
+<h2>Audit log</h2>
+{% if not audit %}<p class="muted">No entries yet.</p>{% else %}
+<div class="table-scroll">
+  <table class="history audit">
+    <thead><tr><th class="h-time">Time (UTC)</th><th>User</th><th>From</th><th>Action</th><th>Result</th><th>Commit</th></tr></thead>
+    <tbody>
+      {% for e in audit %}
+      <tr><td data-label="Time" class="nowrap">{{ e.ts|utc }}</td><td data-label="User">{{ e.user }}</td><td data-label="From">{{ e.client_ip }}</td>
+        <td data-label="Action">{{ e.action }}</td><td data-label="Result">{{ e.result }}</td>
+        <td data-label="Commit">{% if e.commit %}<code>{{ e.commit[:7] }}</code>{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
