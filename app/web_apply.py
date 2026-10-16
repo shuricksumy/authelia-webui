@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, Response
 
 from app.apply import audit
@@ -20,7 +21,7 @@ from app.apply.engine import ApplyRequest
 from app.apply.jobs import Job
 from app.apply.repo import Commit, RepoError
 from app.rules.document import DocumentError, RulesDocument
-from app.rules.store import LIVE_NAME, sha256
+from app.rules.store import LIVE_NAME, StaleDraftError, sha256
 from app.security import identity_of
 from app.ui import diff_lines
 from app.web import (
@@ -51,15 +52,23 @@ async def start_apply(request: Request) -> Response:
     except Conflict as exc:
         return conflict_response(exc)
     identity = identity_of(request.state)
-    with services.start_lock:
-        reasons = services.engine.preconditions(rev=v.rev)
-        if reasons:
-            return render(v, "partials/apply_refused.html", status=422, reasons=reasons)
-        job = services.board.new(identity.username)
-        apply_request = ApplyRequest(identity.username, str(identity.client_ip), v.rev)
-        threading.Thread(
-            target=services.engine.apply, args=(apply_request, job), name="apply", daemon=True
-        ).start()
+    apply_request = ApplyRequest(identity.username, str(identity.client_ip), v.rev)
+
+    def check_and_start() -> list[str]:
+        # Blocking (container inspect, lint, file I/O): runs in a worker thread, not on the loop.
+        with services.start_lock:
+            reasons = services.engine.preconditions(rev=v.rev)
+            if not reasons:
+                job = services.board.new(identity.username)
+                threading.Thread(
+                    target=services.engine.apply, args=(apply_request, job), name="apply",
+                    daemon=True,
+                ).start()  # fmt: skip
+            return reasons
+
+    reasons = await run_in_threadpool(check_and_start)
+    if reasons:
+        return render(v, "partials/apply_refused.html", status=422, reasons=reasons)
     return render(v, "partials/apply_progress.html", **_progress_context(services.board.snapshot()))
 
 
@@ -171,7 +180,7 @@ async def revert_to(request: Request, sha: str) -> Response:
         v.store.save(target, expected_sha=sha256(v.doc.render()))
     except Conflict as exc:
         return conflict_response(exc)
-    except Exception:
+    except (StaleDraftError, OSError):
         return conflict_response(Conflict(STALE))
     identity = identity_of(request.state)
     audit.append(

@@ -52,6 +52,7 @@ class ManagedRepo:
             "LANG": "C.UTF-8",
             "HOME": str(self.path),  # git refuses to run without one; nothing is read from it
             "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_TERMINAL_PROMPT": "0",
         }
         identity = author or "authelia-configurator"
@@ -60,6 +61,7 @@ class ManagedRepo:
             "git", "-C", str(self.path),
             "-c", f"user.name={identity}", "-c", f"user.email={email}",
             "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null",
+            "-c", "core.fsmonitor=false",
             "-c", f"safe.directory={self.path}",
             *args,
         ]  # fmt: skip
@@ -78,11 +80,17 @@ class ManagedRepo:
     def is_repo(self) -> bool:
         return (self.path / ".git").is_dir()
 
+    def has_commits(self) -> bool:
+        return self.is_repo() and bool(self._git("rev-parse", "--verify", "-q", "HEAD",
+                                                 check=False).strip())  # fmt: skip
+
     def ensure(self, files: Sequence[str]) -> bool:
-        """Create the repository and commit `files` as the initial import. True if created."""
-        if self.is_repo():
+        """Create the repository and commit `files` as the initial import. True if created.
+        Also completes a repository whose first commit never happened (e.g. a crash)."""
+        if self.has_commits():
             return False
-        self._git("init", "-q", "-b", "main")
+        if not self.is_repo():
+            self._git("init", "-q", "-b", "main")
         (self.path / ".gitignore").write_text(GITIGNORE)
         present = [f for f in files if (self.path / f).is_file()]
         self._git("add", "--", ".gitignore", *present)
@@ -133,11 +141,13 @@ class ManagedRepo:
     def diff(self, sha: str, path: str) -> str:
         """Diff of one file in one commit (no other file contents are ever read)."""
         self._check_sha(sha)
-        return self._git("show", "--format=", "--no-color", sha, "--", path)
+        # no external diff drivers or textconv filters: .gitattributes is a tracked file
+        return self._git("show", "--format=", "--no-color", "--no-ext-diff", "--no-textconv",
+                         sha, "--", path)  # fmt: skip
 
     def file_at(self, sha: str, path: str) -> str:
         self._check_sha(sha)
-        return self._git("show", f"{sha}:{path}")
+        return self._git("show", "--no-textconv", f"{sha}:{path}")
 
     def _check_sha(self, sha: str) -> None:
         if not (7 <= len(sha) <= 40 and all(c in "0123456789abcdef" for c in sha)):

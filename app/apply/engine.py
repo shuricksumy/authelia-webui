@@ -128,6 +128,11 @@ class ApplyEngine:
         reasons: list[str] = []
         if self.board.running():
             reasons.append("Another apply is running.")
+        elif self._marker().exists():
+            reasons.append(
+                "An earlier apply did not finish cleanly. Restart the configurator so it can "
+                "resolve it (it checks Authelia and rolls back if needed), then review again."
+            )
         if not self.store.has_draft():
             return [*reasons, "There are no unapplied changes."]
         if self.store.is_stale():
@@ -227,6 +232,11 @@ class ApplyEngine:
         try:
             self.runtime.restart()
         except RuntimeUnavailable as exc:
+            if self._restarted_since(before):
+                # The call failed (e.g. timed out) but Docker did restart it: the new file is
+                # what Authelia loaded, so carry on with the health check instead of reverting.
+                board.update(job, "restart", "done", f"restarted (the call reported: {exc})")
+                return self._health_or_rollback(job, request, text, before, commit)
             # Authelia never loaded the new file: undo the commit so file == running config.
             self.repo.revert_head(f"could not restart Authelia ({exc})", author=request.user)
             self._marker().unlink(missing_ok=True)
@@ -237,7 +247,17 @@ class ApplyEngine:
                          "is back in your draft.", "apply", commit)  # fmt: skip
             return
         board.update(job, "restart", "done")
+        self._health_or_rollback(job, request, text, before, commit)
 
+    def _restarted_since(self, previous_started_at: str) -> bool:
+        try:
+            return self.runtime.inspect(timeout_s=5).started_at != previous_started_at
+        except RuntimeUnavailable:
+            return False  # cannot tell: treat as not restarted (the file is reverted)
+
+    def _health_or_rollback(self, job: Job, request: ApplyRequest, text: str, before: str,
+                            commit: str) -> None:  # fmt: skip
+        board = self.board
         board.update(job, "health", "running")
         health = self._wait(before)
         if health.healthy:
@@ -287,9 +307,23 @@ class ApplyEngine:
     # ------------------------------------------------------------------ recovery
 
     def recover(self) -> str | None:
-        """Called at startup: resolve an apply interrupted by a crash. Returns a summary."""
+        """Called at startup: resolve an apply interrupted by a crash. Returns a summary.
+
+        Holds the apply lock: if another live process (a second instance, or this app before a
+        reload) is still applying, its marker is not a crash and must not be touched. A process
+        that died has released its flock, so a real crash is always recoverable.
+        """
+        if not self._marker().exists():
+            return None
+        try:
+            with self._exclusive():
+                return self._recover()
+        except Refused:
+            return None  # another apply is in progress; it will finish its own work
+
+    def _recover(self) -> str | None:
         marker = self._marker()
-        if not marker.exists():
+        if not marker.exists():  # finished while we waited for nothing (non-blocking lock)
             return None
         try:
             data = json.loads(marker.read_text())
@@ -352,7 +386,15 @@ class ApplyEngine:
         if path is None:
             return []
         try:
-            lines = path.read_text(errors="replace").splitlines()[-200:]
+            with path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                start = max(0, size - 65536)  # only the tail: logs can be gigabytes
+                handle.seek(start)
+                lines = handle.read().decode("utf-8", errors="replace").splitlines()
+                if start > 0:
+                    lines = lines[1:]  # the first line was cut in the middle by the seek
+                lines = lines[-200:]
         except OSError:
             return []
         out = []

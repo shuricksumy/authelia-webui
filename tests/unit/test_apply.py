@@ -397,3 +397,102 @@ def test_snapshot_is_a_consistent_copy_of_a_job_that_keeps_changing(env: dict[st
     later = board.snapshot()
     assert later is not None and later.done and later.step("restart").status == "done"
     assert later is not board.current()
+
+
+# --------------------------------------------------------------------- review findings (Opus)
+
+
+def _mid_apply_state(env: dict[str, Any]) -> tuple[ApplyEngine, str]:
+    """A committed but unfinished apply with its marker, as left by a crash or still running."""
+    engine, _, _ = make(env, [False, True])
+    engine.repo.ensure(["access_control.yml"])
+    old = engine.repo.head()
+    path = env["managed"] / "access_control.yml"
+    path.write_text(path.read_text() + "# in-flight change\n")
+    engine.repo.commit(["access_control.yml"], "Rules: updated", "", "alice")
+    (env["managed"] / ".apply").mkdir(exist_ok=True)
+    (env["managed"] / ".apply" / "in-progress.json").write_text(
+        json.dumps({"old_head": old, "started_at": "start-0", "user": "alice"})
+    )
+    return engine, old
+
+
+def test_recovery_never_touches_an_apply_another_process_is_running(env: dict[str, Any]) -> None:
+    """Two instances share the managed dir (or the app reloads mid-apply): a live apply holds the
+    lock, so its marker is not a crash. Before the fix the other instance rolled it back."""
+    engine, _ = _mid_apply_state(env)
+    with open(env["managed"] / ".apply" / "lock", "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        assert engine.recover() is None
+    assert "# in-flight change" in live(env)
+    assert (env["managed"] / ".apply" / "in-progress.json").exists()
+    assert engine.runtime.restarts == 0  # type: ignore[attr-defined]
+
+
+def test_an_unfinished_apply_blocks_further_applies_until_recovered(env: dict[str, Any]) -> None:
+    engine, _ = _mid_apply_state(env)
+    env["store"].save(env["store"].current().delete(5))
+    reasons = " ".join(engine.preconditions())
+    assert "did not finish cleanly" in reasons
+    assert engine.recover() is not None  # lock is free: a real crash is resolved
+    assert "did not finish cleanly" not in " ".join(engine.preconditions())
+
+
+@dataclass
+class RestartTimesOutButHappens(FakeRuntime):
+    def restart(self, grace_s: int = 10) -> None:
+        self.restarts += 1
+        self.starts += 1  # Docker did restart it ...
+        raise RuntimeUnavailable("socket proxy unreachable (ReadTimeout)")  # ... the call timed out
+
+
+def test_restart_call_error_after_a_real_restart_is_not_reverted_blindly(
+    env: dict[str, Any],
+) -> None:
+    """Reverting the file while Authelia already runs the new one would leave them out of sync."""
+    rev = draft_move(env)
+    draft_text = env["store"].current().render()
+    engine, _, waiter = make(env, [True], runtime=RestartTimesOutButHappens())
+    job = run(engine, rev)
+    assert job.result == "applied", job.message
+    assert live(env) == draft_text and waiter.calls == ["start-0"]
+    assert "Rollback" not in git(env["managed"], "log", "--format=%s")
+
+
+def test_git_never_runs_diff_drivers_or_textconv_from_the_managed_dir(tmp_path: Path) -> None:
+    """.gitattributes is a tracked file; a configured textconv/diff driver must not execute."""
+    (tmp_path / "access_control.yml").write_text("a: 1\n")
+    repo = ManagedRepo(tmp_path, "authcfg.example.com")
+    repo.ensure(["access_control.yml"])
+    canary = tmp_path / "executed"
+    (tmp_path / ".gitattributes").write_text("*.yml diff=evil\n")
+    subprocess.run(["git", "-C", str(tmp_path), "config", "diff.evil.textconv",
+                    f"touch {canary}; cat"], check=True)  # fmt: skip
+    subprocess.run(["git", "-C", str(tmp_path), "config", "diff.evil.command",
+                    f"touch {canary}"], check=True)  # fmt: skip
+    (tmp_path / "access_control.yml").write_text("a: 2\n")
+    sha = repo.commit(["access_control.yml", ".gitattributes"], "Rules: updated", "", "bob")
+    assert "+a: 2" in repo.diff(sha, "access_control.yml")
+    assert repo.file_at(sha, "access_control.yml") == "a: 2\n"
+    assert not canary.exists()
+
+
+def test_ensure_completes_a_repository_without_commits(tmp_path: Path) -> None:
+    (tmp_path / "access_control.yml").write_text("a: 1\n")
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)  # crashed before 1st commit
+    repo = ManagedRepo(tmp_path, "authcfg.example.com")
+    assert repo.is_repo() and not repo.has_commits()
+    assert repo.ensure(["access_control.yml"]) is True
+    assert repo.has_commits() and repo.log()[0].subject.startswith("Initial import")
+
+
+def test_authelia_log_excerpt_reads_only_the_tail_of_a_large_log(env: dict[str, Any]) -> None:
+    log = env["settings"].AUTHELIA_LOG_FILE
+    filler = json.dumps({"level": "info", "msg": "x" * 200}) + "\n"
+    with log.open("w") as handle:
+        handle.write(json.dumps({"level": "error", "msg": "old error far away"}) + "\n")
+        handle.write(filler * 2000)  # ~0.4 MB
+        handle.write(json.dumps({"level": "error", "msg": "the recent error"}) + "\n")
+    engine, _, _ = make(env)
+    errors = engine._authelia_errors()
+    assert errors == ["the recent error"]
