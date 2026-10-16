@@ -21,7 +21,7 @@ from app.apply.engine import ApplyRequest
 from app.apply.jobs import Job
 from app.apply.repo import Commit, RepoError
 from app.rules.document import DocumentError, RulesDocument
-from app.rules.store import LIVE_NAME, StaleDraftError, sha256
+from app.rules.store import LIVE_NAME, StaleDraftError
 from app.security import identity_of
 from app.ui import diff_lines
 from app.web import (
@@ -177,7 +177,7 @@ async def revert_to(request: Request, sha: str) -> Response:
             raise Conflict("That version could not be loaded.", 422) from None
         if text == v.store.live_text():
             raise Conflict("That version is already live.", 422)
-        v.store.save(target, expected_sha=sha256(v.doc.render()))
+        v.store.save(target, expected_sha=v.sha)
     except Conflict as exc:
         return conflict_response(exc)
     except (StaleDraftError, OSError):

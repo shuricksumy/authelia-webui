@@ -29,6 +29,7 @@ from app.apply.jobs import Job, JobBoard
 from app.apply.repo import ManagedRepo, RepoError
 from app.apply.runtime import AutheliaRuntime, RuntimeUnavailable
 from app.authelia_cli import ValidationResult, redact
+from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.lint import blocking, lint
 from app.rules.protected import check_protected
@@ -38,7 +39,6 @@ from app.rules.store import (
     StaleDraftError,
     load_main_definitions,
     load_users,
-    sha256,
 )
 from app.settings import Settings, VersionMismatch
 
@@ -143,7 +143,7 @@ class ApplyEngine:
             doc = self.store.current()
         except DocumentError as exc:
             return [*reasons, str(exc)]
-        if rev is not None and rev != sha256(doc.render())[:16]:
+        if rev is not None and rev != self.store.current_sha()[:16]:
             reasons.append("The draft changed since you reviewed it. Review it again.")
         if self.repo.is_repo() and self.repo.is_dirty():
             reasons.append(
@@ -187,6 +187,8 @@ class ApplyEngine:
         self.repo.ensure(TRACKED)
         doc = self.store.current()
         text = doc.render()
+        disabled_text = self.store.current_disabled().render()
+        expected_state = self.store.current_sha()
         changes = self.store.changes()
 
         board.update(job, "validate", "running")
@@ -209,17 +211,27 @@ class ApplyEngine:
         old_head = self.repo.head()
         try:
             with self.store.locked():
-                if sha256(self.store.current().render()) != sha256(text):
+                if self.store.current_sha() != expected_state:
                     raise Refused("The draft changed while applying. Review it again.")
                 self._write_marker({"old_head": old_head, "started_at": before,
                                     "user": request.user})  # fmt: skip
+                paths = [LIVE_NAME]
+                if disabled_text != self.store.live_disabled_text():
+                    # Authelia never reads this file; written first, committed together.
+                    disabled_path = self.managed / DISABLED_NAME
+                    if disabled_text:
+                        self._atomic_write(disabled_path, disabled_text)
+                    else:
+                        disabled_path.unlink(missing_ok=True)
+                    paths.append(DISABLED_NAME)
                 self._atomic_write(self.managed / LIVE_NAME, text)
                 try:
                     commit = self.repo.commit(
-                        [LIVE_NAME], _subject(changes), _body(request), author=request.user
+                        paths, _subject(changes), _body(request), author=request.user
                     )
                 except RepoError:
-                    self.repo.restore(LIVE_NAME)  # put the committed file back
+                    for path in paths:  # put the committed files back
+                        self.repo.restore(path)
                     self._marker().unlink(missing_ok=True)
                     raise Refused("Saving to git failed; the live file was restored.") from None
                 self.store.discard_unlocked()
@@ -236,18 +248,18 @@ class ApplyEngine:
                 # The call failed (e.g. timed out) but Docker did restart it: the new file is
                 # what Authelia loaded, so carry on with the health check instead of reverting.
                 board.update(job, "restart", "done", f"restarted (the call reported: {exc})")
-                return self._health_or_rollback(job, request, text, before, commit)
+                return self._health_or_rollback(job, request, text, before, commit, disabled_text)
             # Authelia never loaded the new file: undo the commit so file == running config.
             self.repo.revert_head(f"could not restart Authelia ({exc})", author=request.user)
             self._marker().unlink(missing_ok=True)
             board.update(job, "restart", "failed", str(exc))
-            self._restore_draft(text)
+            self._restore_draft(text, disabled_text)
             self._finish(job, request, "rolled-back",
                          f"Authelia could not be restarted ({exc}); the change was undone and "
                          "is back in your draft.", "apply", commit)  # fmt: skip
             return
         board.update(job, "restart", "done")
-        self._health_or_rollback(job, request, text, before, commit)
+        self._health_or_rollback(job, request, text, before, commit, disabled_text)
 
     def _restarted_since(self, previous_started_at: str) -> bool:
         try:
@@ -256,7 +268,7 @@ class ApplyEngine:
             return False  # cannot tell: treat as not restarted (the file is reverted)
 
     def _health_or_rollback(self, job: Job, request: ApplyRequest, text: str, before: str,
-                            commit: str) -> None:  # fmt: skip
+                            commit: str, disabled_text: str | None = None) -> None:  # fmt: skip
         board = self.board
         board.update(job, "health", "running")
         health = self._wait(before)
@@ -267,10 +279,10 @@ class ApplyEngine:
             self._finish(job, request, "applied", "Applied. Authelia is healthy.", "apply", commit)
             return
         board.update(job, "health", "failed", health.reason)
-        self._rollback(job, request, text, health.reason, commit)
+        self._rollback(job, request, text, health.reason, commit, disabled_text)
 
     def _rollback(self, job: Job, request: ApplyRequest, failed_text: str, reason: str,
-                  commit: str) -> None:  # fmt: skip
+                  commit: str, failed_disabled: str | None = None) -> None:  # fmt: skip
         board = self.board
         board.update(job, "rollback", "running")
         details = self._authelia_errors()
@@ -292,7 +304,7 @@ class ApplyEngine:
                          "rolling back. " + RECOVERY_HINT, "rollback", revert)  # fmt: skip
             return
         self._marker().unlink(missing_ok=True)
-        self._restore_draft(failed_text)
+        self._restore_draft(failed_text, failed_disabled)
         board.update(job, "rollback", "done", "previous version restored", details=details)
         self._finish(job, request, "rolled-back",
                      f"{reason} The previous version is live again; your change is back in the "
@@ -362,9 +374,10 @@ class ApplyEngine:
             result=result, commit=(commit or job.commit)[:12], summary=message[:200],
         ))  # fmt: skip
 
-    def _restore_draft(self, text: str) -> None:
+    def _restore_draft(self, text: str, disabled_text: str | None = None) -> None:
         with contextlib.suppress(DocumentError, StaleDraftError, OSError):
-            self.store.save(RulesDocument.parse(text))
+            disabled = DisabledRules.parse(disabled_text) if disabled_text is not None else None
+            self.store.save(RulesDocument.parse(text), disabled=disabled)
 
     def _atomic_write(self, path: Path, text: str) -> None:
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".apply-")
@@ -420,6 +433,12 @@ def _subject(changes: Any) -> str:
         parts.append("order changed")
     if changes.default_policy_changed:
         parts.append("default policy changed")
+    if changes.disabled:
+        parts.append(f"{changes.disabled} disabled")
+    if changes.enabled:
+        parts.append(f"{changes.enabled} enabled")
+    if changes.deleted_disabled:
+        parts.append(f"{changes.deleted_disabled} disabled rule(s) deleted")
     return "Rules: " + (", ".join(parts) if parts else "updated")
 
 

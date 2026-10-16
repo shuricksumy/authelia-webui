@@ -271,6 +271,29 @@ class RulesDocument:
         blocks.insert(index, block)
         return replace(self, blocks=tuple(blocks))
 
+    def insert_block(self, index: int, block: RuleBlock) -> RulesDocument:
+        """Insert an existing block verbatim (re-enabling a disabled rule). If the document uses a
+        different dash column, the rule is re-serialised at that column (note kept)."""
+        index = max(0, min(index, len(self.blocks)))
+        dash = self.blocks[0].dash_col if self.blocks else _default_dash(self.prefix)
+        if block.dash_col != dash:
+            block = _new_block(block.node(), dash, block.note)
+        lines = list(block.lines)
+        while lines and not lines[-1].strip():
+            lines.pop()
+        blocks = list(self.blocks)
+        suffix = self.suffix
+        if index < len(blocks):
+            lines.append("")  # a blank line separates it from the rule that follows
+        elif blocks and blocks[-1].lines and blocks[-1].lines[-1].strip():
+            # Appended at the end: the separator goes after the previous last rule. After a
+            # save/re-parse that blank line sits at the start of the suffix: reuse it.
+            if suffix and not suffix[0].strip():
+                suffix = suffix[1:]
+            blocks[-1] = RuleBlock((*blocks[-1].lines, ""))
+        blocks.insert(index, RuleBlock(tuple(lines)))
+        return replace(self, blocks=tuple(blocks), suffix=suffix)
+
     def replace_rule(
         self, index: int, node: CommentedMap, note: str | None = None
     ) -> RulesDocument:

@@ -18,7 +18,7 @@ from app.apply.jobs import JobBoard
 from app.apply.repo import ManagedRepo, RepoError
 from app.apply.runtime import ContainerState, RuntimeUnavailable
 from app.authelia_cli import ValidationResult
-from app.rules.store import DraftStore, sha256
+from app.rules.store import DraftStore
 from app.settings import Settings
 from tests.unit.test_web import ACCESS_CONTROL
 
@@ -107,7 +107,7 @@ def draft_move(env: dict[str, Any]) -> str:
     """Create a valid draft (move rule 4 below rule 5) and return its revision."""
     store: DraftStore = env["store"]
     store.save(store.current().move(3, 4))
-    return sha256(store.current().render())[:16]
+    return store.current_sha()[:16]
 
 
 def run(engine: ApplyEngine, rev: str):  # type: ignore[no-untyped-def]
@@ -256,10 +256,10 @@ def test_blocking_lint_and_protected_violations(env: dict[str, Any]) -> None:
     bad = ACCESS_CONTROL.replace("'^/api/ping$'", "'^(?!/x).*$'")
     store.save(RulesDocument.parse(bad))
     engine, _, _ = make(env)
-    refused(env, engine, sha256(store.current().render())[:16], "blocking lint")
+    refused(env, engine, store.current_sha()[:16], "blocking lint")
     store.discard()
     store.save(store.current().delete(2))  # removes the explicit deny for the configurator
-    refused(env, engine, sha256(store.current().render())[:16], "Protected rules")
+    refused(env, engine, store.current_sha()[:16], "Protected rules")
 
 
 def test_version_mismatch_blocks_by_default_and_warn_allows(env: dict[str, Any]) -> None:

@@ -24,6 +24,7 @@ from typing import Any
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
+from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.lint import UsersInfo
 
@@ -64,6 +65,11 @@ def load_main_definitions(path: Path) -> dict[str, Any]:
     return {"definitions": definitions} if isinstance(definitions, dict) else {}
 
 
+def state_sha(doc: RulesDocument, disabled: DisabledRules) -> str:
+    """Revision of a draft state: both files, so any edit to either changes it."""
+    return sha256(doc.render() + "\0" + disabled.render())
+
+
 @dataclass(frozen=True)
 class ChangeSummary:
     added: int
@@ -71,20 +77,60 @@ class ChangeSummary:
     edited: int
     order_changed: bool
     default_policy_changed: bool
+    disabled: int = 0
+    enabled: int = 0
+    deleted_disabled: int = 0
+
+    @property
+    def count(self) -> int:
+        return (
+            self.added + self.removed + self.edited + self.disabled + self.enabled
+            + self.deleted_disabled + int(self.order_changed) + int(self.default_policy_changed)
+        )  # fmt: skip
 
     @property
     def any(self) -> bool:
-        return bool(
-            self.added or self.removed or self.edited or self.order_changed
-            or self.default_policy_changed
-        )  # fmt: skip
+        return self.count > 0
 
 
-def summarise(live: RulesDocument, draft: RulesDocument) -> ChangeSummary:
+def _stripped(lines: tuple[str, ...]) -> tuple[str, ...]:
+    out = list(lines)
+    while out and not out[-1].strip():
+        out.pop()
+    return tuple(out)
+
+
+def summarise(
+    live: RulesDocument,
+    draft: RulesDocument,
+    live_disabled: DisabledRules | None = None,
+    draft_disabled: DisabledRules | None = None,
+) -> ChangeSummary:
+    live_disabled = live_disabled or DisabledRules()
+    draft_disabled = draft_disabled or DisabledRules()
+    newly_disabled = Counter(e.lines for e in draft_disabled.entries) - Counter(
+        e.lines for e in live_disabled.entries
+    )
+    newly_enabled = Counter(e.lines for e in live_disabled.entries) - Counter(
+        e.lines for e in draft_disabled.entries
+    )
     live_blocks = Counter(b.lines for b in live.blocks)
     draft_blocks = Counter(b.lines for b in draft.blocks)
     gone = list((live_blocks - draft_blocks).elements())
     new = list((draft_blocks - live_blocks).elements())
+    # A rule that moved into the disabled list is "disabled", not "removed" (and vice versa).
+    disabled = enabled = 0
+    for lines in list(gone):
+        if newly_disabled[_stripped(lines)] > 0:
+            newly_disabled[_stripped(lines)] -= 1
+            gone.remove(lines)
+            disabled += 1
+    for lines in list(new):
+        if newly_enabled[_stripped(lines)] > 0:
+            newly_enabled[_stripped(lines)] -= 1
+            new.remove(lines)
+            enabled += 1
+    deleted_disabled = sum(newly_enabled.values())  # left the disabled list, not re-enabled
 
     def domain(lines: tuple[str, ...]) -> tuple[str, ...]:
         return tuple(sorted(_safe_domain(lines)))
@@ -96,15 +142,18 @@ def summarise(live: RulesDocument, draft: RulesDocument) -> ChangeSummary:
         if key in pool:
             pool.remove(key)
             edited += 1
-    order_changed = (
-        not gone and not new and [b.lines for b in live.blocks] != [b.lines for b in draft.blocks]
-    )
+    remaining = [b.lines for b in draft.blocks if b.lines in live_blocks]
+    original = [b.lines for b in live.blocks if b.lines in draft_blocks]
+    order_changed = not gone and not new and remaining != original
     return ChangeSummary(
         added=len(new) - edited,
         removed=len(gone) - edited,
         edited=edited,
         order_changed=order_changed,
         default_policy_changed=live.default_policy() != draft.default_policy(),
+        disabled=disabled,
+        enabled=enabled,
+        deleted_disabled=deleted_disabled,
     )
 
 
@@ -128,6 +177,8 @@ class DraftStore:
         self.live_path = managed_dir / LIVE_NAME
         self.draft_dir = managed_dir / ".draft"
         self.draft_path = self.draft_dir / LIVE_NAME
+        self.disabled_live_path = managed_dir / DISABLED_NAME
+        self.disabled_draft_path = self.draft_dir / DISABLED_NAME
         self.meta_path = self.draft_dir / "meta.json"
 
     # ------------------------------------------------------------------ reading
@@ -138,6 +189,15 @@ class DraftStore:
     def live(self) -> RulesDocument:
         return RulesDocument.parse(self.live_text())
 
+    def live_disabled_text(self) -> str:
+        try:
+            return self.disabled_live_path.read_text()
+        except FileNotFoundError:
+            return ""
+
+    def live_disabled(self) -> DisabledRules:
+        return DisabledRules.parse(self.live_disabled_text())
+
     def has_draft(self) -> bool:
         return self.draft_path.is_file()
 
@@ -147,31 +207,50 @@ class DraftStore:
             self.draft_path.read_text() if self.has_draft() else self.live_text()
         )
 
+    def current_disabled(self) -> DisabledRules:
+        if self.has_draft() and self.disabled_draft_path.is_file():
+            return DisabledRules.parse(self.disabled_draft_path.read_text())
+        return self.live_disabled()
+
+    def _bases(self) -> dict[str, str]:
+        return {
+            "base_sha256": sha256(self.live_text()),
+            "base_disabled_sha256": sha256(self.live_disabled_text()),
+        }
+
     def is_stale(self) -> bool:
         if not self.has_draft():
             return False
         try:
-            base = json.loads(self.meta_path.read_text())["base_sha256"]
-        except (OSError, ValueError, KeyError):
+            meta = json.loads(self.meta_path.read_text())
+        except (OSError, ValueError):
             return True
-        return bool(base != sha256(self.live_text()))
+        bases = self._bases()
+        if meta.get("base_sha256") != bases["base_sha256"]:
+            return True
+        # drafts from before disabled rules existed only recorded the rules file
+        recorded = meta.get("base_disabled_sha256")
+        return recorded is not None and recorded != bases["base_disabled_sha256"]
 
     def changes(self) -> ChangeSummary:
-        return summarise(self.live(), self.current())
+        return summarise(self.live(), self.current(), self.live_disabled(), self.current_disabled())
 
     def diff(self) -> str:
-        live = self.live_text().splitlines(keepends=True)
-        draft = self.current().render().splitlines(keepends=True)
-        return "".join(
-            difflib.unified_diff(
-                live, draft, "access_control.yml (live)", "access_control.yml (draft)"
-            )
-        )
+        parts = []
+        for name, live, draft in (
+            (LIVE_NAME, self.live_text(), self.current().render()),
+            (DISABLED_NAME, self.live_disabled_text(), self.current_disabled().render()),
+        ):
+            parts.append("".join(difflib.unified_diff(
+                live.splitlines(keepends=True), draft.splitlines(keepends=True),
+                f"{name} (live)", f"{name} (draft)",
+            )))  # fmt: skip
+        return "".join(parts)
 
     # ------------------------------------------------------------------ writing the draft only
 
     def current_sha(self) -> str:
-        return sha256(self.current().render())
+        return state_sha(self.current(), self.current_disabled())
 
     def locked(self) -> contextlib.AbstractContextManager[None]:
         """Hold the draft lock (used by apply while it writes the live file)."""
@@ -192,21 +271,29 @@ class DraftStore:
             finally:
                 fcntl.flock(handle, fcntl.LOCK_UN)
 
-    def save(self, doc: RulesDocument, expected_sha: str | None = None) -> None:
-        """Persist `doc` as the draft. An unchanged document removes the draft.
+    def save(
+        self,
+        doc: RulesDocument,
+        expected_sha: str | None = None,
+        disabled: DisabledRules | None = None,
+    ) -> None:
+        """Persist `doc` (and `disabled`, default: unchanged) as the draft. A draft identical to
+        the live files is removed.
 
-        With `expected_sha` (hash of the document the edit was based on) the write only happens
-        if nothing changed in between; otherwise StaleDraftError (no lost updates).
+        With `expected_sha` (state_sha of what the edit was based on) the write only happens if
+        nothing changed in between; otherwise StaleDraftError (no lost updates).
         """
         with self._locked():
             if expected_sha is not None and self.current_sha() != expected_sha:
                 raise StaleDraftError("the draft changed while this edit was being made")
-            text = doc.render()
-            if text == self.live_text():
+            disabled = disabled if disabled is not None else self.current_disabled()
+            text, disabled_text = doc.render(), disabled.render()
+            if text == self.live_text() and disabled_text == self.live_disabled_text():
                 self._discard_unlocked()
                 return
             if not self.has_draft() or not self.meta_path.exists():
-                self._atomic(self.meta_path, json.dumps({"base_sha256": sha256(self.live_text())}))
+                self._atomic(self.meta_path, json.dumps(self._bases()))
+            self._atomic(self.disabled_draft_path, disabled_text)
             self._atomic(self.draft_path, text)
 
     def discard(self, expected_sha: str | None = None) -> None:
@@ -216,7 +303,7 @@ class DraftStore:
             self._discard_unlocked()
 
     def _discard_unlocked(self) -> None:
-        for path in (self.draft_path, self.meta_path):
+        for path in (self.draft_path, self.disabled_draft_path, self.meta_path):
             path.unlink(missing_ok=True)
 
     def _atomic(self, path: Path, content: str) -> None:

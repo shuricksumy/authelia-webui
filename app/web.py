@@ -23,6 +23,7 @@ from ruamel.yaml.error import YAMLError
 from app.apply.services import ApplyServices
 from app.apply.validate import validate_candidate
 from app.authelia_cli import ValidationResult
+from app.rules.disabled import DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.form import FormError, RuleForm, apply_form
 from app.rules.lint import Issue, UsersInfo, blocking, lint
@@ -32,7 +33,7 @@ from app.rules.store import (
     StaleDraftError,
     load_main_definitions,
     load_users,
-    sha256,
+    state_sha,
 )
 from app.rules.tester import POLICIES, RequestObject, RuleTester, Subject
 from app.security import Identity, identity_of
@@ -71,10 +72,16 @@ class View:
     identity: Identity
     live: RulesDocument
     doc: RulesDocument
+    disabled: DisabledRules
+
+    @property
+    def sha(self) -> str:
+        """Revision of the whole draft state (rules + disabled rules)."""
+        return state_sha(self.doc, self.disabled)
 
     @property
     def rev(self) -> str:
-        return sha256(self.doc.render())[:16]
+        return self.sha[:16]
 
     @property
     def known_networks(self) -> frozenset[str]:
@@ -119,6 +126,7 @@ def load_view(request: Request) -> View:
         identity=identity_of(request.state),
         live=live,
         doc=doc,
+        disabled=store.current_disabled(),
     )
 
 
@@ -187,7 +195,7 @@ def require_rev(v: View, rev: str | None) -> None:
 STALE = "The draft changed in another tab or window. Reload the page and retry."
 
 
-def commit(v: View, new_doc: RulesDocument) -> None:
+def commit(v: View, new_doc: RulesDocument, disabled: DisabledRules | None = None) -> None:
     """Save `new_doc` as the draft unless it introduces a protected-rule violation.
 
     The save is a compare-and-swap against the document this view was built from, so two
@@ -199,7 +207,7 @@ def commit(v: View, new_doc: RulesDocument) -> None:
     if introduced:
         raise Conflict("Refused: this would weaken a protected rule. " + " ".join(introduced), 422)
     try:
-        v.store.save(new_doc, expected_sha=sha256(v.doc.render()))
+        v.store.save(new_doc, expected_sha=v.sha, disabled=disabled)
     except StaleDraftError:
         raise Conflict(STALE) from None
 
@@ -657,7 +665,7 @@ async def discard(request: Request) -> Response:
     v = load_view(request)
     try:
         require_rev(v, str(data.get("rev", "")))
-        v.store.discard(expected_sha=sha256(v.doc.render()))
+        v.store.discard(expected_sha=v.sha)
     except StaleDraftError:
         return conflict_response(Conflict(STALE))
     except Conflict as exc:
