@@ -63,20 +63,25 @@ Prober = Callable[[str, AccessCase, str], tuple[str, str]]
 Discovery = Callable[[str, str], str | None]
 
 
-def portal_host(main_config: Path, auth_domain: str) -> str:
-    """host[:port] of the portal as configured (session.cookies[].authelia_url). Authelia answers
-    OIDC requests only for exactly that host, port included; AUTH_DOMAIN when not found."""
+def portal_url(main_config: Path, auth_domain: str) -> str:
+    """The portal URL as configured (session.cookies[].authelia_url for AUTH_DOMAIN), without a
+    trailing slash. It is the OIDC issuer apps must use. https://AUTH_DOMAIN when not found."""
     try:
         data = YAML(typ="safe", pure=True).load(main_config.read_text())
     except (OSError, YAMLError):
-        return auth_domain
+        return f"https://{auth_domain}"
     session = data.get("session") if isinstance(data, dict) else None
     cookies = session.get("cookies") if isinstance(session, dict) else None
     for cookie in cookies if isinstance(cookies, list) else []:
         url = cookie.get("authelia_url") if isinstance(cookie, dict) else None
         if isinstance(url, str) and urlsplit(url).hostname == auth_domain:
-            return urlsplit(url).netloc
-    return auth_domain
+            return url.rstrip("/")
+    return f"https://{auth_domain}"
+
+
+def portal_host(main_config: Path, auth_domain: str) -> str:
+    """host[:port] of the portal. Authelia answers OIDC requests only for exactly that host."""
+    return urlsplit(portal_url(main_config, auth_domain)).netloc or auth_domain
 
 
 def oidc_discovery(authelia_url: str, host: str) -> str | None:

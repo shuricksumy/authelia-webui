@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, Response
 
 from app.apply import audit
+from app.apply.probe import portal_url
 from app.authelia_cli import AutheliaCLI, AutheliaCLIError
 from app.oidc import form as F
 from app.oidc import templates
@@ -90,7 +91,7 @@ def audit_secret(v: View, client_id: str) -> None:
 
 
 def setup_info(v: View, client: dict[str, Any]) -> dict[str, Any]:
-    issuer = f"https://{v.settings.AUTH_DOMAIN}"
+    issuer = portal_url(v.settings.CONFIG_MAIN, v.settings.AUTH_DOMAIN)  # port/path included
     return {
         "issuer": issuer,
         "discovery": f"{issuer}/.well-known/openid-configuration",

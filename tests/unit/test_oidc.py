@@ -388,3 +388,17 @@ def test_redaction_keeps_the_quotes_around_a_hash() -> None:
     assert redact(f"client_secret: '{FAKE_DIGEST}'") == "client_secret: '<hash>'"
     assert redact(f'x: "{FAKE_DIGEST}" # c') == 'x: "<hash>" # c'
     assert redact(f"error with {FAKE_DIGEST}") == "error with <hash>"
+
+
+def test_portal_url_is_the_issuer_with_port_and_path(tmp_path: Path) -> None:
+    from app.apply.probe import portal_host, portal_url
+
+    main = tmp_path / "configuration.yml"
+    main.write_text(
+        "session:\n  cookies:\n    - domain: example.test\n"
+        "      authelia_url: 'https://auth.example.test:8443/authelia/'\n"
+    )
+    assert portal_url(main, "auth.example.test") == "https://auth.example.test:8443/authelia"
+    assert portal_host(main, "auth.example.test") == "auth.example.test:8443"
+    main.write_text("theme: light\n")
+    assert portal_url(main, "auth.example.com") == "https://auth.example.com"

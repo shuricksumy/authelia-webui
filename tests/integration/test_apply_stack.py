@@ -251,6 +251,15 @@ def test_generated_client_secret_works_at_the_real_token_endpoint(stack: dict[st
     clients_file = (STACK / "managed" / "oidc_clients.yml").read_text()
     assert first["secret"] not in clients_file and "machine-e2e" in clients_file
     assert token_status("machine-e2e", first["secret"]) == 200
+    # the issuer the setup info shows is the one Authelia really announces
+    from app.apply.probe import portal_url
+
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "auth.example.test:8443"}
+    discovery = httpx.get("http://127.0.0.1:19091/.well-known/openid-configuration",
+                          headers=headers, timeout=10).json()  # fmt: skip
+    assert discovery["issuer"].rstrip("/") == portal_url(
+        STACK / "configuration.yml", "auth.example.test"
+    )
     assert token_status("machine-e2e", first["secret"] + "x") == 401
 
     run_ = exec_python(stack, "configurator", CLIENT_SCRIPT, {"T_CLIENT": "machine-e2e"})
