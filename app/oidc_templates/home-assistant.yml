@@ -1,0 +1,19 @@
+name: Home Assistant
+description: Needs the hass-oidc-auth custom component (HACS).
+host_label: Home Assistant address
+guide: home-assistant
+notes: In Home Assistant set discovery_url to your issuer's /.well-known/openid-configuration; roles come from the groups claim.
+client:
+  client_name: Home Assistant
+  public: false
+  require_pkce: true
+  pkce_challenge_method: S256
+  authorization_policy: two_factor
+  redirect_uris:
+    - https://app.example.com/auth/oidc/callback
+  scopes: [openid, profile, groups]
+  response_types: [code]
+  grant_types: [authorization_code]
+  access_token_signed_response_alg: none
+  userinfo_signed_response_alg: none
+  token_endpoint_auth_method: client_secret_post

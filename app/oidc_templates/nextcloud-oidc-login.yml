@@ -1,0 +1,37 @@
+name: Nextcloud (oidc_login app)
+description: The "OpenID Connect Login" app. Needs a claims policy and scope in your main config.
+host_label: Nextcloud address
+guide: nextcloud
+needs: Add this to your main configuration (merge it with the sections already there), restart Authelia, then reload this page.
+main_config: |
+  definitions:
+    user_attributes:
+      is_nextcloud_admin:
+        expression: '"nextcloud-admins" in groups ? "yes" : "no"'
+
+  identity_providers:
+    oidc:
+      claims_policies:
+        nextcloud_userinfo:
+          custom_claims:
+            is_nextcloud_admin:
+              attribute: 'is_nextcloud_admin'
+      scopes:
+        nextcloud_userinfo:
+          claims:
+            - 'is_nextcloud_admin'
+client:
+  client_name: Nextcloud
+  public: false
+  authorization_policy: two_factor
+  require_pkce: true
+  pkce_challenge_method: S256
+  claims_policy: nextcloud_userinfo
+  redirect_uris:
+    - https://app.example.com/apps/oidc_login/oidc
+  scopes: [openid, profile, email, groups, nextcloud_userinfo]
+  response_types: [code]
+  grant_types: [authorization_code]
+  access_token_signed_response_alg: none
+  userinfo_signed_response_alg: none
+  token_endpoint_auth_method: client_secret_basic

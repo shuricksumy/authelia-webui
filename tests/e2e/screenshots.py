@@ -235,8 +235,18 @@ def client_editor(page: Page) -> None:
     page.goto(f"{BASE}/clients/1/edit", wait_until="networkidle")
 
 
-def client_new(page: Page) -> None:
+def client_picker(page: Page) -> None:
     page.goto(f"{BASE}/clients/new", wait_until="networkidle")
+
+
+def client_new(page: Page) -> None:
+    page.goto(
+        f"{BASE}/clients/new?template=immich&host=photos.example.test", wait_until="networkidle"
+    )
+
+
+def client_preset_needs_config(page: Page) -> None:
+    page.goto(f"{BASE}/clients/new?template=nextcloud-oidc-login", wait_until="networkidle")
 
 
 def client_secret_modal(page: Page) -> None:
@@ -264,7 +274,9 @@ def review_clients(page: Page) -> None:
 SCREENS: dict[str, Callable[[Page], None]] = {
     "clients": clients_list,
     "client-editor": client_editor,
+    "client-picker": client_picker,
     "client-new": client_new,
+    "client-preset-needs-config": client_preset_needs_config,
     "client-secret-modal": client_secret_modal,
     "client-delete-confirm": client_delete_confirm,
     "review-clients": review_clients,

@@ -17,6 +17,7 @@ from fastapi.responses import HTMLResponse, Response
 from app.apply import audit
 from app.authelia_cli import AutheliaCLI, AutheliaCLIError
 from app.oidc import form as F
+from app.oidc import templates
 from app.oidc.document import ClientsDocument, secret_kind
 from app.oidc.lint import auth_method, is_public, lint_clients
 from app.oidc.names import OidcNames, load_oidc_names
@@ -176,16 +177,47 @@ def editor_context(
 
 
 @router.get("/clients/new", response_class=HTMLResponse)
-def new_client(request: Request) -> Response:
+def new_client(request: Request, template: str = "", host: str = "") -> Response:
+    """Step 1: pick a preset (cards). Step 2: the editor, filled from the preset."""
     v = load_view(request)
-    form = F.ClientForm.from_data({
-        "client_id": "", "public": False, "authorization_policy": "two_factor",
-        "require_pkce": True, "pkce_challenge_method": "S256",
-        "redirect_uris": [], "scopes": ["openid", "profile", "email", "groups"],
-        "grant_types": ["authorization_code"], "response_types": ["code"],
-        "token_endpoint_auth_method": "client_secret_basic",
-    })  # fmt: skip
-    return render(v, "client_editor.html", **editor_context(v, None, form))
+    if not v.clients_text:
+        return conflict_response(Conflict("This deployment has no OIDC clients file.", 404))
+    names = names_of(v)
+    if not template:
+        cards = [{"t": t, "missing": missing_names(t, names)} for t in templates.load_all()]
+        return render(v, "client_picker.html", active="clients", cards=cards, error="")
+    chosen = templates.get(template)
+    if chosen is None:
+        return conflict_response(Conflict("Unknown preset.", 404))
+    typed = host.strip()
+    clean = templates.clean_host(typed) if typed else ""
+    if typed and clean is None:
+        cards = [{"t": t, "missing": missing_names(t, names)} for t in templates.load_all()]
+        problem = f"'{typed[:60]}' is not a valid address (host or host:port)."
+        return render(v, "client_picker.html", status=422, active="clients", cards=cards,
+                      error=problem)  # fmt: skip
+    form = F.ClientForm.from_data(chosen.instantiate(clean or ""))
+    ids = ClientsDocument.parse(v.clients_text).client_ids()
+    if form.client_id in ids:  # a second client of the same app: pick a free id
+        n = 2
+        while f"{chosen.id}-{n}" in ids:
+            n += 1
+        form.client_id = f"{chosen.id}-{n}"
+    ctx = editor_context(v, None, form)
+    ctx.update(preset=chosen, preset_missing=missing_names(chosen, names), host_given=bool(clean))
+    return render(v, "client_editor.html", **ctx)
+
+
+def missing_names(template: templates.Template, names: OidcNames) -> list[str]:
+    """Names a preset's client uses that the main config does not define yet."""
+    c = template.client
+    out = []
+    if c.get("claims_policy") and str(c["claims_policy"]) not in names.claims_policies:
+        out.append(f"claims policy '{c['claims_policy']}'")
+    for scope in c.get("scopes", []):
+        if scope not in names.scopes:
+            out.append(f"scope '{scope}'")
+    return out
 
 
 @router.get("/clients/{index}/edit", response_class=HTMLResponse)
@@ -199,10 +231,12 @@ def edit_client(request: Request, index: int) -> Response:
     block = doc.blocks[index]
     data = block.data()
     form = F.ClientForm.from_data(data)
-    return render(v, "client_editor.html", **editor_context(
+    ctx = editor_context(
         v, index, form, inner_comments=block.has_inner_comments,
         secret=secret_kind(data.get("client_secret")),
-    ))  # fmt: skip
+    )  # fmt: skip
+    ctx["info"] = setup_info(v, data)
+    return render(v, "client_editor.html", **ctx)
 
 
 def form_from_request(data: Any) -> F.ClientForm:

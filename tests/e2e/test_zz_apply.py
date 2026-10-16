@@ -234,6 +234,10 @@ def test_a_client_created_in_the_ui_gets_a_token_with_the_secret_shown_once(
     page = context.new_page()
     try:
         page.goto(f"{BASE}/clients/new", wait_until="networkidle")
+        expect(page.get_by_role("heading", name="Grafana")).to_be_visible()  # the preset picker
+        page.locator("#host-generic").fill("machine.example.test")
+        page.locator("#host-generic").locator("xpath=ancestor::form").get_by_role("button").click()
+        page.wait_for_selector("#client-form")
         page.locator("#f-client_name").fill("e2e machine client")
         page.locator("#f-client_id").fill("e2e-machine")
         page.locator("#f-redirect").fill("")

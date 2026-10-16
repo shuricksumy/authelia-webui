@@ -13,8 +13,8 @@ Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; 
 live probe after restart, external-change auto-commit, main-config banner, notifications, production
 examples in `examples/`, `docs/migration.md`) are implemented; 1c awaits the owner's review.
 **Phase 2 (OIDC clients)** is delivered in two steps: **2a** (clients document, three-file draft,
-one-time secrets, lint, apply, editor UI) is implemented and awaits review; **2b** (app templates,
-setup-info polish) is next. Signal restart mode later. Target layout: SPEC §14.
+one-time secrets, lint, apply, editor UI) is reviewed; **2b** (app presets in `app/oidc_templates/*.yml`,
+picker, setup-info box) is implemented and awaits review. Next: Phase 3 (users, optional). Signal restart mode later. Target layout: SPEC §14.
 The UI edits a **draft** only (`CONFIG_MANAGED_DIR/.draft/`: rules + disabled rules, one combined
 revision); the live files are written only by `app/apply/engine.py`. Access tests are the exception:
 they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).
@@ -33,6 +33,9 @@ Protection of the configurator rules is derived from env (there is no `protected
 - Main-config values (hmac, jwks) are never read into objects: `app/oidc/names.py` returns names only.
 - Authelia only answers OIDC for the portal URL in `session.cookies[].authelia_url`, port included
   (`apply/probe.py::portal_host`); the verify step checks discovery after a restart when there are clients.
+- Presets (`app/oidc/templates.py`) are YAML copied from Authelia's integration guides; the
+  integration test validates all of them with the real binary (it caught LibreChat's
+  refresh_token-without-offline_access warning). Re-check them on an Authelia bump.
 - `client_credentials` clients need `one_factor` and may not have the `openid` scope; the
   validator says so on the review page (the e2e test builds such a client).
 

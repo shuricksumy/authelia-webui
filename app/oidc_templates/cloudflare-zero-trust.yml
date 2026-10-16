@@ -1,0 +1,26 @@
+name: Cloudflare Zero Trust
+description: Needs a claims policy in your main config (Cloudflare does not fetch claims the standard way).
+host_label: Your Cloudflare team address (<team>.cloudflareaccess.<tld>)
+guide: cloudflare-zerotrust
+needs: Add this to your main configuration (merge it with the sections already there), restart Authelia, then reload this page.
+main_config: |
+  identity_providers:
+    oidc:
+      claims_policies:
+        cloudflare:
+          id_token: ['rat', 'groups', 'email', 'email_verified', 'alt_emails', 'preferred_username', 'name']
+client:
+  client_name: Cloudflare Zero Trust
+  public: false
+  authorization_policy: two_factor
+  require_pkce: true
+  pkce_challenge_method: S256
+  claims_policy: cloudflare
+  redirect_uris:
+    - https://app.example.com/cdn-cgi/access/callback
+  scopes: [openid, profile, email]
+  response_types: [code]
+  grant_types: [authorization_code]
+  access_token_signed_response_alg: none
+  userinfo_signed_response_alg: none
+  token_endpoint_auth_method: client_secret_basic

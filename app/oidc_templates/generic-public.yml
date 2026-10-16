@@ -1,0 +1,15 @@
+name: Generic public app (PKCE)
+description: A browser or mobile app that cannot keep a secret. Uses PKCE and no secret.
+host_label: App address
+client:
+  client_name: My public app
+  public: true
+  authorization_policy: two_factor
+  require_pkce: true
+  pkce_challenge_method: S256
+  redirect_uris:
+    - https://app.example.com/callback
+  scopes: [openid, profile, email, groups]
+  response_types: [code]
+  grant_types: [authorization_code]
+  token_endpoint_auth_method: none

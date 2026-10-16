@@ -1,0 +1,19 @@
+name: Nextcloud (user_oidc app)
+description: The "OpenID Connect user backend" app. No extra Authelia settings needed.
+host_label: Nextcloud address
+guide: nextcloud
+notes: In Nextcloud's config.php set default_token_endpoint_auth_method to client_secret_post and enrich_login_id_token_with_userinfo as the guide says.
+client:
+  client_name: Nextcloud
+  public: false
+  authorization_policy: two_factor
+  require_pkce: true
+  pkce_challenge_method: S256
+  redirect_uris:
+    - https://app.example.com/apps/user_oidc/code
+  scopes: [openid, profile, email, groups]
+  response_types: [code]
+  grant_types: [authorization_code]
+  access_token_signed_response_alg: none
+  userinfo_signed_response_alg: none
+  token_endpoint_auth_method: client_secret_post

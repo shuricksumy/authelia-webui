@@ -27,6 +27,19 @@
   <div class="toolbar">
     <h1>{% if index is none %}New client{% else %}Edit client <code>{{ form.client_id|truncate(40, true, '…') }}</code>{% endif %}</h1>
   </div>
+  {% if preset %}
+  <article class="notice info">
+    <strong>Preset: {{ preset.name }}.</strong> Values follow Authelia's guide{% if preset.guide_url %} (<a href="{{ preset.guide_url }}" rel="noopener noreferrer" target="_blank">open it</a>){% endif %}; review them before saving.
+    {% if not host_given %}Replace <code>app.example.com</code> in the redirect URI with your app's address.{% endif %}
+    {% if preset.notes %}<br><small>{{ preset.notes }}</small>{% endif %}
+  </article>
+  {% if preset_missing %}
+  <article class="notice error" role="alert">
+    <strong>Your main configuration does not define {{ preset_missing|join(', ') }} yet</strong>, so this client cannot be saved. {{ preset.needs }}
+    <pre class="snippet"><code>{{ preset.main_config }}</code></pre>
+  </article>
+  {% endif %}
+  {% endif %}
   {% if errors %}<article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>{% endif %}
   {% if inner_comments %}<p class="muted"><small>This client has comments inside it. Fields you do not change keep their comments; a changed field is rewritten.</small></p>{% endif %}
 
@@ -82,6 +95,12 @@
       <label for="f-extra">Other keys (raw YAML) <small>everything the form does not show; never the secret</small>
         <textarea id="f-extra" name="extra_yaml" rows="4" spellcheck="false">{{ form.extra_yaml }}</textarea></label>
     </details>
+
+    {% if info %}
+    <details class="setup-info-box"><summary><strong>Setup info for the app</strong></summary>
+      {% include "partials/setup_info.html" %}
+    </details>
+    {% endif %}
 
     <div class="editor-actions">
       <a role="button" class="secondary outline" href="/clients">Cancel</a>

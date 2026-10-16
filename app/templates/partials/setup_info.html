@@ -1,0 +1,7 @@
+<dl class="setup-list">
+  <dt>Issuer</dt><dd><code>{{ info.issuer }}</code> <button type="button" class="outline secondary small" data-copy="{{ info.issuer }}">Copy</button></dd>
+  <dt>Discovery URL</dt><dd><code>{{ info.discovery }}</code> <button type="button" class="outline secondary small" data-copy="{{ info.discovery }}">Copy</button></dd>
+  <dt>Client ID</dt><dd><code>{{ info.client_id }}</code> <button type="button" class="outline secondary small" data-copy="{{ info.client_id }}">Copy</button></dd>
+  <dt>Auth method</dt><dd><code>{{ info.auth_method }}</code>{% if info.public %} <small>(public client: no secret, PKCE)</small>{% endif %}</dd>
+  {% if info.redirect_uris %}<dt>Redirect URIs</dt><dd>{% for u in info.redirect_uris %}<code>{{ u }}</code><br>{% endfor %}</dd>{% endif %}
+</dl>

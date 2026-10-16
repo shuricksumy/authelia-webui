@@ -353,3 +353,14 @@ table.clients td { vertical-align: middle; }
   table.clients .col-actions { padding-top: 0.4rem; }
   .secret-dialog .setup-info dl { grid-template-columns: 1fr; }
 }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; }
+.cards .card { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.cards .card h3 { margin: 0; font-size: 1.05rem; }
+.cards .card p { margin: 0; color: var(--pico-muted-color); font-size: 0.9rem; }
+.cards .card form { margin-top: auto; }
+.cards .card label, .cards .card input, .cards .card button { margin-bottom: 0.4rem; }
+.setup-info-box { margin: 0.6rem 0; }
+.setup-list { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0; }
+.setup-list dd { margin: 0; overflow-wrap: anywhere; }
+pre.snippet { max-height: 26rem; overflow: auto; margin-top: 0.5rem; }
+@media (max-width: 720px) { .setup-list { grid-template-columns: 1fr; } }

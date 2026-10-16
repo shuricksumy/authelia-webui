@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}New client{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>New client</h1><div class="toolbar-actions"><a role="button" class="secondary outline" href="/clients">Cancel</a></div></div>
+<p class="muted">Pick the app. The preset follows Authelia's own integration guide for it; you review everything before it is saved. A confidential client gets its secret when you save.</p>
+{% if error %}<article class="notice error" role="alert">{{ error }}</article>{% endif %}
+<div class="cards">
+  {% for c in cards %}{% set t = c.t %}
+  <article class="card">
+    <h3>{{ t.name }}</h3>
+    <p>{{ t.description }}</p>
+    {% if c.missing %}<p class="err-text"><small>Needs {{ c.missing|join(', ') }} in your main configuration first.</small></p>{% endif %}
+    <form method="get" action="/clients/new">
+      <input type="hidden" name="template" value="{{ t.id }}">
+      <label for="host-{{ t.id }}"><small>{{ t.host_label }} <em>(optional)</em></small>
+        <input id="host-{{ t.id }}" name="host" placeholder="app.example.com" autocomplete="off" spellcheck="false"></label>
+      <button type="submit" class="small">Use this preset</button>
+    </form>
+  </article>
+  {% endfor %}
+</div>
+{% endblock %}

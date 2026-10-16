@@ -211,3 +211,140 @@ def test_rotation_is_refused_for_jwt_auth_methods(oidc: UI, env: dict[str, Path]
     assert r.status_code == 422 and "client_secret_jwt" in r.text
     assert "Generate new secret" not in oidc.get("/clients/0/edit").text
     assert not DraftStore(env["managed"]).has_draft()
+
+
+# --------------------------------------------------------------------- presets (2b)
+
+
+def test_every_preset_is_well_formed_and_lints_clean_when_its_names_exist() -> None:
+    from app.blocklist import mapping_to_node
+    from app.oidc import templates
+    from app.oidc.form import ClientForm, apply_client_form
+    from app.oidc.lint import lint_clients
+    from app.oidc.names import STANDARD_SCOPES, OidcNames
+
+    all_t = templates.load_all()
+    assert len(all_t) >= 10 and all_t[0].id == "generic" and all_t[1].id == "generic-public"
+    wanted = {
+        "immich",
+        "home-assistant",
+        "nextcloud-user-oidc",
+        "nextcloud-oidc-login",
+        "portainer",
+        "cloudflare-zero-trust",
+        "librechat",
+        "grafana",
+    }
+    assert wanted <= {t.id for t in all_t}
+    for t in all_t:
+        client = t.instantiate("app.example.com")
+        assert "client_secret" not in client and client["client_id"] == t.id
+        assert t.guide_url == "" or t.guide_url.startswith("https://www.authelia.com/")
+        names = OidcNames(
+            True,
+            ("one_factor", "two_factor"),
+            tuple(filter(None, [client.get("claims_policy")])),
+            (*STANDARD_SCOPES, *t.needed_names.get("scope", "").split(", ")),
+        )
+        if not client.get("public"):
+            client["client_secret"] = FAKE_DIGEST  # added when saved
+        issues = lint_clients([client], names)
+        assert not [i.message for i in issues if i.severity == "error"], (t.id, issues)
+        form = ClientForm.from_data({k: v for k, v in client.items() if k != "client_secret"})
+        node = apply_client_form(form, mapping_to_node({"client_id": t.id}))
+        assert node["redirect_uris"] == client["redirect_uris"], t.id
+
+
+def test_presets_needing_main_config_say_exactly_what() -> None:
+    from app.oidc import templates
+
+    cf = templates.get("cloudflare-zero-trust")
+    nc = templates.get("nextcloud-oidc-login")
+    assert (
+        cf and nc and "claims_policies" in cf.main_config and "is_nextcloud_admin" in nc.main_config
+    )
+    assert cf.needed_names == {"claims_policy": "cloudflare"}
+    assert nc.needed_names["scope"] == "nextcloud_userinfo"
+    plain = templates.get("grafana")
+    assert plain and not plain.main_config and not plain.needed_names
+
+
+def test_clean_host() -> None:
+    from app.oidc.templates import clean_host
+
+    assert clean_host("photos.example.com") == "photos.example.com"
+    assert clean_host(" https://photos.example.com/some/path ") == "photos.example.com"
+    assert clean_host("grafana.example.com:3000") == "grafana.example.com:3000"
+    for bad in ("", "bad host", "a b/c", "javascript:alert(1)", "x" * 300, "https://"):
+        assert clean_host(bad) is None
+
+
+def test_picker_lists_presets_and_the_editor_is_prefilled(oidc: UI) -> None:
+    picker = oidc.get("/clients/new").text
+    for name in (
+        "Immich",
+        "Grafana",
+        "Portainer",
+        "Cloudflare Zero Trust",
+        "Home Assistant",
+        "LibreChat",
+    ):
+        assert name in picker
+    assert (
+        "Needs claims policy &#39;cloudflare&#39;" in picker
+        or "Needs claims policy 'cloudflare'" in picker
+    )
+    page = oidc.get("/clients/new?template=grafana&host=https://dash.example.com/").text
+    assert "https://dash.example.com/login/generic_oauth" in page
+    assert "Replace <code>app.example.com</code>" not in page  # a host was given
+    assert 'value="grafana"' in page and "Preset: Grafana" in page
+    assert "authelia.com/integration/openid-connect/clients/grafana/" in page
+
+
+def test_missing_main_config_names_are_explained_with_the_snippet(oidc: UI) -> None:
+    page = oidc.get("/clients/new?template=cloudflare-zero-trust&host=team.example.com").text
+    assert "does not define claims policy" in page and "alt_emails" in page
+    # defined in the main config: no warning
+    from pathlib import Path as P
+
+    main = P(oidc.settings.CONFIG_MAIN)
+    main.write_text(main.read_text() + "    # x\n")
+    text = main.read_text().replace(
+        "claims_policies:\n", "claims_policies:\n      cloudflare:\n        id_token: ['groups']\n"
+    )
+    main.write_text(text)
+    assert (
+        "does not define claims policy"
+        not in oidc.get("/clients/new?template=cloudflare-zero-trust").text
+    )
+
+
+def test_invalid_host_and_id_collisions(oidc: UI) -> None:
+    r = oidc.get("/clients/new?template=grafana&host=not a host")
+    assert r.status_code == 422 and "not a valid address" in r.text
+    assert oidc.get("/clients/new?template=nope").status_code == 404
+    first = oidc.get("/clients/new?template=generic").text
+    assert 'value="generic"' in first
+    # a second client of an app that already exists gets a free id
+    text = CLIENTS.replace("client_id: 'garage'", "client_id: 'grafana'", 1)
+    (oidc.env["managed"] / "oidc_clients.yml").write_text(text)
+    assert 'value="grafana-2"' in oidc.get("/clients/new?template=grafana").text
+
+
+def test_editor_of_an_existing_client_shows_the_setup_info(oidc: UI) -> None:
+    page = oidc.get("/clients/0/edit").text
+    assert (
+        "Setup info for the app" in page
+        and "https://auth.example.com/.well-known/openid-configuration" in page
+    )
+    assert "https://garage.example.com/cb" in page and 'data-copy="garage"' in page
+
+
+def test_template_files_hold_no_secret_or_real_domain() -> None:
+    from app.oidc.templates import DIRECTORY
+
+    for path in DIRECTORY.glob("*.yml"):
+        text = path.read_text()
+        assert "client_secret:" not in text and "$pbkdf2" not in text and "$argon2" not in text, (
+            path
+        )

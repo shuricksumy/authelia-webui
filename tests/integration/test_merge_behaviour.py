@@ -111,3 +111,48 @@ def test_realistic_split_round_trips_through_ruamel(generated: dict[str, Path]) 
     assert result.oidc_clients_text is not None
     data = yaml.load(result.oidc_clients_text)
     assert len(data["identity_providers"]["oidc"]["clients"]) == 5
+
+
+def test_every_oidc_preset_validates_with_the_real_authelia(
+    cli: AutheliaCLI, parts: dict[str, Path], tmp_path: Path
+) -> None:
+    """Each preset (app guides, SPEC §5) is accepted without errors or deprecation warnings, with
+    the main-config additions the presets themselves say they need (extra.yml merges as a map)."""
+    from app.oidc import templates
+    from app.oidc.document import ClientsDocument
+
+    _, digest = cli.hash_random_pbkdf2()
+    import io
+
+    yaml = YAML(typ="rt")
+    yaml.indent(mapping=2, sequence=4, offset=2)
+
+    def merge(into: dict, add: dict) -> None:  # type: ignore[type-arg]
+        for key, value in add.items():
+            if isinstance(value, dict) and isinstance(into.get(key), dict):
+                merge(into[key], value)
+            else:
+                into[key] = value
+
+    merged: dict = {}  # type: ignore[type-arg]
+    for t in templates.load_all():
+        if t.main_config:
+            merge(merged, YAML(typ="safe").load(t.main_config))
+    assert merged, "presets that need main-config additions must carry them"
+    buf = io.StringIO()
+    yaml.dump(merged, buf)
+    extra = write(tmp_path / "extra.yml", buf.getvalue())
+
+    clients = []
+    for t in templates.load_all():
+        client = t.instantiate("app.example.com")
+        if not client.get("public"):
+            client["client_secret"] = digest
+        clients.append(client)
+    buf = io.StringIO()
+    yaml.dump({"identity_providers": {"oidc": {"clients": clients}}}, buf)
+    doc = ClientsDocument.parse(buf.getvalue())
+    assert len(doc.clients()) == len(templates.load_all())
+    clients_file = write(tmp_path / "all_presets.yml", doc.render())
+    res = cli.validate([parts["main"], parts["ac"], extra, clients_file])
+    assert res.ok and not res.warnings, res.raw
