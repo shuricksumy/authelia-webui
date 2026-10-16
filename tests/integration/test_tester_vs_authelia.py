@@ -12,6 +12,7 @@ as one factor. If this test fails after an Authelia bump, app/rules/tester.py ne
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import secrets
@@ -31,7 +32,6 @@ pytestmark = pytest.mark.integration
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTHZ = "http://127.0.0.1:19091/api/authz/forward-auth"
-CLIENT_IP = "10.8.0.5"
 
 # Groups as in tests/fixtures/realistic/users.example.yml
 USERS: dict[str, tuple[str, ...]] = {
@@ -42,27 +42,32 @@ USERS: dict[str, tuple[str, ...]] = {
 }
 
 URLS = [
-    "https://auth.example.com/.well-known/openid-configuration",
-    "https://auth.example.com/api/oidc/authorize",
-    "https://auth.example.com/settings",
-    "https://home.example.com/api/states",
-    "https://home.example.com/auth/token",
-    "https://home.example.com/auth/token?x=1",  # anchored regex + query string
-    "https://home.example.com/lovelace",
-    "https://cloud.example.com/status.php",
-    "https://cloud.example.com/status.php?format=json",
-    "https://cloud.example.com/apps/files",
-    "https://photos.example.com/api/server/ping",
-    "https://photos.example.com/api/assets/1",
-    "https://photos.example.com/photos",
-    "https://notes.example.com/_session",
-    "https://notes.example.com/_utils/",
-    "https://hooks.example.com/webhook/abc",
-    "https://hooks.example.com/admin",
-    "https://garage.example.com/",
-    "https://deep.sub.example.com/",
-    "https://example.com/",  # apex: not matched by *.example.com
+    "https://auth.example.test/.well-known/openid-configuration",
+    "https://auth.example.test/api/oidc/authorize",
+    "https://auth.example.test/settings",
+    "https://home.example.test/api/states",
+    "https://home.example.test/auth/token",
+    "https://home.example.test/auth/token?x=1",  # anchored regex + query string
+    "https://home.example.test/lovelace",
+    "https://cloud.example.test/status.php",
+    "https://cloud.example.test/status.php?format=json",
+    "https://cloud.example.test/apps/files",
+    "https://photos.example.test/api/server/ping",
+    "https://photos.example.test/api/assets/1",
+    "https://photos.example.test/photos",
+    "https://notes.example.test/_session",
+    "https://notes.example.test/_utils/",
+    "https://hooks.example.test/webhook/abc",
+    "https://hooks.example.test/admin",
+    "https://garage.example.test/",
+    "https://deep.sub.example.test/",
+    "https://example.test/",  # apex: not matched by *.example.test
+    "https://authcfg.example.test/",  # the configurator's protected rules (networks + subject)
+    "https://authcfg.example.test/rules",
+    "https://locked.example.test/",
 ]
+# Allowed (RFC 1918, like the Docker NAT address) and outside the allowed networks.
+CLIENT_IPS = ["10.8.0.5", "203.0.113.9"]
 METHODS = ["GET", "POST"]
 
 
@@ -77,7 +82,8 @@ def _compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str
 def authelia(authelia_version: str, cli: object) -> Iterator[str]:
     prepare()
     env = {**os.environ, "AUTHELIA_VERSION": authelia_version,
-           "TEST_APP_SECRET_KEY": secrets.token_urlsafe(48)}  # fmt: skip
+           "TEST_APP_SECRET_KEY": secrets.token_urlsafe(48),
+           "DEV_UID": str(os.getuid()), "DEV_GID": str(os.getgid())}  # fmt: skip
     up = _compose("up", "-d", "--wait", "--wait-timeout", "120", "authelia", env=env)
     try:
         assert up.returncode == 0, up.stderr[-2000:]
@@ -116,9 +122,11 @@ def test_tester_agrees_with_real_authelia(authelia: str, tester: RuleTester) -> 
     password = authelia
     disagreements = []
     with httpx.Client(timeout=10) as http:
-        for url, method, (user, groups) in product(URLS, METHODS, USERS.items()):
+        for url, method, (user, groups), client_ip in product(
+            URLS, METHODS, USERS.items(), CLIENT_IPS
+        ):
             obj = RequestObject.from_url(url, method)
-            result = tester.evaluate(obj, Subject(user, groups))
+            result = tester.evaluate(obj, Subject(user, groups, ipaddress.ip_address(client_ip)))
             assert not result.uncertain, (url, result.uncertain)
             parts = httpx.URL(url)
             headers = {
@@ -126,7 +134,7 @@ def test_tester_agrees_with_real_authelia(authelia: str, tester: RuleTester) -> 
                 "X-Forwarded-Proto": "https",
                 "X-Forwarded-Host": parts.host,
                 "X-Forwarded-URI": parts.raw_path.decode(),
-                "X-Forwarded-For": CLIENT_IP,
+                "X-Forwarded-For": client_ip,
             }
             if user:
                 token = base64.b64encode(f"{user}:{password}".encode()).decode()
@@ -137,7 +145,7 @@ def test_tester_agrees_with_real_authelia(authelia: str, tester: RuleTester) -> 
             if want != got:
                 rule = "default" if result.rule_index is None else f"#{result.rule_index + 1}"
                 disagreements.append(
-                    f"{method} {url} user={user or 'anon'}: "
+                    f"{method} {url} user={user or 'anon'} ip={client_ip}: "
                     f"tester {want} ({rule} {result.policy}) vs authelia {got}"
                 )
     assert not disagreements, "\n".join(disagreements)

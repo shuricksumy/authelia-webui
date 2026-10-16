@@ -5,9 +5,10 @@ configuration that change often: **access control rules** and **OIDC clients** (
 Everything else stays hand-edited YAML. Every change is validated by Authelia itself, committed to a
 local git repo, and rolled back automatically if Authelia is unhealthy after a restart.
 
-> **Status: Phase 0 (foundation).** The web UI is not built yet. What exists today: the migration
-> script, the verified config-split layout, the hardened image and the CI/release pipeline.
-> The full design is in [SPEC.md](SPEC.md).
+> **Status: Phase 1a.** The rules UI works on a **draft**: view, reorder (drag or buttons), add,
+> edit (form or raw YAML), lint, test a URL against the rules, and review the diff. **Nothing is
+> applied yet**: validate/write/restart/rollback (step 1b), history, OIDC clients and users come
+> later. The full design is in [SPEC.md](SPEC.md).
 
 ## Internal-only tool
 
@@ -22,6 +23,29 @@ This tool can change who may access your services. **Never expose it to the publ
 - The container publishes no ports and never mounts the Docker socket.
 
 ## What works now
+
+### Try it locally
+
+Needs Docker and [uv](https://docs.astral.sh/uv/). Everything is synthetic (`*.example.test`):
+
+```sh
+uv sync
+make dev      # Traefik + Authelia + the app, with generated test data and a seeded 2FA secret
+make totp     # prints the URL, the login and the current 2FA code again
+make dev-down
+```
+
+Add one line to `/etc/hosts`, then open <https://authcfg.example.test:8444> and accept the
+self-signed certificate. You log in through the real Authelia portal (password + one-time code),
+exactly like production:
+
+```
+127.0.0.1 auth.example.test authcfg.example.test locked.example.test
+```
+
+The app is only routed on Traefik's `internal` entrypoint (8444), never on the portal's (8443).
+`locked.example.test` is a second instance that allows only `192.0.2.0/24`, so it answers 403 even
+to a valid admin: that is the network-isolation check.
 
 ### Split an existing configuration
 
@@ -77,7 +101,8 @@ uv sync
 make lint              # ruff, mypy, public-repo hygiene
 make test              # unit tests
 make test-integration  # real Authelia at the pinned version
-make test-e2e          # compose stack + Playwright (needs: uv run playwright install chromium)
+make test-e2e          # full stack + Playwright (needs: uv run playwright install chromium)
+make screenshots       # every screen at 1280/390 px, light and dark -> docs/screenshots/
 make scan              # gitleaks + image scan
 uv run pytest tests/unit/test_split_config.py::test_counts_and_disabled_rule_positions   # one test
 ```

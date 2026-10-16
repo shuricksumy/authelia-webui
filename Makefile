@@ -1,8 +1,12 @@
 SHELL := /bin/bash
 AUTHELIA_VERSION := $(shell scripts/authelia_version.sh)
 export AUTHELIA_VERSION
+# Containers run as you, so files in the (gitignored) generated stack stay removable.
+export DEV_UID := $(shell id -u)
+export DEV_GID := $(shell id -g)
+COMPOSE := docker compose -f compose.test.yml
 
-.PHONY: help version sync fixtures stack dev test test-integration test-e2e lint hygiene scan screenshots image
+.PHONY: help version sync fixtures stack dev totp dev-logs dev-down test test-integration test-e2e lint hygiene scan screenshots image
 
 help:
 	@grep -E '^[a-z-]+:' Makefile | cut -d: -f1 | tr '\n' ' '; echo
@@ -16,11 +20,24 @@ sync:
 fixtures: ## generate realistic test config with real secrets (gitignored)
 	uv run python -m tests.fixtures.generate
 
-stack: ## generate the compose test stack's /config (gitignored)
+stack: ## generate the compose test stack's files: config, TLS, Traefik, alice's TOTP (gitignored)
 	uv run python -m tests.fixtures.stack
 
-dev: stack ## test stack with rebuild on change (portal: http://auth.example.com:19091 via hosts/resolver rule)
-	TEST_APP_SECRET_KEY=$$(openssl rand -base64 48) docker compose -f compose.test.yml up --build
+dev: stack ## full local stack with hot reload: Traefik + Authelia + the app (then: make totp)
+	TEST_APP_SECRET_KEY=$$(openssl rand -base64 48) $(COMPOSE) -f compose.dev.yml up -d --build --wait --wait-timeout 240
+	@echo
+	@uv run python -m tests.fixtures.totp
+	@echo
+	@echo "Logs: make dev-logs      Stop: make dev-down"
+
+totp: ## print the dev login: URL, user, password and the current 2FA code
+	@uv run python -m tests.fixtures.totp
+
+dev-logs:
+	TEST_APP_SECRET_KEY=x $(COMPOSE) logs -f --tail=50 configurator authelia traefik
+
+dev-down:
+	TEST_APP_SECRET_KEY=x $(COMPOSE) down -v --remove-orphans
 
 test: ## unit tests
 	uv run pytest tests/unit
@@ -52,5 +69,6 @@ scan: hygiene ## secret + image scan (tools run from pinned/official images, no 
 image:
 	docker build -t authelia-configurator:dev --build-arg AUTHELIA_VERSION=$(AUTHELIA_VERSION) .
 
-screenshots: ## UI screenshots (no UI until Phase 1)
-	@echo "No UI in Phase 0; implemented with the Phase 1 UI."; exit 1
+screenshots: stack ## capture every screen at 1280/390 px, light/dark, into docs/screenshots/
+	TEST_APP_SECRET_KEY=$$(openssl rand -base64 48) $(COMPOSE) up -d --build --wait --wait-timeout 240
+	uv run python -m tests.e2e.screenshots; rc=$$?; TEST_APP_SECRET_KEY=x $(COMPOSE) down -v --remove-orphans; exit $$rc

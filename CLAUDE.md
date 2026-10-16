@@ -8,9 +8,37 @@ Read `SPEC.md` before doing anything. It is the source of truth; if something
 here conflicts with it, ask.
 
 ## Current state
-Phase 0 (foundation) is implemented: `app/` (settings, Authelia CLI wrapper, `/healthz`,
-`/version`), `scripts/split_config.py`, Dockerfile, CI/release workflows, test fixtures. No UI
-yet. Target layout: SPEC §14. Measured Authelia merge behaviour: `docs/merge-behaviour.md`.
+Phase 0 (foundation) is done. **Phase 1 is delivered in three reviewed steps**; step **1a** is
+implemented: security layer (`app/security.py`), rule tester (`app/rules/tester.py`), rules
+document/form/lint/protected/store (`app/rules/`), the UI (`app/web.py`, `app/ui.py`,
+`app/templates/`, `app/static/`) and the Traefik dev stack. The UI edits a **draft** only
+(`CONFIG_MANAGED_DIR/.draft/`); the live file is never written. Next: **1b** apply/restart/
+rollback + history + audit + version check + socket proxy; **1c** disabled rules, access test
+suite, external changes, notifications. Target layout: SPEC §14.
+
+## Architecture notes (Phase 1a)
+- `app/rules/document.py` treats `access_control.yml` as **text blocks** (prefix | rule blocks |
+  suffix). Untouched rules stay byte-identical; a comment directly above a rule travels with it.
+  Only a rule edited through the form is re-serialised (ruamel round trip on that one rule).
+- `app/rules/tester.py` is a port of Authelia's matcher; `tests/integration/test_tester_vs_authelia.py`
+  compares it with the real forward-auth endpoint. Re-run it on every Authelia bump.
+- `app/rules/protected.py` checks protected rules by **behaviour** (probing the tester), not by
+  rule text, so reordering or widening a protected rule is caught too.
+- Every UI mutation carries the draft revision; HTMX applies out-of-band swaps *before* the main
+  swap, so scripts must wait for the new section (see `tests/e2e/screenshots.py`).
+- The Authelia binary runs with a minimal environment (`child_environment`): Authelia reads every
+  `AUTHELIA_*` variable as config, and the app's own settings use that prefix.
+- Strict CSP: no inline scripts/styles/handlers anywhere (a unit test scans the templates).
+- The editor uses one-entry-per-line textareas for list fields instead of the chip/list inputs in
+  the SPEC wireframes (simpler, accessible, mobile friendly); the owner can override with an
+  annotated screenshot.
+
+## Local dev login
+`make dev` then `make totp`. Add `127.0.0.1 auth.example.test authcfg.example.test
+locked.example.test` to `/etc/hosts`; open https://authcfg.example.test:8444 (self-signed cert).
+Credentials and the TOTP seed are generated per run into the gitignored
+`tests/fixtures/generated/`. Authelia rejects a TOTP code used twice
+(`tests/e2e/auth.py::fresh_totp` waits for the next one).
 
 ## Real-world reference
 `docs/real-world-patterns.md` lists the structural patterns found in a real
@@ -118,8 +146,9 @@ Docker must be running for integration, e2e and scan. Tooling: uv.
 - `make test-integration` — real pinned Authelia (merge behaviour, image, split script)
 - `make test-e2e` — compose stack + Playwright (first: `uv run playwright install chromium`)
 - `make scan` — gitleaks + Trivy via Docker images; `make fixtures` / `make stack` — generate
-  gitignored test data; `make version` — pinned Authelia version; `make dev` — test stack
-- `make screenshots` — not available until the Phase 1 UI exists
+  gitignored test data; `make version` — pinned Authelia version; `make dev` / `make totp` /
+  `make dev-down` — local stack with hot reload
+- `make screenshots` — brings the stack up, captures every screen, tears it down; then open the PNGs
 
 ## Gotchas learned in Phase 0
 - The Authelia binary is glibc-linked: keep the runtime image Debian, never Alpine.

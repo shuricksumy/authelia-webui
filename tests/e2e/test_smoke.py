@@ -19,12 +19,15 @@ def test_authelia_portal_serves_login_page(stack: dict[str, str], page: Page) ->
 
 
 def test_configurator_is_healthy_and_publishes_no_ports(stack: dict[str, str]) -> None:
-    ps = compose("ps", "--format", "{{.Service}} {{.Health}} {{.Publishers}}", env=stack)
-    rows = {line.split()[0]: line for line in ps.stdout.splitlines() if line.strip()}
-    assert "healthy" in rows["configurator"]
-    cid = compose("ps", "-q", "configurator", env=stack).stdout.strip()
-    ports = subprocess.run(
-        ["docker", "inspect", "-f", "{{json .NetworkSettings.Ports}}", cid],
-        capture_output=True, text=True, check=True,
-    ).stdout.strip()  # fmt: skip
-    assert ports in {"{}", "null", '{"8080/tcp":null}'}, ports  # nothing bound on the host
+    for service in ("configurator", "configurator-locked"):
+        cid = compose("ps", "-q", service, env=stack).stdout.strip()
+        health = subprocess.run(
+            ["docker", "inspect", "-f", "{{.State.Health.Status}}", cid],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+        assert health == "healthy", service
+        ports = subprocess.run(
+            ["docker", "inspect", "-f", "{{json .NetworkSettings.Ports}}", cid],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()  # fmt: skip
+        assert ports in {"{}", "null", '{"8080/tcp":null}'}, (service, ports)  # nothing on the host

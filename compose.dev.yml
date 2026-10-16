@@ -1,0 +1,9 @@
+# `make dev`: hot reload for the configurator (source mounted read-only, uvicorn --reload).
+services:
+  configurator:
+    volumes:
+      - ./tests/fixtures/generated/stack/configuration.yml:/config/configuration.yml:ro
+      - ./tests/fixtures/generated/stack/users.yml:/config/users.yml:ro
+      - ./tests/fixtures/generated/stack/managed:/config/managed
+      - ./app:/srv/app:ro
+    command: ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8080", "--no-server-header", "--no-proxy-headers", "--reload", "--reload-dir", "/srv/app"]

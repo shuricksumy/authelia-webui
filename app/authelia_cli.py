@@ -30,6 +30,16 @@ def redact(text: str) -> str:
     return text
 
 
+def child_environment() -> dict[str, str]:
+    """Minimal environment for the local authelia binary.
+
+    Authelia reads every `AUTHELIA_*` / `X_AUTHELIA_*` variable as configuration (this app's own
+    AUTHELIA_CONTAINER, AUTHELIA_VERSION, ... would be reported as unexpected), and the app's
+    environment holds secrets (APP_SECRET_KEY) the child has no business seeing.
+    """
+    return {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
+
+
 class AutheliaCLIError(RuntimeError):
     pass
 
@@ -106,8 +116,9 @@ class AutheliaCLI:
         argv = self._argv(args, mounts, writable)
         try:
             return subprocess.run(
-                argv, capture_output=True, text=True, timeout=self.timeout_s, check=False
-            )
+                argv, capture_output=True, text=True, timeout=self.timeout_s, check=False,
+                env=None if self.docker else child_environment(),
+            )  # fmt: skip
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise AutheliaCLIError(f"could not run authelia: {type(exc).__name__}") from None
 
@@ -142,13 +153,17 @@ class AutheliaCLI:
         proc = self.run(["crypto", "hash", "generate", "argon2", "--password", password])
         return _value_after_colon(proc, "crypto hash generate argon2")
 
-    def rsa_certificate(self, directory: Path, common_name: str) -> tuple[Path, Path]:
+    def rsa_certificate(
+        self, directory: Path, common_name: str, sans: Sequence[str] = ()
+    ) -> tuple[Path, Path]:
         directory.mkdir(parents=True, exist_ok=True)
+        extra = [arg for san in sans for arg in ("--sans", san)]
         proc = self.run(
             [
                 "crypto", "certificate", "rsa", "generate",
                 "--common-name", common_name,
                 "--directory", str(directory.resolve()),
+                *extra,
             ],
             mounts=[directory],
             writable=True,

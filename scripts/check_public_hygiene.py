@@ -36,7 +36,7 @@ TLDS = (
     "tech|sh|ai|pl|nl|cz|it|es|se|no|fi|ch|at|be|pt|tv|to|im"
 )
 DOMAIN = re.compile(
-    rf"(?<![\w@.-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:{TLDS}))(?![\w-])", re.I
+    rf"(?<![\w@.-])((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:{TLDS}))(?![\w-]|\.\w)", re.I
 )
 EMAIL = re.compile(rf"[\w.+-]+@((?:[a-z0-9-]+\.)+(?:{TLDS}))\b", re.I)
 

@@ -172,3 +172,72 @@ pre.diff span { display: block; padding: 0 0.75rem; white-space: pre; }
 
 /* htmx request feedback without injected <style> (CSP) */
 .htmx-request { opacity: 0.7; transition: opacity 120ms; }
+
+/* --- layout fixes from the first visual review ------------------------------------------ */
+.topbar nav { justify-content: flex-start; }
+.topbar nav ul, .topbar nav li { margin: 0; padding: 0; }
+.view-switch { width: auto; flex-wrap: nowrap; }
+.view-switch label { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
+.view-switch input { margin: 0; }
+.filters input[type="search"] { height: auto; padding-block: 0.5rem; }
+/* compact disclosure: Pico's chevron floats onto its own line inside table cells */
+.col-paths summary::after, .issues summary::after { display: none; }
+.col-paths summary { text-decoration: underline dotted; text-underline-offset: 0.2em; }
+.issues summary { text-decoration: underline dotted; text-underline-offset: 0.2em; }
+/* equal-width row actions so the column lines up whether it says Edit or View */
+.col-actions { display: table-cell; }
+.col-actions .icon-btn { width: 2.2rem; min-width: 2.2rem; text-align: center; padding-inline: 0; }
+.col-actions [role="button"].small { min-width: 4rem; text-align: center; }
+.col-actions > * { vertical-align: middle; }
+
+/* --- containment: absolutely positioned children (visually-hidden, issue popovers) must be
+       clipped by the scroll wrapper, otherwise the whole page scrolls sideways ------------- */
+.table-scroll { position: relative; }
+.col-paths summary { white-space: nowrap; }
+
+/* --- small screens: header on two rows --------------------------------------------------- */
+@media (max-width: 720px) {
+  .topbar-inner { gap: 0.35rem 1rem; padding: 0.6rem 0.9rem; }
+  .brand { order: 1; flex: 1; }
+  .who-am-i { order: 2; }
+  .topbar nav { order: 3; flex: 1 0 100%; gap: 0.35rem 1rem; font-size: 0.92rem; }
+  main { padding-inline: 0.9rem; }
+  .toolbar h1 { flex: 1 0 100%; }
+  .toolbar-actions { flex: 1 0 100%; }
+  .filters input[type="search"] { flex: 1 0 100%; max-width: none; }
+}
+
+/* --- rule rows become cards whenever the *column* is narrow (phone, or desktop with the
+       editor panel open) - container query, not a viewport query ---------------------------- */
+.main-col { container: main / inline-size; min-width: 0; }
+@container main (max-width: 760px) {
+  .table-scroll { border: 0; overflow: visible; }
+  table.rules, table.rules tbody { display: block; }
+  table.rules thead { display: none; }
+  table.rules tr {
+    display: grid; grid-template-columns: 1.4rem 1fr auto; gap: 0.1rem 0.6rem;
+    grid-template-areas: "num domain handle" ". paths paths" ". who who" ". policy policy" "actions actions actions";
+    border: 1px solid var(--app-border); border-radius: var(--pico-border-radius);
+    padding: 0.6rem 0.75rem; margin-bottom: 0.7rem; background: var(--pico-card-background-color);
+  }
+  table.rules td { display: block; padding: 0.1rem 0; border: 0; width: auto; }
+  table.rules .col-num { grid-area: num; font-weight: 700; color: var(--pico-muted-color); width: auto; }
+  table.rules .col-domain { grid-area: domain; }
+  table.rules .col-handle { grid-area: handle; width: auto; }
+  table.rules .col-paths { grid-area: paths; }
+  table.rules .col-who { grid-area: who; }
+  table.rules .col-policy { grid-area: policy; }
+  table.rules .col-actions { grid-area: actions; text-align: left; padding-top: 0.5rem; display: flex; gap: 0.4rem; align-items: center; }
+  table.rules .col-actions > * { margin: 0; }
+  table.rules td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 3.6rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  .col-paths details { display: inline-block; vertical-align: top; }
+  .col-paths ul.regex { margin-left: 0; }
+  .issues ul { position: static; box-shadow: none; max-width: none; }
+  .marker { display: inline; margin-left: 0.4rem; }
+  .col-actions [role="button"].small { margin-left: auto; }
+}
+
+/* --- editor: hint text must not overlap the field, and the actions stay reachable ------- */
+.editor textarea ~ small, .editor input ~ small, .editor select ~ small { margin-top: 0.3rem; display: block; }
+.editor label > small:first-child { display: inline; margin: 0; }
+.editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--pico-card-background-color); border-top: 1px solid var(--app-border); }

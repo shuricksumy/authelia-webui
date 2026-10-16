@@ -550,6 +550,9 @@ Note           [ Immich web UI                ]
 [Cancel]                                 [Delete]  [Save to draft]
 ```
 - Plain-language labels first; Authelia key names shown as small hints.
+- Implementation note (1a): list fields are one-entry-per-line textareas; the subject field takes
+  one OR-alternative per line with `and` joining AND-terms. Chips/list inputs may replace them
+  if the owner annotates a screenshot.
 - Inline validation on blur; Save disabled while blocking errors exist.
 - Users/groups fields autocomplete from the users file.
 

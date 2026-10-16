@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from app.authelia_cli import AutheliaCLI, parse_validate_output, redact
+from app.authelia_cli import AutheliaCLI, child_environment, parse_validate_output, redact
 
 ERRORS = """Configuration parsed and loaded with errors:
 
@@ -56,6 +56,23 @@ def test_redact_hashes_and_pem() -> None:
     pem = "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----"  # hygiene: ignore
     out = redact(f"x {hash_} y {pem} z")
     assert hash_ not in out and "AAAA" not in out and "<hash>" in out and "<pem>" in out
+
+
+def test_local_child_environment_is_minimal(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    for name in ("AUTHELIA_VERSION", "AUTHELIA_CONTAINER", "X_AUTHELIA_CONFIG", "APP_SECRET_KEY"):
+        monkeypatch.setenv(name, "x")
+    env = child_environment()
+    assert set(env) == {"PATH", "LANG"}  # nothing from the app's environment leaks in
+
+
+def test_authelia_prefixed_variables_do_not_reach_the_child(monkeypatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    script = tmp_path / "fake-authelia"
+    script.write_text("#!/bin/sh\nenv | sort\n")
+    script.chmod(0o755)
+    monkeypatch.setenv("AUTHELIA_VERSION", "leak-me")
+    monkeypatch.setenv("APP_SECRET_KEY", "leak-me-too")
+    out = AutheliaCLI.local(str(script)).run([]).stdout
+    assert "leak-me" not in out and "AUTHELIA_" not in out
 
 
 def test_docker_runner_is_offline_and_mounts_readonly(tmp_path: Path) -> None:

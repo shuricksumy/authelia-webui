@@ -6,14 +6,14 @@
     <span class="domain">{{ r.domains|join(', ') }}</span>
     {% if r.note %}<small class="note">{{ r.note.splitlines()[0]|truncate(70) }}</small>{% endif %}
   </td>
-  <td class="col-paths">
+  <td class="col-paths" data-label="Paths">
     {% if r.resources %}
     <details><summary>{{ r.resources|length }} path{{ '' if r.resources|length == 1 else 's' }}</summary>
       <ul class="regex">{% for p in r.resources %}<li><code>{{ p }}</code></li>{% endfor %}</ul></details>
     {% else %}<span class="muted">all</span>{% endif %}
   </td>
-  <td class="col-who">{{ r.who }}</td>
-  <td class="col-policy">
+  <td class="col-who" data-label="Who">{{ r.who }}</td>
+  <td class="col-policy" data-label="Policy">
     <span class="badge {{ r.policy }}">{{ r.policy_label }}</span>
     {% if r.locked %}<span class="lock" title="Protected rule: the admin UI or OIDC depends on it">{{ lock() }}<span class="visually-hidden">Protected</span></span>{% endif %}
     {% if r.issues %}

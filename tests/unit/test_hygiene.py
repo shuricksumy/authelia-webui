@@ -39,6 +39,7 @@ def test_flags_real_looking_data(line: str, kind: str) -> None:
         "image: ghcr.io/owner/authelia-configurator:authelia-4.39.28",
         "hash prefixes like $argon2id$ and $pbkdf2- in prose",
         "version 4.39.28 and file settings.py",
+        "docker compose -f compose.dev.yml up and renovate.json",
         f"x = '{PEM}'  # hygiene: ignore",
     ],
 )
