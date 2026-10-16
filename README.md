@@ -97,6 +97,7 @@ Applying changes is blocked while the bundled and running Authelia versions diff
    into the draft with the reason.
 5. Without Redis, Authelia keeps sessions in memory, so **every restart signs everyone out**. The
    apply keeps running on the server; after you log in again the result is shown (banner, `History`).
+   If the change is rolled back, Authelia restarts a second time and you may have to log in again.
 6. The running Authelia version must match the version bundled in this image
    (`VERSION_MISMATCH=block`, the default), otherwise applying is disabled and the banner names the
    image tag to deploy.

@@ -34,7 +34,8 @@
     <div id="flash" class="flash" role="status" aria-live="polite"></div>
     <p id="restart-note" class="flash info" role="status" hidden>
       Authelia is restarting and will sign you out. You will be asked to sign in again; the result
-      of the apply is shown right after.
+      of the apply is shown right after. If the change has to be rolled back, Authelia restarts a
+      second time and you may be asked to sign in once more.
     </p>
     {% block content %}{% endblock %}
   </main>

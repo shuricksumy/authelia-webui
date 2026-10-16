@@ -77,8 +77,11 @@ def review_and_apply(page: Page) -> None:
 
 
 def log_back_in_after_restart(page: Page) -> None:
-    """Authelia restarted: the browser ends up on the portal login; sign in, land on the result."""
-    page.wait_for_url(f"https://{AUTH_HOST}:{PORTAL_PORT}/**", timeout=120_000)
+    """Authelia restarted (twice after a rollback). The job is finished, so load the result page
+    afresh: the login form must come from the final Authelia instance, not from one that was
+    served between the two restarts (a form from the first instance cannot complete a login)."""
+    page.goto(f"{BASE}/apply/result")
+    page.wait_for_url(f"https://{AUTH_HOST}:{PORTAL_PORT}/**", timeout=60_000)
     sign_in(page)
     page.wait_for_url(f"{BASE}/apply/result", timeout=20_000)
 
