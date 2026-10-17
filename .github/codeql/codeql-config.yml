@@ -1,0 +1,5 @@
+# Test fixtures write test passwords, talk to the self-signed test stack without certificate
+# checks and print a test TOTP on purpose; scanning them only produces false alarms. The app,
+# scripts and workflows are scanned.
+paths-ignore:
+  - tests

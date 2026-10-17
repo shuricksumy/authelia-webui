@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import difflib
-import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -14,7 +13,7 @@ from app.rules.lint import Issue
 from app.rules.tester import MatchResult, as_list, normalise_subjects
 
 POLICY_LABEL = {"bypass": "BYPASS", "one_factor": "1FA", "two_factor": "2FA", "deny": "DENY"}
-AND_SPLIT = re.compile(r"\s+(?:and|\+)\s+", re.IGNORECASE)
+AND_WORDS = frozenset({"and", "+"})
 
 
 def lines_of(text: str) -> list[str]:
@@ -23,8 +22,26 @@ def lines_of(text: str) -> list[str]:
 
 
 def parse_subject_lines(text: str) -> list[list[str]]:
-    """Each line is an OR alternative; ' and ' / ' + ' joins AND terms within it."""
-    return [[t.strip() for t in AND_SPLIT.split(line) if t.strip()] for line in lines_of(text)]
+    """Each line is an OR alternative; ' and ' / ' + ' joins AND terms within it.
+
+    Split on whitespace tokens, not with a regex: a whitespace-and-separator regex backtracks
+    quadratically on long runs of spaces (CodeQL py/polynomial-redos); this is linear."""
+    out: list[list[str]] = []
+    for line in lines_of(text):
+        terms: list[str] = []
+        current: list[str] = []
+        for token in line.split():
+            if token.lower() in AND_WORDS:
+                if current:
+                    terms.append(" ".join(current))
+                current = []
+            else:
+                current.append(token)
+        if current:
+            terms.append(" ".join(current))
+        if terms:
+            out.append(terms)
+    return out
 
 
 def format_subject_lines(groups: Sequence[Sequence[str]]) -> str:

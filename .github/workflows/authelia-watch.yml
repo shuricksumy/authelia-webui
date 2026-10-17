@@ -5,13 +5,14 @@ on:
     - cron: "23 5 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   watch:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the bump branch
+      pull-requests: write # open the PR
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked] create-pull-request pushes the branch
       - id: latest
