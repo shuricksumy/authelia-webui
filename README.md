@@ -249,6 +249,15 @@ CI (lint, tests, gitleaks, Trivy) the repository runs:
 Releases are built only from `main` (`release.yml` runs the full CI first), signed with cosign,
 with SBOM and provenance.
 
+To check that an image really comes from this repository's release workflow (needs **cosign v3**;
+v2 cannot read the newer signature format and reports "no signatures found"):
+
+```sh
+cosign verify ghcr.io/shuricksumy/authelia-configurator:authelia-4.39.28 \
+  --certificate-identity-regexp '^https://github.com/shuricksumy/authelia-webui/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).
