@@ -1,9 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended",
-    "helpers:pinGitHubActionDigests",
-    "docker:pinDigests"
+    "github>shuricksumy/renovate-config"
   ],
   "enabledManagers": [
     "custom.regex",
@@ -75,18 +73,6 @@
       "automerge": true
     },
     {
-      "description": "Base-image digest refreshes (OS security rebuilds) merge themselves when CI is green",
-      "matchManagers": [
-        "dockerfile"
-      ],
-      "matchUpdateTypes": [
-        "digest",
-        "pin",
-        "pinDigest"
-      ],
-      "automerge": true
-    },
-    {
       "description": "Stay on Python 3.13 for now: no minor/major Python upgrades (base image or requires-python). Digest and patch refreshes of 3.13-slim still come through (security fixes).",
       "matchPackageNames": [
         "python"
@@ -97,6 +83,5 @@
       ],
       "enabled": false
     }
-  ],
-  "platformAutomerge": true
+  ]
 }
