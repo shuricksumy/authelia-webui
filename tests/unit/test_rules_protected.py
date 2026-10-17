@@ -93,3 +93,19 @@ def test_works_on_a_parsed_document() -> None:
         f"    - {{domain: {r['domain']}, policy: {r['policy']}}}\n" for r in [DENY]
     )
     assert not check_protected(RulesDocument.parse(text).effective(), settings()).ok
+
+
+def test_allow_any_client_network_accepts_a_configurator_rule_without_networks() -> None:
+    """With the owner's opt-in only identity matters: admins with 2FA, everyone else denied."""
+    open_admin = {k: v for k, v in ADMIN.items() if k != "networks"}
+    anywhere = settings()
+    anywhere.ALLOW_ANY_CLIENT_NETWORK = True
+    report = check_protected(cfg([PORTAL, open_admin, DENY, CATCH_ALL]), anywhere)
+    assert report.ok, report.violations
+    # without the opt-in the same rules are refused, as before
+    assert not check_protected(cfg([PORTAL, open_admin, DENY, CATCH_ALL]), settings()).ok
+    # identity is still enforced: no two-factor, or no deny for non-admins, is refused
+    weak = cfg([PORTAL, {**open_admin, "policy": "one_factor"}, DENY])
+    assert any("two_factor" in v for v in check_protected(weak, anywhere).violations)
+    no_deny = cfg([PORTAL, open_admin, CATCH_ALL])
+    assert any("non-admin" in v for v in check_protected(no_deny, anywhere).violations)

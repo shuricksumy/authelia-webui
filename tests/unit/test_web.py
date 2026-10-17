@@ -408,3 +408,10 @@ def test_subject_lines_split_on_and_and_plus_in_linear_time() -> None:
 
 def test_the_status_bar_shows_the_address_the_configurator_sees(ui: UI) -> None:
     assert f"you: <strong>{VPN}</strong>" in ui.get("/rules").text
+
+
+def test_any_network_mode_is_announced_on_every_page(env: dict[str, Path]) -> None:
+    ui = UI(env)
+    assert "Reachable from any network" not in ui.get("/rules").text
+    ui.settings.ALLOW_ANY_CLIENT_NETWORK = True
+    assert "Reachable from any network" in ui.get("/rules").text

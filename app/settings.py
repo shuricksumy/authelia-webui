@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     CONFIGURATOR_DOMAIN: str = Field(min_length=1)
     ADMIN_GROUP: str = Field(min_length=1)
     ALLOWED_CLIENT_CIDRS: Annotated[list[Network], NoDecode]
+    # Owner opt-in: answer admins from ANY network, so only Authelia (identity, ADMIN_GROUP, 2FA)
+    # protects the tool. Off by default (internal-only, SPEC §8). ALLOWED_CLIENT_CIDRS stays
+    # required: it still names the home networks used as the default for access tests.
+    ALLOW_ANY_CLIENT_NETWORK: bool = False
     TRUSTED_PROXY_CIDRS: Annotated[list[Network], NoDecode]
     AUTHELIA_CONTAINER: str = Field(min_length=1)
     AUTHELIA_HEALTH_URL: str = Field(min_length=1)

@@ -92,7 +92,8 @@ def check_protected(config: Mapping[str, Any], settings: Settings) -> ProtectedR
     """`config` = effective config with `access_control` (and `definitions` if any)."""
     allowed = settings.ALLOWED_CLIENT_CIDRS
     inside = next(allowed[0].hosts(), allowed[0].network_address)
-    outsiders = _outside_ips(allowed)
+    # With ALLOW_ANY_CLIENT_NETWORK there is no "outside": only identity (group + 2FA) is checked.
+    outsiders = [] if settings.ALLOW_ANY_CLIENT_NETWORK else _outside_ips(allowed)
     violations: list[str] = []
     locked: set[int] = set()
 
