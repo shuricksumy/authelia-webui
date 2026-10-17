@@ -1,8 +1,8 @@
 name: release
 on:
-  workflow_run: # after CI is green on main
-    workflows: [ci]
-    types: [completed]
+  # Only what is merged into main is published. (Not `workflow_run`: its branch filter also matches
+  # a fork's PR from a branch named "main", which would publish the fork's commit.)
+  push:
     branches: [main]
   schedule:
     - cron: "17 4 * * 1" # weekly rebuild for base-image / OS security patches
@@ -16,16 +16,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  ci: # scheduled/manual runs have no preceding CI run, so run it here
-    if: github.event_name != 'workflow_run'
+  ci: # the full CI on exactly the commit that is published
     uses: ./.github/workflows/ci.yml
 
   publish:
     needs: ci
-    if: >-
-      always() &&
-      ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-       (github.event_name != 'workflow_run' && needs.ci.result == 'success'))
     runs-on: ubuntu-latest
     permissions:
       contents: write # GitHub Release
@@ -35,7 +30,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }} # the commit CI tested
+          persist-credentials: false
       - id: v
         run: |
           echo "authelia=$(scripts/authelia_version.sh)" >> "$GITHUB_OUTPUT"

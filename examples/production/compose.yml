@@ -90,7 +90,7 @@ services:
   configurator:
     <<: *hardened
     # The tag must match AUTHELIA_VERSION: the image bundles that exact Authelia binary.
-    image: ghcr.io/OWNER/authelia-configurator:authelia-${AUTHELIA_VERSION}
+    image: ghcr.io/shuricksumy/authelia-configurator:authelia-${AUTHELIA_VERSION}
     restart: unless-stopped
     user: "${AUTHELIA_UID:-1000}:${AUTHELIA_GID:-1000}" # same owner as authelia/managed
     environment:

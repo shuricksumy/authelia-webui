@@ -153,6 +153,15 @@ is a synthetic replica of it, with `__GEN_*__` placeholders that are filled at
 test time. Use the replica for migration, round-trip, lint and form tests.
 Update the replica when you learn new patterns; never add real data to it.
 
+## CI and repository security
+- `ci.yml` runs on PRs and is called by `release.yml` on every push to `main` (and weekly), which
+  then publishes. Never trigger a release with `workflow_run`: its branch filter also matches a
+  fork's branch named `main`.
+- Every action is pinned to a commit SHA; checkouts use `persist-credentials: false` (except
+  authelia-watch, which pushes a branch); values from outside (API answers) reach `run:` only
+  through `env:` and are validated. `uvx zizmor --offline .github/workflows` must stay clean.
+- `main` is protected (PR + green CI). Dependabot: security PRs only; Renovate: versions.
+
 ## Naming
 Repo `authelia-webui`. Product name "Authelia Configurator". Image
 `ghcr.io/<owner>/authelia-configurator`.

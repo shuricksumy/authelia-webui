@@ -13,12 +13,17 @@ jobs:
   watch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 # zizmor: ignore[artipacked] create-pull-request pushes the branch
       - id: latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           latest="$(gh api repos/authelia/authelia/releases/latest --jq .tag_name | sed 's/^v//')"
+          # an outside value: accept a plain version number only (it ends up in a shell and a file)
+          if ! printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "unexpected release tag" >&2
+            exit 1
+          fi
           current="$(scripts/authelia_version.sh)"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
@@ -37,7 +42,9 @@ jobs:
           echo "count=$n" >> "$GITHUB_OUTPUT"
       - name: Bump the pinned version
         if: steps.latest.outputs.newer == 'true' && steps.existing.outputs.count == '0'
-        run: sed -i "s/^ARG AUTHELIA_VERSION=.*/ARG AUTHELIA_VERSION=${{ steps.latest.outputs.latest }}/" Dockerfile
+        env:
+          LATEST: ${{ steps.latest.outputs.latest }}
+        run: sed -i "s/^ARG AUTHELIA_VERSION=.*/ARG AUTHELIA_VERSION=${LATEST}/" Dockerfile
       - name: Open PR (CI decides whether it is safe to merge)
         if: steps.latest.outputs.newer == 'true' && steps.existing.outputs.count == '0'
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1

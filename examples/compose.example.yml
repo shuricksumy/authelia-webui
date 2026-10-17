@@ -62,7 +62,7 @@ services:
   configurator:
     <<: *hardened
     # Use the tag that matches your Authelia version: the image bundles that exact binary.
-    image: ghcr.io/OWNER/authelia-configurator:authelia-${AUTHELIA_VERSION}
+    image: ghcr.io/shuricksumy/authelia-configurator:authelia-${AUTHELIA_VERSION}
     restart: unless-stopped
     user: "${AUTHELIA_UID:-1000}:${AUTHELIA_GID:-1000}" # must be able to write ./authelia/managed
     environment:

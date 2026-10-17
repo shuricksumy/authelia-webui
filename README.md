@@ -236,6 +236,19 @@ uv run pytest tests/unit/test_split_config.py::test_counts_and_disabled_rule_pos
 The pinned Authelia version lives only in the `Dockerfile` (`ARG AUTHELIA_VERSION`). See
 [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
 
+`main` is protected: every change is a pull request that merges only when CI is green. Besides
+CI (lint, tests, gitleaks, Trivy) the repository runs:
+- **CodeQL** (Python and the workflows, `security-extended`), weekly and on every PR;
+- **dependency review** on PRs (fails on a new dependency with a high/critical advisory);
+- **zizmor** on workflow changes (injection, credential persistence, unpinned actions);
+- **OpenSSF Scorecard** weekly;
+- **secret scanning with push protection**, **Dependabot alerts and security updates**
+  (Dependabot opens security PRs only; Renovate owns version updates), and private
+  vulnerability reporting.
+
+Releases are built only from `main` (`release.yml` runs the full CI first), signed with cosign,
+with SBOM and provenance.
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).

@@ -24,7 +24,7 @@ Use the tag that matches the Authelia version you run (`authelia-<version>`):
 mkdir -p work && cp authelia/configuration.yml work/
 docker run --rm --network none --user "$(id -u):$(id -g)" \
   -v "$PWD/work:/work" \
-  ghcr.io/OWNER/authelia-configurator:authelia-4.39.28 \
+  ghcr.io/shuricksumy/authelia-configurator:authelia-4.39.28 \
   python -m scripts.split_config --config /work/configuration.yml --out /work/out
 ```
 
