@@ -404,3 +404,7 @@ def test_subject_lines_split_on_and_and_plus_in_linear_time() -> None:
     started = time.monotonic()
     parse_subject_lines("a" + " " * 200_000 + "b")  # the ReDoS input for the old regex
     assert time.monotonic() - started < 1
+
+
+def test_the_status_bar_shows_the_address_the_configurator_sees(ui: UI) -> None:
+    assert f"you: <strong>{VPN}</strong>" in ui.get("/rules").text
