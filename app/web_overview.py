@@ -17,7 +17,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, Response
 
-from app import logs
+from app import certs, logs
 from app.apply.runtime import RuntimeUnavailable
 from app.oidc.lint import lint_clients
 from app.oidc.names import load_oidc_names
@@ -202,12 +202,23 @@ def collect(v: View) -> Overview:
                 )
             )
 
+    def certificates() -> None:
+        watcher = services.certs
+        for info in (watcher.expiring() if watcher else [])[:3]:
+            days = info.days_left()
+            out.items.append(Attention(
+                "error" if days is not None and days < 0 else "warning",
+                f"Certificate {info.source} ({info.subject or 'unknown'}) "
+                f"{certs.describe_days(days or 0)}.", "/keys",
+            ))  # fmt: skip
+
     check("Authelia", runtime)
     check("the rules", rules)
     check("the access tests", tests)
     check("the OIDC clients", clients)
     check("the users", users)
     check("the log", logs_check)
+    check("the certificates", certificates)
     order = {"error": 0, "warning": 1, "info": 2}
     out.items.sort(key=lambda item: order[item.severity])
     return out

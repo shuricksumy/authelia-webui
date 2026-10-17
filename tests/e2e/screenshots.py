@@ -333,7 +333,13 @@ def logs_page(page: Page) -> None:
     page.goto(f"{BASE}/logs?level=error&window=1h", wait_until="networkidle")
 
 
+def keys_page(page: Page) -> None:
+    time.sleep(6)  # the certificate watcher's first check runs a few seconds after startup
+    page.goto(f"{BASE}/keys", wait_until="networkidle")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
+    "keys": keys_page,
     "overview": overview_page,
     "logs": logs_page,
     "users": users_list,

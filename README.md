@@ -162,6 +162,14 @@ entries, or download the filtered lines. Password hashes, tokens and keys are hi
 anything is shown. The configurator never rotates logs; the host does, see
 `examples/production/logrotate/authelia`.
 
+## Keys and certificates
+
+**Keys** rotates Authelia's OIDC signing keys in three reviewed steps (add a new key, make it
+sign, remove the old one), each through the safe apply with a check of the live key set, and lists
+certificate expiry (signing-key certificates and the live TLS certificates) with a banner and a
+notification before anything expires. It needs a one-time move of the keys out of the main file:
+`docs/jwks.md`.
+
 ## Notifications (optional)
 
 Set `NOTIFY_WEBHOOK_URL` to get a message when an apply finishes (applied, rolled back, failed)

@@ -15,11 +15,13 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from app import certs
 from app.apply.services import ApplyServices, build_services
 from app.security import SecurityMiddleware
 from app.settings import Settings, load_settings
 from app.web import router
 from app.web_apply import router as apply_router
+from app.web_keys import router as keys_router
 from app.web_oidc import router as oidc_router
 from app.web_overview import router as overview_router
 from app.web_tests import router as tests_router
@@ -45,6 +47,8 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
                 log.exception("recovery of an interrupted apply failed")
 
         threading.Thread(target=recover, name="apply-recovery", daemon=True).start()
+        if services.certs is not None:
+            services.certs.start()
         yield
 
     app = FastAPI(
@@ -78,6 +82,7 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
         return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     app.state.templates.env.filters["utc"] = utc
+    app.state.templates.env.filters["cert_days"] = lambda c: certs.describe_days(c.days_left())
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     app.include_router(router)
     app.include_router(apply_router)
@@ -85,6 +90,7 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
     app.include_router(oidc_router)
     app.include_router(users_router)
     app.include_router(overview_router)
+    app.include_router(keys_router)
     # Outermost: every request (incl. static files) passes the IP/identity/CSRF checks.
     app.add_middleware(SecurityMiddleware, settings=settings)
     return app

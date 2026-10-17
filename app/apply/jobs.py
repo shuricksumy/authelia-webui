@@ -22,7 +22,7 @@ STEP_LABELS = {
     "save": "Saving",
     "restart": "Restarting Authelia",
     "health": "Health check",
-    "verify": "Checking access tests on the live Authelia",
+    "verify": "Checking the live Authelia",
     "rollback": "Rolling back",
 }
 

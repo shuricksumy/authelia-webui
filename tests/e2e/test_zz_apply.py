@@ -281,3 +281,65 @@ def test_a_client_created_in_the_ui_gets_a_token_with_the_secret_shown_once(
         assert token_status("e2e-machine", secret) == 401
     finally:
         context.close()
+
+
+def published_kids() -> list[str]:
+    """The key ids the real Authelia publishes (what apps verify tokens with)."""
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": f"{AUTH_HOST}:{PORTAL_PORT}"}
+    response = httpx.get("http://127.0.0.1:19091/jwks.json", headers=headers, timeout=10)
+    assert response.status_code == 200
+    return [str(k["kid"]) for k in response.json()["keys"]]
+
+
+def keys_step(page: Page, button: str, row: str | None = None) -> None:
+    before = last_job_id()
+    page.goto(f"{BASE}/keys", wait_until="networkidle")
+    scope = page.locator("table.keys tbody tr", has_text=row) if row else page
+    scope.get_by_role("button", name=button).click()
+    assert wait_for_job(not_id=before, timeout=180)["result"] == "applied"
+    log_back_in_after_restart(page)
+    page.goto(f"{BASE}/keys", wait_until="networkidle")
+
+
+def test_signing_keys_rotate_prepare_promote_retire_against_real_authelia(
+    browser: Browser, alice_state: AliceSession
+) -> None:
+    """A whole rotation through the UI: after every step the live key set is what the page says,
+    the private key files are in secrets/ (never in git), and the old file goes only at the end."""
+    context = browser.new_context(ignore_https_errors=True, storage_state=alice_state.state())
+    page = context.new_page()
+    page.on("dialog", lambda dialog: dialog.accept())  # the confirmations (hx-confirm)
+    managed = STACK / "managed"
+    try:
+        [old] = published_kids()
+        page.goto(f"{BASE}/keys", wait_until="networkidle")
+        expect(page.locator("table.keys tbody tr")).to_have_count(1)
+        expect(page.get_by_text("not set up yet")).to_have_count(0)
+
+        keys_step(page, "1. Add a new key")
+        both = published_kids()
+        assert old in both and len(both) == 2
+        [new] = [k for k in both if k != old]
+        expect(page.locator("table.keys tbody tr").first).to_contain_text(old)
+        expect(page.locator("table.keys tbody tr").nth(1)).to_contain_text("published")
+        assert (managed / "secrets" / "jwks" / f"{new}.pem").is_file()
+
+        keys_step(page, "Make it sign", row=new)
+        assert sorted(published_kids()) == sorted([old, new])
+        expect(page.locator("table.keys tbody tr").first).to_contain_text(new)
+        expect(page.locator("table.keys tbody tr").first).to_contain_text("signing")
+
+        keys_step(page, "Remove", row=old)
+        assert published_kids() == [new]
+        assert not (managed / "secrets" / "jwks" / f"{old}.pem").exists()
+        assert (managed / "secrets" / "jwks" / f"{new}.pem").is_file()
+
+        tracked = git_log("--name-only", "--format=")
+        assert "secrets" not in tracked and "oidc_jwks.yml" in tracked
+        assert "BEGIN" not in (managed / "audit.log").read_text()
+        history = git_log("--format=%s")
+        assert "OIDC keys: prepared new key" in history and "OIDC keys: retired key" in history
+        page.goto(f"{BASE}/history", wait_until="networkidle")
+        expect(page.get_by_text("OIDC keys (restarts Authelia)").first).to_be_visible()
+    finally:
+        context.close()

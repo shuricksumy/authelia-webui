@@ -79,6 +79,13 @@ class Settings(BaseSettings):
     AUTHELIA_LOG_FILE: Path | None = None
     NOTIFY_WEBHOOK_URL: SecretStr | None = None  # may embed a token (e.g. Telegram)
     AUTHELIA_BINARY: str = "authelia"
+    # Same value as Authelia's X_AUTHELIA_CONFIG_FILTERS ("template" once the OIDC signing keys
+    # live in managed/secrets/): validation must see the files exactly as Authelia does.
+    CONFIG_FILTERS: str = ""
+    CERT_WARN_DAYS: int = Field(default=21, ge=1, le=365)
+    # host[:port] list whose TLS certificates are checked; unset: AUTH_DOMAIN and
+    # CONFIGURATOR_DOMAIN on 443; empty: no live check.
+    CERT_CHECK_HOSTS: str | None = None
     APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 

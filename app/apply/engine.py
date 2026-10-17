@@ -30,8 +30,10 @@ from app.apply.health import HealthResult, wait_restarted_and_healthy
 from app.apply.jobs import Job, JobBoard
 from app.apply.repo import ManagedRepo, RepoError
 from app.apply.runtime import AutheliaRuntime, RuntimeUnavailable
+from app.apply.validate import validate_keys
 from app.authelia_cli import ValidationResult, redact
 from app.oidc.document import CLIENTS_NAME
+from app.oidc.jwks import JWKS_NAME
 from app.oidc.lint import lint_clients
 from app.oidc.names import load_oidc_names
 from app.rules import access_tests
@@ -55,7 +57,7 @@ from app.users.schema import load_schema
 
 log = logging.getLogger("app.apply")
 
-TRACKED = (LIVE_NAME, CLIENTS_NAME, "disabled_rules.yml", "access_tests.yml")
+TRACKED = (LIVE_NAME, CLIENTS_NAME, "disabled_rules.yml", "access_tests.yml", JWKS_NAME)
 EXTERNAL_SUBJECT = "External change: edited outside the configurator"
 MARKER = "in-progress.json"
 RECOVERY_HINT = (
@@ -67,6 +69,8 @@ RECOVERY_HINT = (
 # (settings, candidate access_control text, candidate oidc_clients text or None) -> result
 Validator = Callable[[Settings, str, str | None], ValidationResult | None]
 HealthWaiter = Callable[..., HealthResult]
+# (settings, candidate signing-keys text) -> result
+KeysValidator = Callable[[Settings, str], ValidationResult | None]
 
 
 class Refused(Exception):
@@ -91,7 +95,11 @@ class ApplyEngine:
         health_waiter: HealthWaiter = wait_restarted_and_healthy,
         prober: probe.Prober = probe.forward_auth,
         discovery: probe.Discovery = probe.oidc_discovery,
+        keys_validator: KeysValidator = validate_keys,
+        jwks_probe: Callable[[str, str], list[str] | str] = probe.jwks_kids,
     ) -> None:
+        self.keys_validator = keys_validator
+        self.jwks_probe = jwks_probe
         self.prober = prober
         self.discovery = discovery
         self.settings = settings
@@ -324,6 +332,11 @@ class ApplyEngine:
                 "An earlier apply did not finish cleanly. Restart the configurator so it can "
                 "resolve it (it checks Authelia and rolls back if needed), then review again."
             )
+        if (self.managed / JWKS_NAME).is_file() and "template" not in [
+            f.strip() for f in self.settings.CONFIG_FILTERS.split(",")
+        ]:
+            reasons.append("The signing keys file needs CONFIG_FILTERS=template for the "
+                           "configurator, the same filter Authelia uses.")  # fmt: skip
         if not self.store.has_draft():
             return [*reasons, "There are no unapplied changes."]
         if self.store.is_stale():
@@ -479,14 +492,20 @@ class ApplyEngine:
         except RuntimeUnavailable:
             return False  # cannot tell: treat as not restarted (the file is reverted)
 
-    def _health_or_rollback(self, job: Job, request: ApplyRequest, snap: Snapshot, before: str,
-                            commit: str) -> None:  # fmt: skip
+    def _health_or_rollback(self, job: Job, request: ApplyRequest, snap: Snapshot | None,
+                            before: str, commit: str,
+                            verify: Callable[[], str | None] | None = None) -> None:  # fmt: skip
         board = self.board
         board.update(job, "health", "running")
         health = self._wait(before)
         if health.healthy:
             board.update(job, "health", "done", health.reason)
-            mismatch = self._verify(job, snap)
+            if verify is not None:
+                mismatch = verify()
+            elif snap is not None:
+                mismatch = self._verify(job, snap)
+            else:
+                mismatch = None
             if mismatch:
                 self._rollback(job, request, snap, mismatch, commit)
                 return
@@ -612,7 +631,7 @@ class ApplyEngine:
             # the draft is still there (it is discarded only after the commit).
             # Only the files an apply writes: the users file (or access tests) may hold newer
             # changes Authelia made meanwhile (password resets) that must not be undone.
-            for path in (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME):
+            for path in (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME, JWKS_NAME):
                 if self.repo.tracks(path):
                     self.repo.restore(path)
             marker.unlink(missing_ok=True)

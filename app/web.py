@@ -149,6 +149,7 @@ def shell_context(request: Request) -> dict[str, Any]:
         "runtime": services.status.get(),
         "last_job": services.board.snapshot(),
         "notices": services.engine.notices(),
+        "cert_warnings": services.certs.expiring() if services.certs else [],
     }
 
 

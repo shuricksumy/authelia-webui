@@ -1,6 +1,13 @@
 {% if runtime.bad or runtime.mismatch_warns %}
 <div class="banner {{ 'error' if runtime.bad else 'warn' }}" role="alert">{{ runtime.explanation }}</div>
 {% endif %}
+{% if cert_warnings %}
+<div class="banner warn" role="status">
+  <span><strong>{{ 'A certificate has expired.' if cert_warnings[0].days_left() < 0 else 'A certificate expires soon.' }}</strong>
+    {{ cert_warnings[0].source }}{% if cert_warnings[0].subject %} ({{ cert_warnings[0].subject }}){% endif %}: {{ cert_warnings[0]|cert_days }}.
+    {% if cert_warnings|length > 1 %}{{ cert_warnings|length - 1 }} more. {% endif %}<a href="/keys">Keys and certificates</a></span>
+</div>
+{% endif %}
 {% if last_job %}
   {% if not last_job.done %}
   <div class="banner info" role="status">An apply is running. <a href="/apply/result">Show progress</a></div>

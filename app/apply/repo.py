@@ -18,6 +18,7 @@ GITIGNORE = """# Managed by the Authelia Configurator. Runtime state is never co
 .apply/
 .lock
 audit.log
+secrets/
 """
 GIT_TIMEOUT_S = 30
 
@@ -96,6 +97,17 @@ class ManagedRepo:
         self._git("add", "--", ".gitignore", *present)
         self._git("commit", "-q", "-m", "Initial import of the managed configuration")
         return True
+
+    def exclude(self, pattern: str) -> None:
+        """Keep `pattern` out of git for this repository only (.git/info/exclude, untracked), so
+        a repository created before secrets/ existed can never pick private keys up."""
+        info = self.path / ".git" / "info"
+        info.mkdir(parents=True, exist_ok=True)
+        target = info / "exclude"
+        current = target.read_text() if target.exists() else ""
+        if pattern not in current.splitlines():
+            target.write_text(current + ("" if current.endswith("\n") or not current else "\n")
+                              + pattern + "\n")  # fmt: skip
 
     # ------------------------------------------------------------------ state
 

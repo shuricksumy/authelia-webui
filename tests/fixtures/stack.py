@@ -25,6 +25,7 @@ from pathlib import Path
 
 from app.rules.document import RulesDocument
 from app.rules.form import RuleForm, apply_form
+from scripts import migrate_jwks
 from scripts.split_config import (
     ACCESS_CONTROL_NAME,
     OIDC_CLIENTS_NAME,
@@ -54,6 +55,7 @@ X_AUTHELIA_CONFIG = ",".join(
         "/config/configuration.yml",
         f"/config/managed/{ACCESS_CONTROL_NAME}",
         f"/config/managed/{OIDC_CLIENTS_NAME}",
+        "/config/managed/oidc_jwks.yml",  # the signing keys, moved out by scripts/migrate_jwks.py
     ]
 )
 
@@ -165,6 +167,7 @@ def seed_totp(authelia_version: str) -> None:
             "--user", f"{os.getuid()}:{os.getgid()}", "--entrypoint", "",
             f"authelia/authelia:{authelia_version}", "authelia", "storage"]  # fmt: skip
     config = [arg for path in X_AUTHELIA_CONFIG.split(",") for arg in ("--config", path)]
+    config += ["--config.experimental.filters", "template"]
     for args in (
         ["migrate", "up"],
         ["user", "totp", "generate", USERNAME, "--secret", TOTP_SECRET, "--force"],
@@ -182,7 +185,11 @@ def prepare(authelia: str = "auto") -> Path:
     check_structural_equality(original, result)
     managed = STACK / "managed"
     managed.mkdir(parents=True)
-    (STACK / "configuration.yml").write_text(adapt_main(result.main_text))
+    main_text = adapt_main(result.main_text)
+    # Phase 4c: like a real deployment after the one-time move, the signing keys are files in
+    # managed/secrets/ named by managed/oidc_jwks.yml (Authelia reads them via the template filter)
+    migration = migrate_jwks.plan(main_text, Path("/config/managed"))
+    (STACK / "configuration.yml").write_text(migrate_jwks.without_jwks(main_text))
     (managed / ACCESS_CONTROL_NAME).write_text(adapt_access_control(result.access_control_text))
     if result.oidc_clients_text is None:
         raise RuntimeError("fixture has no OIDC clients")
@@ -191,6 +198,7 @@ def prepare(authelia: str = "auto") -> Path:
     )
     shutil.copy(files["users.yml"], managed / USERS_NAME)
     (managed / "access_tests.yml").write_text(ACCESS_TESTS)
+    migrate_jwks.write(migration, managed)
 
     (STACK / "logs").mkdir()  # Authelia's log, shown read-only by the configurator
     certs = STACK / "certs"

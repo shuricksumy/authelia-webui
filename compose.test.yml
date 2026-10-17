@@ -33,6 +33,8 @@ x-configurator-env: &configurator-env
   APP_SECRET_KEY: ${TEST_APP_SECRET_KEY:?run via make so a secret is generated}
   USERS_FILE: /config/managed/users.yml
   AUTHELIA_LOG_FILE: /config/logs/authelia.log
+  CONFIG_FILTERS: template # the signing keys are files read through Authelia's template filter
+  CERT_CHECK_HOSTS: traefik:8443 # the test certificate, read with a TLS handshake
 
 x-configurator-volumes: &configurator-volumes
   - ./tests/fixtures/generated/stack/configuration.yml:/config/configuration.yml:ro
@@ -72,7 +74,8 @@ services:
     image: authelia/authelia:${AUTHELIA_VERSION:?run via make so the pinned version is set}
     user: "${DEV_UID:-0}:${DEV_GID:-0}"
     environment:
-      X_AUTHELIA_CONFIG: /config/configuration.yml,/config/managed/access_control.yml,/config/managed/oidc_clients.yml
+      X_AUTHELIA_CONFIG: /config/configuration.yml,/config/managed/access_control.yml,/config/managed/oidc_clients.yml,/config/managed/oidc_jwks.yml
+      X_AUTHELIA_CONFIG_FILTERS: template
     volumes:
       - ./tests/fixtures/generated/stack:/config
     ports:

@@ -210,7 +210,7 @@ pre.diff span { display: block; padding: 0 0.75rem; white-space: pre; }
 .chip.edit { background: var(--app-warn-bg); color: var(--app-warn-fg); }
 .result-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.75rem; font-weight: 700; background: var(--app-hunk-bg); }
 .result-badge.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
-.result-badge.rolled-back, .result-badge.rollback, .result-badge.external, .result-badge.tests, .result-badge.users { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.result-badge.rolled-back, .result-badge.rollback, .result-badge.external, .result-badge.tests, .result-badge.users, .result-badge.keys { background: var(--app-warn-bg); color: var(--app-warn-fg); }
 .notice { padding: 0.65rem 0.9rem; border-radius: var(--pico-border-radius); border: 1px solid var(--app-border); margin: 0 0 0.9rem; }
 .notice.error { background: var(--app-deny-bg); color: var(--app-deny-fg); border-color: transparent; }
 .notice.info { background: var(--app-hunk-bg); }
@@ -301,6 +301,10 @@ pre.log-raw { margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; white-space: pre-wrap;
 .log-table td small, .problems-table td small { display: block; }
 .log-more { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 0.8rem; }
 .log-more [role="button"] { margin: 0; width: auto; }
+.rotation-start { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 1rem; }
+.rotation-start button { margin: 0; width: auto; }
+.rotation-start .muted { flex: 1 1 20rem; }
+table.keys form.inline-form { display: inline-flex; margin: 0 0.3rem 0 0; }
 
 /* ================================================================== 11. small screens */
 @media (max-width: 960px) {

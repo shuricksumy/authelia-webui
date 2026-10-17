@@ -31,6 +31,21 @@ Protection of the configurator rules is derived from env (there is no `protected
 - The production example mounts the log **folder** (logrotate replaces the file; a single-file
   bind mount would go stale). The test stack writes `generated/stack/logs/authelia.log`.
 
+## Architecture notes (Phase 4c: keys and certificates)
+- Signing keys are **files** (`managed/secrets/jwks/<kid>.pem`, mode 600, git-excluded in
+  `.gitignore` and `.git/info/exclude`); `managed/oidc_jwks.yml` names them through Authelia's
+  template filter, so it is *not valid YAML* before templating: `app/oidc/jwks.py` edits it as text,
+  strictly. Authelia and the configurator both need the filter (`X_AUTHELIA_CONFIG_FILTERS` /
+  `CONFIG_FILTERS=template`), and `validate_candidate` includes the live keys file.
+- `app/apply/keys.py` is one rotation step (prepare / promote / retire) through the same
+  validate -> write -> commit -> restart -> health -> verify -> rollback flow; verification is the
+  live `/jwks.json` kid set. A private key file is deleted only after a successful retire and a new
+  one only after a failed prepare. Key commits have no "Revert to this" in History.
+- `app/certs.py`: chains from the keys file or main config, live TLS handshakes (never trusted,
+  only read), `CertWatcher` in a background thread, one notification per certificate and threshold.
+- The test stack is migrated like a real deployment (`scripts/migrate_jwks.py` in
+  `tests/fixtures/stack.py`); never hand-edit the keys file format.
+
 ## Architecture notes (Phase 3: users)
 - The users file must live in `CONFIG_MANAGED_DIR` to be writable (`ApplyEngine.users_name`);
   outside it the UI is read-only. Changes save at once via `update_users` (no draft, no

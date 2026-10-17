@@ -22,6 +22,7 @@ from app.apply.jobs import Job
 from app.apply.repo import Commit, RepoError
 from app.authelia_cli import redact
 from app.oidc.document import CLIENTS_NAME, ClientsDocument
+from app.oidc.jwks import JWKS_NAME
 from app.rules.disabled import DISABLED_NAME, DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.store import LIVE_NAME, Snapshot, StaleDraftError
@@ -42,7 +43,7 @@ from app.web import (
 
 router = APIRouter()
 DRAFTED = (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME)
-SHOWN = (*DRAFTED, USERS_NAME)  # files whose changes History can show (hashes redacted)
+SHOWN = (*DRAFTED, USERS_NAME, JWKS_NAME)  # files whose changes History can show (hashes redacted)
 
 
 # --------------------------------------------------------------------------- apply
@@ -156,6 +157,8 @@ def history_rows(request: Request) -> list[HistoryRow]:
             kind, label = "external", "edited outside the configurator"
         elif commit.subject.startswith("Users:"):
             kind, label = "users", "users (no restart)"
+        elif commit.subject.startswith("OIDC keys:"):
+            kind, label = "keys", "OIDC keys (restarts Authelia)"
         elif commit.subject.startswith("Tests:"):
             kind, label = "tests", "access tests (no restart)"
         elif commit.subject.startswith("Rollback:"):

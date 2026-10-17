@@ -101,6 +101,23 @@ def oidc_discovery(authelia_url: str, host: str) -> str | None:
     return None if issuer else "discovery has no issuer"
 
 
+def jwks_kids(authelia_url: str, host: str) -> list[str] | str:
+    """The key ids Authelia publishes at /jwks.json (what apps verify tokens with), or a
+    plain-language problem."""
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": host}
+    try:
+        response = httpx.get(f"{authelia_url.rstrip('/')}/jwks.json", headers=headers, timeout=5)
+    except httpx.HTTPError as exc:
+        return f"the key set request failed ({type(exc).__name__})"
+    if response.status_code != 200:
+        return f"the key set answered HTTP {response.status_code}"
+    try:
+        keys = response.json()["keys"]
+        return [str(k["kid"]) for k in keys]
+    except (ValueError, KeyError, TypeError):
+        return "the key set is not in the expected format"
+
+
 def verify(
     cases: Sequence[AccessCase],
     new_config: Mapping[str, Any],

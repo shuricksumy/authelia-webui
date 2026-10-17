@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Keys{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
+<div class="toolbar"><h1>Keys and certificates</h1></div>
+
+<section aria-labelledby="keys-h">
+  <h2 id="keys-h">OIDC signing keys</h2>
+  <p class="muted">Authelia signs ID tokens with the <strong>first</strong> key and publishes all of them, so apps can verify
+    old and new tokens while you rotate. Rotation takes three steps spread over time; each one restarts Authelia and is rolled back
+    automatically if the published keys are not what was expected.</p>
+  {% if not state.migrated %}
+  <article class="notice info">
+    <p><strong>Key rotation is not set up yet.</strong> The signing keys are still inside Authelia's main configuration file, which this tool never writes.
+      A one-time move puts the private keys into protected files that Authelia reads through its template filter:</p>
+    <ol>
+      <li>Run <code>python -m scripts.migrate_jwks --config /path/to/configuration.yml --managed /path/to/managed</code> on the host (it changes nothing in the main file and prints what to edit).</li>
+      <li>Remove the <code>jwks:</code> list from the main file and add <code>/config/managed/oidc_jwks.yml</code> to <code>X_AUTHELIA_CONFIG</code>.</li>
+      <li>Set <code>X_AUTHELIA_CONFIG_FILTERS=template</code> for Authelia and <code>CONFIG_FILTERS=template</code> for the configurator, then restart both.</li>
+    </ol>
+    <p>The full guide is <code>docs/jwks.md</code>.</p>
+  </article>
+  {% elif state.problem %}
+  <article class="notice error" role="alert">{{ state.problem }}</article>
+  {% endif %}
+  {% if state.main_still_has_keys and state.migrated %}
+  <article class="notice info">The main configuration still lists signing keys. The managed file replaces that list, so the old entries are ignored: remove them from the main file to avoid confusion.</article>
+  {% endif %}
+
+  {% if state.doc %}
+  <div class="table-scroll">
+    <table class="data keys">
+      <colgroup><col class="w-xl"><col class="w-s"><col class="w-l"><col><col class="w-act"></colgroup>
+      <thead><tr><th>Key id</th><th>Algorithm</th><th>Role</th><th>Key file</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+      <tbody>
+        {% for k in state.doc.entries() %}
+        <tr>
+          <td data-label="Key id"><span class="domain trunc" title="{{ k.kid }}">{{ k.kid }}</span></td>
+          <td data-label="Algorithm">{{ k.algorithm }}</td>
+          <td data-label="Role">{% if loop.first %}<span class="badge two_factor">signing</span>{% else %}<span class="badge one_factor">published</span>{% endif %}</td>
+          <td data-label="Key file">{% if k.inline %}<span class="err-text">inside the file</span>{% else %}<span class="ok-text">own file</span> <small class="muted">(never shown)</small>{% endif %}</td>
+          <td class="col-actions">
+            {% if state.manageable and not loop.first %}
+            <form class="inline-form" hx-post="/keys/promote" hx-target="#keys-result" hx-swap="innerHTML" hx-confirm="Make {{ k.kid }} the signing key? Apps that have not refreshed their key set yet would reject new tokens.">
+              <input type="hidden" name="kid" value="{{ k.kid }}"><input type="hidden" name="keys_rev" value="{{ state.rev }}">
+              <button type="submit" class="small" title="Move this key first: Authelia will sign with it">Make it sign</button>
+            </form>
+            <form class="inline-form" hx-post="/keys/retire" hx-target="#keys-result" hx-swap="innerHTML" hx-confirm="Remove {{ k.kid }}? Its private key file is deleted. Tokens signed with it can no longer be verified.">
+              <input type="hidden" name="kid" value="{{ k.kid }}"><input type="hidden" name="keys_rev" value="{{ state.rev }}">
+              <button type="submit" class="small outline secondary" title="Remove this key and delete its file">Remove</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if state.can_prepare() %}
+  <form class="rotation-start" hx-post="/keys/prepare" hx-target="#keys-result" hx-swap="innerHTML" hx-disabled-elt="find button"
+        hx-confirm="Generate a new key and restart Authelia? Everyone is signed out once.">
+    <input type="hidden" name="keys_rev" value="{{ state.rev }}">
+    <button type="submit">1. Add a new key</button>
+    <span class="muted">Authelia generates it and publishes it next to the current one. It does not sign yet. Then wait until apps have refreshed their key set (a day is typical) and make it sign.</span>
+  </form>
+  {% elif state.manageable %}
+  <article class="notice info">
+    <strong>Rotation in progress.</strong>
+    {% if waited_hours is not none %}The new key has been published for {{ waited_hours }} hour{{ '' if waited_hours == 1 else 's' }}{% if not wait_enough %}; about a day is a safe wait before it signs{% endif %}. {% endif %}
+    <strong>2.</strong> Make the new key sign. <strong>3.</strong> After the longest token lifetime (ID tokens are short-lived; sessions live as long as <em>refresh</em> tokens do), remove the old key.
+  </article>
+  {% endif %}
+  {% endif %}
+  <div id="keys-result" aria-live="polite">{% if progress.job and not progress.job.done %}{% include "partials/apply_progress.html" %}{% endif %}</div>
+</section>
+
+<section aria-labelledby="certs-h">
+  <h2 id="certs-h">Certificates</h2>
+  <p class="muted">Checked every few hours; a warning shows from {{ warn_days }} days before expiry (<code>CERT_WARN_DAYS</code>), and one notification is sent per certificate and threshold.</p>
+  {% if not certificates %}
+  <article class="empty"><p>Nothing to check yet: no key certificate chains, and no hosts configured (<code>CERT_CHECK_HOSTS</code>) or the first check has not finished.</p></article>
+  {% else %}
+  <div class="table-scroll">
+    <table class="data certs">
+      <colgroup><col class="w-xl"><col><col class="w-l"><col class="w-xl"></colgroup>
+      <thead><tr><th>Source</th><th>Subject</th><th>Expires (UTC)</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for c in certificates %}
+        <tr>
+          <td data-label="Source"><span class="trunc" title="{{ c.cert.source }}">{{ c.cert.source }}</span></td>
+          <td data-label="Subject"><span class="trunc" title="{{ c.cert.subject }}">{{ c.cert.subject or '—' }}</span></td>
+          <td data-label="Expires" class="nowrap">{{ c.cert.not_after|utc if c.cert.not_after else '—' }}</td>
+          <td data-label="Status">
+            {% if c.status == 'ok' %}<span class="ok-text">&#10003; {{ c.cert|cert_days }}</span>
+            {% elif c.status == 'unknown' %}<span class="muted">{{ c.cert.error }}</span>
+            {% else %}<span class="err-text">&#9888; {{ c.cert|cert_days }}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

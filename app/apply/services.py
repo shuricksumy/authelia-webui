@@ -11,6 +11,7 @@ from app.apply.repo import ManagedRepo
 from app.apply.runtime import AutheliaRuntime
 from app.apply.status import StatusCache
 from app.apply.validate import validate_candidate
+from app.certs import CertWatcher
 from app.settings import Settings
 
 
@@ -21,6 +22,7 @@ class ApplyServices:
     engine: ApplyEngine
     status: StatusCache
     repo: ManagedRepo
+    certs: CertWatcher | None = None
     start_lock: threading.Lock = field(default_factory=threading.Lock)
 
 
@@ -34,4 +36,5 @@ def build_services(settings: Settings, validator: Validator = validate_candidate
         engine=engine,
         status=StatusCache(settings, runtime),
         repo=engine.repo,
+        certs=CertWatcher(settings),
     )

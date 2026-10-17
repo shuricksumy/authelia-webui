@@ -89,10 +89,11 @@ class AutheliaCLI:
     argv_prefix: tuple[str, ...]
     docker: bool = False
     timeout_s: int = DEFAULT_TIMEOUT_S
+    filters: str = ""  # Authelia's config filters (e.g. "template"), applied by `validate`
 
     @classmethod
-    def local(cls, binary: str = "authelia") -> AutheliaCLI:
-        return cls(argv_prefix=(binary,))
+    def local(cls, binary: str = "authelia", filters: str = "") -> AutheliaCLI:
+        return cls(argv_prefix=(binary,), filters=filters)
 
     @classmethod
     def via_docker(cls, version: str) -> AutheliaCLI:
@@ -127,6 +128,8 @@ class AutheliaCLI:
         args = ["config", "validate"]
         for path in resolved:
             args += ["--config", str(path)]
+        if self.filters:
+            args += ["--config.experimental.filters", self.filters]
         proc = self.run(args, mounts=[p.parent for p in resolved])
         return parse_validate_output(proc.returncode, proc.stdout + proc.stderr)
 
@@ -236,6 +239,30 @@ class AutheliaCLI:
         if proc.returncode != 0:
             raise AutheliaCLIError("crypto certificate rsa generate failed")
         return directory / "private.pem", directory / "public.crt"
+
+    def generate_key_pair(self, directory: Path, algorithm: str, bits: int = 4096) -> Path:
+        """A new private key for an OIDC JWK of `algorithm` (RS/PS* -> RSA, ES* -> ECDSA), written
+        by Authelia itself into `directory` as private.pem (public.pem is written too, unused).
+        The key never passes through this process. Returns the private key path."""
+        if algorithm[:2] in ("RS", "PS"):
+            kind = ["rsa", "--bits", str(bits)]
+        elif algorithm in ("ES256", "ES384", "ES512"):
+            kind = [
+                "ecdsa",
+                "--curve",
+                {"ES256": "P256", "ES384": "P384", "ES512": "P521"}[algorithm],
+            ]
+        else:
+            raise AutheliaCLIError(f"keys of type {algorithm} cannot be generated here")
+        directory.mkdir(parents=True, exist_ok=True)
+        proc = self.run(
+            ["crypto", "pair", kind[0], "generate", *kind[1:],
+             "--directory", str(directory.resolve())],
+            mounts=[directory], writable=True,
+        )  # fmt: skip
+        if proc.returncode != 0 or not (directory / "private.pem").is_file():
+            raise AutheliaCLIError("crypto pair generate failed")
+        return directory / "private.pem"
 
 
 def _labelled(text: str, label: str) -> str:
