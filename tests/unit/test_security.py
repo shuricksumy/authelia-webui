@@ -7,6 +7,7 @@ import ipaddress
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from app.main import create_app
 from app.security import CSRF, identity_of, resolve_client_ip
@@ -32,8 +33,8 @@ def settings() -> Settings:
     )
 
 
-def client(peer: str) -> TestClient:
-    app = create_app(settings())
+def client(peer: str, config: Settings | None = None) -> TestClient:
+    app = create_app(config or settings())
 
     @app.get("/whoami")
     def whoami(request: Request) -> dict[str, object]:
@@ -121,6 +122,37 @@ def test_security_headers_on_allowed_denied_and_exempt() -> None:
         assert r.headers["x-content-type-options"] == "nosniff"
         assert "set-cookie" not in r.headers  # the app sets no cookies
         assert r.headers["cache-control"] == "no-store"
+        assert r.headers["x-frame-options"] == "DENY"
+
+
+def test_frame_ancestors_lets_only_the_named_sites_frame_the_app() -> None:
+    framed = settings()
+    framed.FRAME_ANCESTORS = ["https://home.example.com", "https://*.example.com"]
+    r = client(PROXY, framed).get("/whoami", headers={**ADMIN, "X-Forwarded-For": VPN_CLIENT})
+    csp = r.headers["content-security-policy"]
+    assert "frame-ancestors https://home.example.com https://*.example.com;" in csp
+    assert "'none'; base-uri" not in csp and "object-src 'none'" in csp  # the rest is unchanged
+    assert "x-frame-options" not in r.headers  # it cannot name a site; the CSP decides
+
+
+@pytest.mark.parametrize("value", [
+    "home.example.com",  # no scheme
+    "https://home.example.com/dash",  # a path
+    "https://home.example.com; script-src *",  # header injection
+    "*",
+    "https://*",
+    "javascript://x",
+    "'self'",
+])  # fmt: skip
+def test_frame_ancestors_accepts_origins_only(value: str) -> None:
+    with pytest.raises(ValidationError, match="FRAME_ANCESTORS"):
+        Settings(**{**settings().model_dump(), "FRAME_ANCESTORS": value})
+
+
+def test_frame_ancestors_parses_a_comma_list() -> None:
+    raw = " https://Home.example.com:8123 , https://*.example.com"
+    parsed = Settings(**{**settings().model_dump(), "FRAME_ANCESTORS": raw})
+    assert parsed.FRAME_ANCESTORS == ["https://home.example.com:8123", "https://*.example.com"]
 
 
 # --------------------------------------------------------------------- CSRF

@@ -424,6 +424,13 @@ def test_extra_ip_addresses_can_reach_the_door(tmp_path: Path) -> None:
     assert cross.status_code == 403
 
 
+def test_the_emergency_door_is_never_framed(tmp_path: Path) -> None:
+    door = Door(tmp_path, FRAME_ANCESTORS="https://home.example.com")
+    r = door.client.get("/emergency/login")
+    assert "frame-ancestors 'none'" in r.headers["content-security-policy"]
+    assert r.headers["x-frame-options"] == "DENY"
+
+
 def test_only_ip_addresses_can_be_added(tmp_path: Path) -> None:
     for bad in ("authcfg.example.com", "172.30.0.0/24", "0.0.0.0", "::", "localhost.example.org"):  # noqa: S104
         with pytest.raises(ValidationError, match=r"EMERGENCY_HOSTS"):

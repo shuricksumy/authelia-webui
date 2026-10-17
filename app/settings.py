@@ -7,6 +7,7 @@ Error messages name the variable but never echo its value.
 from __future__ import annotations
 
 import ipaddress
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +20,11 @@ type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 MIN_SECRET_KEY_BYTES = 32
 APP_PORT = 8080  # the normal port (Dockerfile, healthcheck, compose)
+# scheme://host[:port] with an optional leading "*." label; nothing a CSP header could misread
+FRAME_ORIGIN = re.compile(
+    r"https?://(\*\.)?[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?",
+    re.IGNORECASE,
+)
 
 
 class RestartMode(StrEnum):
@@ -99,6 +105,9 @@ class Settings(BaseSettings):
     # Extra addresses (IP literals only) the emergency door answers to besides localhost, e.g. the
     # configurator's own IP on an internal network reached over an encrypted VPN.
     EMERGENCY_HOSTS: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Sites allowed to show the configurator in a frame (e.g. a dashboard or Home Assistant), as
+    # origins: https://home.example.com, https://*.example.com. Unset: no framing (clickjacking).
+    FRAME_ANCESTORS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 
@@ -130,6 +139,23 @@ class Settings(BaseSettings):
             if address.is_unspecified:
                 raise ValueError(f"entry #{position + 1} is 0.0.0.0/::, which is not an address")
             out.append(f"[{address}]" if address.version == 6 else str(address))
+        return out
+
+    @field_validator("FRAME_ANCESTORS", mode="before")
+    @classmethod
+    def _frame_ancestors(cls, value: object) -> list[str]:
+        """Origins only (scheme, host, optional port): they go verbatim into the CSP header."""
+        items = value if isinstance(value, list) else str(value or "").split(",")
+        out: list[str] = []
+        for position, item in enumerate(str(i).strip() for i in items):
+            if not item:
+                continue
+            if not FRAME_ORIGIN.fullmatch(item):
+                raise ValueError(
+                    f"entry #{position + 1} is not an origin like https://home.example.com "
+                    "(scheme://host[:port], no path; a leading *. is allowed)"
+                )
+            out.append(item.lower())
         return out
 
     @model_validator(mode="after")
