@@ -9,23 +9,31 @@ written by the configurator and the private keys must not live in git.
 ## One-time move (on the host)
 
 1. Back up the configuration (see `docs/migration.md`, step 1).
-2. Run, with the paths of *your* files (Authelia sees the managed folder as `/config/managed`):
+2. Check that no configuration file contains a literal `{{` (the template filter would read it):
 
    ```sh
-   python -m scripts.migrate_jwks \
-       --config /path/to/authelia/configuration.yml \
-       --managed /path/to/authelia/managed \
-       --reduced-main /path/to/authelia/configuration.reduced.yml
+   grep -rn '{{' /path/to/authelia/config/*.yml /path/to/authelia/config/managed/*.yml
+   ```
+
+   No output is what you want.
+3. Run the move from the configurator image (same user as Authelia and the configurator; the
+   config folder is mounted at `/config`, as Authelia sees it):
+
+   ```sh
+   docker run --rm --network none --user 1000:1000 \
+     -v /path/to/authelia/config:/config \
+     ghcr.io/<owner>/authelia-configurator:authelia-<version> \
+     python -m scripts.migrate_jwks --config /config/configuration.yml --managed /config/managed
    ```
 
    It writes every private key to `managed/secrets/jwks/<key_id>.pem` (mode 600, folder 700) and
    `managed/oidc_jwks.yml`, which only *names* those files. Nothing is overwritten, the main file
    is not touched, and no key is printed. Keys without a `key_id` get one invented (`key-1`, ...):
    apps then see a different `kid`, which they pick up from `/jwks.json` on their next refresh.
-3. Compare `configuration.reduced.yml` with your file (only the `jwks:` list is gone) and move it
-   into place.
+   The main file's `jwks:` list may stay where it is: lists are replaced across files, so the
+   managed list wins. Remove it later to tidy up (`--reduced-main <file>` writes a copy without it).
 4. In the compose file:
-   - Authelia: add `/config/managed/oidc_jwks.yml` to `X_AUTHELIA_CONFIG` and set
+   - Authelia: add `/config/managed/oidc_jwks.yml` to the end of `X_AUTHELIA_CONFIG` and set
      `X_AUTHELIA_CONFIG_FILTERS: template`;
    - configurator: set `CONFIG_FILTERS: template` (validation must see the files exactly as
      Authelia does).
