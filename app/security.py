@@ -52,6 +52,13 @@ SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
     (b"referrer-policy", b"no-referrer"),
     (b"x-frame-options", b"DENY"),
 ]
+# The emergency door: `no-referrer` makes browsers send `Origin: null` on its plain login form, and
+# over plain HTTP to an IP address (EMERGENCY_HOSTS) Chrome sends no Sec-Fetch-Site either, so the
+# login could not prove it is same-origin. `same-origin` still never leaks a referrer elsewhere.
+EMERGENCY_SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
+    (name, b"same-origin") if name == b"referrer-policy" else (name, value)
+    for name, value in SECURITY_HEADERS
+]
 # Pages and API answers are never cached; vendored static files may be (they are not secret).
 NO_STORE = (b"cache-control", b"no-store")
 STATIC_CACHE = (b"cache-control", b"private, max-age=3600")
@@ -132,11 +139,14 @@ class SecurityMiddleware:
             return
 
         cache = STATIC_CACHE if scope["path"].startswith("/static/") else NO_STORE
+        security = (
+            EMERGENCY_SECURITY_HEADERS if self._on_emergency_port(scope) else SECURITY_HEADERS
+        )
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 message.setdefault("headers", [])
-                message["headers"] = [*message["headers"], *SECURITY_HEADERS, cache]
+                message["headers"] = [*message["headers"], *security, cache]
             await send(message)
 
         if scope["path"] in EXEMPT_PATHS:
