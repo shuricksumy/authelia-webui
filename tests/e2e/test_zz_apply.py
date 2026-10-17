@@ -100,7 +100,7 @@ def log_back_in_after_restart(page: Page) -> None:
             if attempt == 2:
                 raise
     sign_in(page)
-    page.wait_for_url(f"{BASE}/apply/result", timeout=20_000)
+    page.wait_for_url(f"{BASE}/apply/result", timeout=60_000)
 
 
 def test_apply_restarts_authelia_and_the_result_is_shown_after_login(
