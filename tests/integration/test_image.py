@@ -77,3 +77,31 @@ def test_runs_hardened_and_reports_healthy(image: str) -> None:
         assert docker("exec", name, "id", "-u").stdout.strip() == "10001"
     finally:
         docker("rm", "-f", name, check=False)
+
+
+def test_the_key_move_runs_from_the_image(
+    image: str, generated: dict[str, Path], tmp_path: Path
+) -> None:
+    """docs/jwks.md: the one-time move is a `docker run` of this image, like the split."""
+    import os
+    import shutil
+
+    from scripts.split_config import split
+
+    config = tmp_path / "config"
+    (config / "managed").mkdir(parents=True)
+    main = config / "configuration.yml"
+    main.write_text(split(generated["configuration.yml"].read_text()).main_text)
+    shutil.copymode(generated["configuration.yml"], main)
+    proc = docker(
+        "run", "--rm", "--network", "none", "--user", f"{os.getuid()}:{os.getgid()}",
+        "-v", f"{config}:/config", image,
+        "python", "-m", "scripts.migrate_jwks",
+        "--config", "/config/configuration.yml", "--managed", "/config/managed",
+        check=False,
+    )  # fmt: skip
+    assert proc.returncode == 0, proc.stderr
+    assert "BEGIN" not in proc.stdout + proc.stderr  # no key material printed
+    assert (config / "managed" / "oidc_jwks.yml").is_file()
+    assert list((config / "managed" / "secrets" / "jwks").glob("*.pem"))
+    assert "/config/managed/secrets/jwks/" in (config / "managed" / "oidc_jwks.yml").read_text()

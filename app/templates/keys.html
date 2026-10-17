@@ -14,8 +14,13 @@
     <p><strong>Key rotation is not set up yet.</strong> The signing keys are still inside Authelia's main configuration file, which this tool never writes.
       A one-time move puts the private keys into protected files that Authelia reads through its template filter:</p>
     <ol>
-      <li>Run <code>python -m scripts.migrate_jwks --config /path/to/configuration.yml --managed /path/to/managed</code> on the host (it changes nothing in the main file and prints what to edit).</li>
-      <li>Remove the <code>jwks:</code> list from the main file and add <code>/config/managed/oidc_jwks.yml</code> to <code>X_AUTHELIA_CONFIG</code>.</li>
+      <li>On the host, in the folder with your compose file (adjust the config path and the user to yours):
+        <pre class="snippet">docker run --rm --network none --user 1000:1000 \
+  -v "$PWD/data/authelia/config:/config" \
+  ghcr.io/shuricksumy/authelia-configurator:authelia-{{ bundled_version }} \
+  python -m scripts.migrate_jwks --config /config/configuration.yml --managed /config/managed</pre>
+        It writes <code>managed/oidc_jwks.yml</code> and the key files into <code>managed/secrets/</code>, changes nothing in the main file and prints what to do next.</li>
+      <li>Add <code>,/config/managed/oidc_jwks.yml</code> to Authelia's <code>X_AUTHELIA_CONFIG</code>. The main file's <code>jwks:</code> list can stay: the managed list replaces it (remove it later to tidy up).</li>
       <li>Set <code>X_AUTHELIA_CONFIG_FILTERS=template</code> for Authelia and <code>CONFIG_FILTERS=template</code> for the configurator, then restart both.</li>
     </ol>
     <p>The full guide is <code>docs/jwks.md</code>.</p>

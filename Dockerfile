@@ -26,8 +26,9 @@ COPY --from=authelia /app/authelia /usr/local/bin/authelia
 RUN authelia --version | grep -F "${AUTHELIA_VERSION}"
 COPY --from=builder /opt/venv /opt/venv
 COPY app /srv/app
-# The migration script (docs/migration.md): python -m scripts.split_config --config ... --out ...
-COPY scripts/__init__.py scripts/split_config.py /srv/scripts/
+# The migration scripts, run with `docker run ... python -m scripts.<name>`:
+# split_config (docs/migration.md) and migrate_jwks (the one-time key move, docs/jwks.md).
+COPY scripts/__init__.py scripts/split_config.py scripts/migrate_jwks.py /srv/scripts/
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
     AUTHELIA_VERSION=${AUTHELIA_VERSION}

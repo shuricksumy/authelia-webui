@@ -120,3 +120,22 @@ def test_validate_keys_uses_the_same_view_as_authelia(
     text = (moved["managed"] / "oidc_jwks.yml").read_text()
     result = validate_keys(settings, text)
     assert result is not None and result.ok, result.raw if result else ""
+
+
+def test_the_main_file_may_keep_its_jwks_list(
+    cli: AutheliaCLI, generated: dict[str, Path], tmp_path: Path
+) -> None:
+    """Lists are replaced across files: the managed keys file wins, so removing the list from
+    the main file is optional tidying, not a required step of the move."""
+    parts = split(generated["configuration.yml"].read_text())
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    migrate_jwks.write(migrate_jwks.plan(parts.main_text, managed), managed)
+    main = tmp_path / "configuration.yml"
+    main.write_text(parts.main_text)  # still contains jwks:
+    (managed / "access_control.yml").write_text(parts.access_control_text)
+    (managed / "oidc_clients.yml").write_text(parts.oidc_clients_text or "")
+    paths = [main, managed / "access_control.yml", managed / "oidc_clients.yml",
+             managed / "oidc_jwks.yml"]  # fmt: skip
+    result = replace(cli, filters="template").validate(paths)
+    assert result.ok and not result.warnings, result.raw
