@@ -57,6 +57,11 @@ PRODUCTION = EXAMPLES / "production"
 
 @pytest.mark.parametrize("path", sorted(PRODUCTION.rglob("*.yml")), ids=lambda p: str(p.name))
 def test_production_example_files_are_valid_yaml(path: Path) -> None:
+    if path.name == "oidc_jwks.example.yml":  # a template-filter file: read as the app reads it
+        from app.oidc.jwks import JwksDocument
+
+        assert JwksDocument.parse(path.read_text()).kids() == ["main"]
+        return
     assert YAML(typ="safe").load(path.read_text()) is not None
 
 
@@ -84,6 +89,7 @@ def test_production_compose_mounts_the_socket_only_in_the_proxy_and_hardens_serv
 def test_production_compose_resolves_with_sample_values() -> None:
     env = {"AUTHELIA_VERSION": "4.39.28", "DOCKER_GID": "999", "APP_SECRET_KEY": "x" * 40,
            "DOMAIN": "example.com", "VPN_ADDRESS": "10.8.0.1", "VPN_CIDR": "10.8.0.0/24",
+           "REDIS_PASSWORD": "y" * 32,
            "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"}  # fmt: skip
     proc = subprocess.run(
         ["docker", "compose", "-f", str(PRODUCTION / "compose.yml"), "config", "-q"],
@@ -101,5 +107,5 @@ def test_production_example_files_are_in_git() -> None:
         ["git", "ls-files", "examples/production"], capture_output=True, text=True,
         check=True, cwd=EXAMPLES.parent,
     ).stdout.split()  # fmt: skip
-    for name in ("access_control", "oidc_clients", "users"):
+    for name in ("access_control", "oidc_clients", "users", "oidc_jwks"):
         assert f"examples/production/authelia/managed/{name}.example.yml" in tracked
