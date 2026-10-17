@@ -40,7 +40,8 @@ def sign_in(page: Page, username: str | None = None, password: str | None = None
         page.locator("input[autocomplete=one-time-code]").first.click()
         page.keyboard.type(fresh_totp(creds["totp_secret"]), delay=40)
     # Both flows end with Authelia redirecting back to the app (a non-admin lands on its 403).
-    page.wait_for_url(f"{BASE}/**", timeout=20000)
+    # generous: after a rollback Authelia restarted twice and CI runners can be slow
+    page.wait_for_url(f"{BASE}/**", timeout=60_000)
 
 
 def login(browser: Browser, username: str | None = None, password: str | None = None,
