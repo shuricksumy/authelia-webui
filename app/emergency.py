@@ -77,10 +77,10 @@ class Emergency:
 
     # ------------------------------------------------------------------ host and origin
 
-    @staticmethod
-    def host_allowed(host: str) -> bool:
-        """`localhost`, `127.0.0.1` or `[::1]`, on any port: the tunnel's local port is the
-        admin's choice. Only the name matters against DNS rebinding and proxy routes."""
+    def host_allowed(self, host: str) -> bool:
+        """`localhost`, `127.0.0.1`, `[::1]` or an address in `EMERGENCY_HOSTS`, on any port: the
+        tunnel's local port is the admin's choice. Only names/addresses matter against DNS
+        rebinding and proxy routes, and only IP literals can be added (settings refuse names)."""
         host = host.strip().lower()
         if host.startswith("["):
             name = host[: host.find("]") + 1] if "]" in host else host
@@ -90,7 +90,7 @@ class Emergency:
             rest = f":{port}" if port else ""
         if rest and not (rest.startswith(":") and rest[1:].isdigit()):
             return False
-        return name in LOOPBACK_NAMES
+        return name in LOOPBACK_NAMES or name in self.settings.EMERGENCY_HOSTS
 
     # ------------------------------------------------------------------ state (own file)
 

@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # Both unset (the default) means no such port exists.
     EMERGENCY_PORT: int | None = Field(default=None, ge=1024, le=65535)
     EMERGENCY_PASSWORD_HASH: SecretStr | None = None  # an Authelia digest ($argon2id$...)
+    # Extra addresses (IP literals only) the emergency door answers to besides localhost, e.g. the
+    # configurator's own IP on an internal network reached over an encrypted VPN.
+    EMERGENCY_HOSTS: Annotated[list[str], NoDecode] = Field(default_factory=list)
     APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 
@@ -104,6 +107,26 @@ class Settings(BaseSettings):
     @classmethod
     def _empty_emergency_is_unset(cls, value: object) -> object:
         return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("EMERGENCY_HOSTS", mode="before")
+    @classmethod
+    def _emergency_hosts(cls, value: object) -> list[str]:
+        """IP addresses only: a host *name* could be re-pointed by DNS (rebinding)."""
+        items = value if isinstance(value, list) else str(value or "").split(",")
+        out: list[str] = []
+        for position, item in enumerate(str(i).strip() for i in items):
+            if not item:
+                continue
+            try:
+                address = ipaddress.ip_address(item.strip("[]"))
+            except ValueError:
+                raise ValueError(
+                    f"entry #{position + 1} is not an IP address (names are refused: DNS rebinding)"
+                ) from None
+            if address.is_unspecified:
+                raise ValueError(f"entry #{position + 1} is 0.0.0.0/::, which is not an address")
+            out.append(f"[{address}]" if address.version == 6 else str(address))
+        return out
 
     @model_validator(mode="after")
     def _emergency_needs_both(self) -> Settings:

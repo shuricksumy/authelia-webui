@@ -51,12 +51,34 @@ Sign out when done (banner button): that ends **every** emergency session, so a 
 worthless afterwards. A session also ends after 30 minutes without a request, and after 2 hours
 at most. The local port of the tunnel is your choice (`ssh -L 9999:127.0.0.1:8090 ...` works too).
 
+## Reaching it from an internal network instead of a tunnel
+
+If your VPN already routes to the Docker network (or the server's LAN address) and encrypts the
+traffic (WireGuard, ZeroTier, ...), you can skip the SSH tunnel:
+
+1. Give the configurator a fixed address on that network, e.g. `ipv4_address: 172.30.0.12`.
+2. Add that address to `EMERGENCY_HOSTS` (comma-separated, **IP addresses only**: a host name could
+   be re-pointed by DNS, which is exactly what the Host check prevents):
+
+   ```sh
+   EMERGENCY_HOSTS=172.30.0.12
+   ```
+
+3. Open `http://172.30.0.12:8090` from a VPN client. No port needs publishing for this: the
+   address is the container's own. (To use the server's VPN address instead, publish the port on
+   that address only, e.g. `10.8.1.1:8090:8090`, and list `10.8.1.1`.)
+
+The door is plain HTTP: only do this over an encrypted VPN, never across an untrusted network.
+Every container on that Docker network can reach the port too, so the per-address lockout and a
+long random password matter even more.
+
 ## What protects it
 
 - It listens on the container's interface but is published on the host's loopback only; the SSH
   login to the server is the real first factor.
-- Only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]` are answered: DNS rebinding
-  and a proxy pointed at it get a 403. A form must come from that same address.
+- Only requests whose `Host` is `localhost`, `127.0.0.1`, `[::1]` or an IP in `EMERGENCY_HOSTS`
+  are answered: DNS rebinding and a proxy pointed at it get a 403. A form must come from that same
+  address.
 - **5 wrong passwords lock the address they came from for 15 minutes**, so a container on the
   same Docker network that guesses cannot lock you out. All addresses together are capped at
   20 per 15 minutes. Both survive restarts. Attempts against a lock are not logged one by one.

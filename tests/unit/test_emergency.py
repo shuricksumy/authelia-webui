@@ -403,3 +403,31 @@ def test_a_csrf_token_from_the_normal_door_is_refused_here(door: Door) -> None:
                          headers={"Origin": f"http://localhost:{PORT}",
                                   "X-CSRF-Token": normal_token})  # fmt: skip
     assert r.status_code == 403
+
+
+def test_extra_ip_addresses_can_reach_the_door(tmp_path: Path) -> None:
+    door = Door(tmp_path, EMERGENCY_HOSTS="172.30.0.12, fd00::5")
+    host = {"host": "172.30.0.12:8090"}
+    assert door.client.get("/emergency/login", headers=host).status_code == 200
+    r = door.client.post("/emergency/login", data={"password": RIGHT},
+                         headers={**host, "Origin": "http://172.30.0.12:8090"})  # fmt: skip
+    assert r.status_code == 303
+    assert (
+        door.client.get("/emergency/login", headers={"host": "[fd00::5]:8090"}).status_code == 200
+    )
+    # an address that is not listed, and a mismatched origin, are still refused
+    assert (
+        door.client.get("/emergency/login", headers={"host": "172.30.0.13:8090"}).status_code == 403
+    )
+    cross = door.client.post("/emergency/login", data={"password": RIGHT},
+                             headers={**host, "Origin": "http://localhost:8090"})  # fmt: skip
+    assert cross.status_code == 403
+
+
+def test_only_ip_addresses_can_be_added(tmp_path: Path) -> None:
+    for bad in ("authcfg.example.com", "172.30.0.0/24", "0.0.0.0", "::", "localhost.example.org"):  # noqa: S104
+        with pytest.raises(ValidationError, match=r"EMERGENCY_HOSTS"):
+            make_settings(tmp_path, EMERGENCY_HOSTS=bad)
+    assert make_settings(tmp_path, EMERGENCY_HOSTS="").EMERGENCY_HOSTS == []
+    assert make_settings(tmp_path, EMERGENCY_HOSTS=" 10.8.1.1 ,[fd00::1]").EMERGENCY_HOSTS == [
+        "10.8.1.1", "[fd00::1]"]  # fmt: skip
