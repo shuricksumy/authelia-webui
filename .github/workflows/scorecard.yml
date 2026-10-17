@@ -12,6 +12,8 @@ jobs:
   analysis:
     runs-on: ubuntu-latest
     permissions:
+      contents: read # job permissions replace the workflow's, so read access is listed again
+      actions: read
       security-events: write # results in the Security tab
       id-token: write # publish the score (signed) for the badge
     steps:
