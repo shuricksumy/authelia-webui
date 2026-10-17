@@ -3,6 +3,7 @@ session, locks after repeated failures, and does not exist on the normal port.""
 
 from __future__ import annotations
 
+import json
 import re
 import time
 from pathlib import Path
@@ -114,8 +115,9 @@ def test_authelias_headers_buy_nothing_here(door: Door) -> None:
     assert door.client.get("/keys", headers=forged).status_code == 303
 
 
-@pytest.mark.parametrize("host", ["evil.example.com:8090", "localhost", "localhost:8091",
-                                  "authcfg.example.com", "127.0.0.1.example.org:8090"])  # fmt: skip
+@pytest.mark.parametrize("host", ["evil.example.com:8090", "localhost.example.org:8090",
+                                  "authcfg.example.com", "127.0.0.1.example.org:8090",
+                                  "localhost:80x", "[::1]x:8090", ""])  # fmt: skip
 def test_only_loopback_host_names_are_served(door: Door, host: str) -> None:
     assert door.client.get("/emergency/login", headers={"host": host}).status_code == 403
     assert door.client.post(
@@ -178,10 +180,11 @@ def test_the_lockout_survives_a_restart_and_ends(tmp_path: Path) -> None:
     second = Door(tmp_path)  # a new process: the state is on disk
     assert second.login(RIGHT).status_code == 429
     em: Emergency = second.app.state.emergency
-    assert em.locked_for(time.time() + LOCK_S + 1) == 0
-    state = apply_state.load(second.settings.CONFIG_MANAGED_DIR)
-    expired = {**state["emergency"], "locked_until": time.time() - 1}
-    apply_state.update(second.settings.CONFIG_MANAGED_DIR, emergency=expired)
+    assert em.locked_for(GATEWAY, time.time() + LOCK_S + 1) == 0
+    path = second.settings.CONFIG_MANAGED_DIR / ".apply" / "emergency.json"
+    data = json.loads(path.read_text())
+    data["ips"][GATEWAY]["locked_until"] = time.time() - 1
+    path.write_text(json.dumps(data))
     assert second.login(RIGHT).status_code == 303
 
 
@@ -202,7 +205,7 @@ def test_a_checker_failure_is_not_a_wrong_guess(
     monkeypatch.setattr(AutheliaCLI, "validate_password", broken)
     for _ in range(MAX_FAILS + 2):
         assert door.login(RIGHT).status_code == 503
-    assert Emergency(door.settings).locked_for() == 0
+    assert Emergency(door.settings).locked_for(GATEWAY) == 0
 
 
 def test_cookies_expire_and_cannot_be_forged(tmp_path: Path) -> None:
@@ -325,3 +328,78 @@ def test_a_browsers_login_form_posts_origin_null_under_no_referrer(door: Door) -
     other = {"Origin": "null", "Sec-Fetch-Site": "same-origin", "X-CSRF-Token": token}
     assert post("/rules/default-policy", data={"policy": "deny"}, headers=other).status_code == 403
     assert post("/emergency/logout", headers=other).status_code == 403
+
+
+def test_other_loopback_ports_work_and_the_origin_must_match_the_host(door: Door) -> None:
+    tunnel = {"host": "localhost:9999"}  # `ssh -L 9999:127.0.0.1:8090` is the admin's choice
+    assert door.client.get("/emergency/login", headers=tunnel).status_code == 200
+    ok = door.client.post("/emergency/login", data={"password": WRONG},
+                          headers={**tunnel, "Origin": "http://localhost:9999"})  # fmt: skip
+    assert ok.status_code == 401
+    other = door.client.post("/emergency/login", data={"password": RIGHT},
+                             headers={**tunnel, "Origin": "http://localhost:8090"})  # fmt: skip
+    assert other.status_code == 403  # another local origin is another site
+    assert door.client.get("/emergency/login", headers={"host": "[::1]:8090"}).status_code == 200
+
+
+def test_another_address_cannot_lock_the_owner_out(tmp_path: Path) -> None:
+    owner = Door(tmp_path)
+    neighbour = TestClient(owner.app, base_url=f"http://localhost:{PORT}",
+                           client=("172.30.0.66", 5000), follow_redirects=False)  # fmt: skip
+    for _ in range(MAX_FAILS + 3):  # e.g. a compromised app container on the same network
+        neighbour.post("/emergency/login", data={"password": WRONG},
+                       headers={"Origin": f"http://localhost:{PORT}"})  # fmt: skip
+    assert owner.login(RIGHT).status_code == 303  # the tunnel arrives from another address
+
+
+def test_many_addresses_together_hit_the_global_ceiling(tmp_path: Path) -> None:
+    from app.emergency import GLOBAL_MAX_FAILS
+
+    door = Door(tmp_path)
+    for n in range(GLOBAL_MAX_FAILS):
+        attacker = TestClient(
+            door.app, base_url=f"http://localhost:{PORT}", client=(f"172.30.1.{n + 1}", 5000),
+            follow_redirects=False,
+        )  # fmt: skip
+        attacker.post("/emergency/login", data={"password": WRONG},
+                      headers={"Origin": f"http://localhost:{PORT}"})  # fmt: skip
+    assert door.login(RIGHT).status_code == 429  # guessing stays bounded
+
+
+def test_attempts_against_a_lock_do_not_flood_the_audit_log(door: Door) -> None:
+    for _ in range(MAX_FAILS):
+        door.login(WRONG)
+    lines = len((door.settings.CONFIG_MANAGED_DIR / "audit.log").read_text().splitlines())
+    for _ in range(50):
+        assert door.login(WRONG).status_code == 429
+    after = len((door.settings.CONFIG_MANAGED_DIR / "audit.log").read_text().splitlines())
+    assert after == lines
+
+
+def test_sign_out_ends_every_copy_of_the_session(door: Door) -> None:
+    door.signed_in()
+    stolen = door.client.cookies.get("emergency_session")
+    door.client.post("/emergency/logout", headers={"Origin": f"http://localhost:{PORT}",
+                                                   "X-CSRF-Token": door.csrf()})  # fmt: skip
+    door.client.cookies.clear()
+    replay = door.client.get("/rules", headers={"Cookie": f"emergency_session={stolen}"})
+    assert replay.status_code == 303  # a copy of the cookie is worthless after sign-out
+
+
+def test_a_new_password_ends_old_sessions(tmp_path: Path) -> None:
+    door = Door(tmp_path).signed_in()
+    cookie = door.client.cookies.get("emergency_session")
+    rotated = Door(tmp_path, EMERGENCY_PASSWORD_HASH=DIGEST.replace("ZmFrZQ", "bmV3"))
+    assert rotated.client.get("/rules", headers={"Cookie": f"emergency_session={cookie}"}
+                              ).status_code == 303  # fmt: skip
+
+
+def test_a_csrf_token_from_the_normal_door_is_refused_here(door: Door) -> None:
+    from app.security import CSRF
+
+    door.signed_in()
+    normal_token = CSRF("k" * 40).issue("emergency")  # what the normal port would issue
+    r = door.client.post("/rules/default-policy", data={"policy": "deny"},
+                         headers={"Origin": f"http://localhost:{PORT}",
+                                  "X-CSRF-Token": normal_token})  # fmt: skip
+    assert r.status_code == 403

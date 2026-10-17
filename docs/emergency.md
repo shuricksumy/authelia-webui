@@ -47,16 +47,19 @@ Authelia is not protecting the session. Everything works, in the order you will 
 3. **Keys**: certificate expiry and the key files.
 4. **Backup**: take one before you change anything.
 
-Sign out when done (banner button). The session ends after 30 minutes without a request, and
-after 2 hours at most.
+Sign out when done (banner button): that ends **every** emergency session, so a copied cookie is
+worthless afterwards. A session also ends after 30 minutes without a request, and after 2 hours
+at most. The local port of the tunnel is your choice (`ssh -L 9999:127.0.0.1:8090 ...` works too).
 
 ## What protects it
 
 - It listens on the container's interface but is published on the host's loopback only; the SSH
   login to the server is the real first factor.
-- Only requests whose `Host` is `localhost:<port>` or `127.0.0.1:<port>` are answered: DNS
-  rebinding and a proxy pointed at it get a 403.
-- **5 wrong passwords lock the login for 15 minutes** (for everyone, and across restarts).
+- Only requests whose `Host` is `localhost`, `127.0.0.1` or `[::1]` are answered: DNS rebinding
+  and a proxy pointed at it get a 403. A form must come from that same address.
+- **5 wrong passwords lock the address they came from for 15 minutes**, so a container on the
+  same Docker network that guesses cannot lock you out. All addresses together are capped at
+  20 per 15 minutes. Both survive restarts. Attempts against a lock are not logged one by one.
 - The password is checked by the bundled Authelia binary; it never appears on a command line, in a
   log or in the audit log. Every attempt is audited (`emergency-login`); successes and lockouts
   send the webhook notification.
@@ -64,14 +67,14 @@ after 2 hours at most.
   and only on this port.
 
 Anyone who can reach the port from the server itself (any local user, or another container on the
-Docker network) can try passwords, five at a time: choose a long random one, and keep the
-configurator off networks that hold untrusted containers.
+Docker network) can try passwords within those limits: choose a long random one (the command
+above makes 32 characters), and keep the configurator off networks that hold untrusted
+containers.
 
 ## Rotating the password
 
-Generate a new digest, replace `EMERGENCY_PASSWORD_HASH`, `docker compose up -d`. Old sessions
-stay valid for their remaining time; restart the configurator (or change `APP_SECRET_KEY`) to end
-them at once.
+Generate a new digest, replace `EMERGENCY_PASSWORD_HASH`, `docker compose up -d`. Every session
+signed in with the old password ends at once (the cookie is bound to the digest).
 
 ## Without the web door
 

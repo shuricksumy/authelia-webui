@@ -32,7 +32,8 @@ def login_page(request: Request) -> Response:
     em = _emergency(request)
     if em is None:
         return Response("Not found", status_code=404, media_type="text/plain")
-    remaining = em.locked_for()
+    client = request.scope.get("client") or ("?", 0)
+    remaining = em.locked_for(str(client[0]))
     return _page(request, _locked(remaining) if remaining else "")
 
 
@@ -58,8 +59,10 @@ async def login(request: Request) -> Response:
 
 @router.post("/emergency/logout")
 def logout(request: Request) -> Response:
-    if _emergency(request) is None:
+    em = _emergency(request)
+    if em is None:
         return Response("Not found", status_code=404, media_type="text/plain")
+    em.end_all_sessions()  # the cookie alone could be replayed until it expired
     response = Response(status_code=204, headers={"HX-Redirect": "/emergency/login"})
     response.headers.append("set-cookie", Emergency.clear_cookie_header().decode())
     return response

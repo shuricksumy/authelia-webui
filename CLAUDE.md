@@ -45,7 +45,11 @@ Protection of the configurator rules is derived from env (there is no `protected
   ignores Remote-*/X-Forwarded-For, requires Host `localhost`/`127.0.0.1`, an own signed
   `HttpOnly`/`SameSite=Strict` cookie (30 min idle, 2 h), CSRF and a local Origin. Password check
   = `authelia crypto hash validate` on a pty (`AutheliaCLI.validate_password`; a mismatch exits 0,
-  so only the exact positive message counts). 5 failures lock 15 min, persisted in state.json.
+  so only the exact positive message counts). 5 failures lock **that address** 15 min (a neighbour
+  container cannot lock the owner out), 20 from all addresses lock everyone; kept in
+  `.apply/emergency.json`. The cookie is bound to the password digest and a generation counter that
+  sign-out increments; the emergency door has its own CSRF key. Host: any port of
+  localhost/127.0.0.1/[::1]; a POST's Origin must equal `http://<Host>`.
   `/emergency/*` is a 404 on the normal port. `make dev` (uvicorn --reload) has no emergency port.
 - Compose must publish the port as `127.0.0.1:` only; the test stack does and an integration test
   asserts it.

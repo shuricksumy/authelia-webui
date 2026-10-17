@@ -99,8 +99,8 @@ def resolve_client_ip(
 
 
 class CSRF:
-    def __init__(self, secret_key: str) -> None:
-        self._serializer = URLSafeTimedSerializer(secret_key, salt="csrf-v1")
+    def __init__(self, secret_key: str, salt: str = "csrf-v1") -> None:
+        self._serializer = URLSafeTimedSerializer(secret_key, salt=salt)
 
     def issue(self, username: str) -> str:
         return self._serializer.dumps({"u": username, "n": secrets.token_urlsafe(16)})
@@ -123,6 +123,8 @@ class SecurityMiddleware:
         self.settings = settings
         self.csrf = CSRF(settings.APP_SECRET_KEY.get_secret_value())
         self.emergency = emergency or Emergency(settings)
+        # Its own key: a token from one door is never accepted at the other.
+        self.emergency_csrf = CSRF(settings.APP_SECRET_KEY.get_secret_value(), "csrf-emergency-v1")
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -176,7 +178,7 @@ class SecurityMiddleware:
         em = self.emergency
         headers = Headers(scope=scope)
         path = scope["path"]
-        if (headers.get("host") or "").lower() not in em.allowed_hosts():
+        if not em.host_allowed(headers.get("host") or ""):
             log.warning("emergency port: refused Host %r", headers.get("host"))
             await PlainTextResponse("Forbidden", status_code=403)(scope, receive, send_with_headers)
             return
@@ -185,7 +187,7 @@ class SecurityMiddleware:
         public = path == "/emergency/login" or path.startswith("/static/")
         started = em.read(_cookie(headers, COOKIE))
         ip = peer_ip((scope.get("client") or (None, 0))[0])
-        if scope["method"] not in SAFE_METHODS and not _same_emergency_origin(headers, em, path):
+        if scope["method"] not in SAFE_METHODS and not _same_emergency_origin(headers, path):
             await PlainTextResponse("Forbidden", status_code=403)(scope, receive, send_with_headers)
             return
         if started is None and not public:
@@ -200,14 +202,14 @@ class SecurityMiddleware:
             if (
                 scope["method"] not in SAFE_METHODS
                 and not public
-                and not self.csrf.verify(headers.get(CSRF_HEADER), identity.username)
+                and not self.emergency_csrf.verify(headers.get(CSRF_HEADER), identity.username)
             ):
                 await PlainTextResponse("Forbidden", status_code=403)(
                     scope, receive, send_with_headers
                 )
                 return
             scope["state"]["identity"] = identity
-            scope["state"]["csrf_token"] = self.csrf.issue(identity.username)
+            scope["state"]["csrf_token"] = self.emergency_csrf.issue(identity.username)
 
         async def send_renewed(message: Message) -> None:
             # Sliding idle timeout: every answer renews the cookie (logout clears it instead)
@@ -261,7 +263,7 @@ def _cookie(headers: Headers, name: str) -> str | None:
     return None
 
 
-def _same_emergency_origin(headers: Headers, em: Emergency, path: str) -> bool:
+def _same_emergency_origin(headers: Headers, path: str) -> bool:
     origin = headers.get("origin")
     fetch_site = headers.get("sec-fetch-site")
     if origin is None:
@@ -272,7 +274,8 @@ def _same_emergency_origin(headers: Headers, em: Emergency, path: str) -> bool:
         # the request is same-origin (a header a page cannot forge); any other POST uses HTMX,
         # which sends the real origin.
         return path == "/emergency/login" and fetch_site == "same-origin"
-    return origin.lower() in em.allowed_origins()
+    # the page's own origin: plain http (an SSH tunnel) on exactly the host the browser asked for
+    return origin.lower() == f"http://{(headers.get('host') or '').lower()}"
 
 
 def _same_origin(headers: Headers, host: str) -> bool:
