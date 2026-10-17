@@ -29,7 +29,11 @@ from tests.fixtures.stack import STACK
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "docs" / "screenshots"
-VIEWPORTS = {"1280": {"width": 1280, "height": 900}, "390": {"width": 390, "height": 844}}
+VIEWPORTS = {
+    "1920": {"width": 1920, "height": 1080},
+    "1280": {"width": 1280, "height": 900},
+    "390": {"width": 390, "height": 844},
+}
 SCHEMES = ("light", "dark")
 
 

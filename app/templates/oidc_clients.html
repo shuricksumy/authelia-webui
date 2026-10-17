@@ -17,18 +17,19 @@
   <article class="empty"><p>No clients yet. Use <strong>+ New client</strong>.</p></article>
   {% else %}
   <div class="table-scroll">
-    <table class="clients">
+    <table class="data clients">
+      <colgroup><col><col class="w-2xl"><col><col class="w-s"><col class="w-xs"><col class="w-s"></colgroup>
       <thead><tr><th>Name</th><th>Client ID</th><th>Redirects to</th><th>Policy</th><th>PKCE</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
       <tbody>
         {% for r in rows %}
         <tr{% if r.changed %} class="status-edited"{% endif %}>
-          <td data-label="Name"><span class="domain">{{ r.name or r.client_id }}</span>
+          <td data-label="Name"><span class="domain trunc" title="{{ r.name or r.client_id }}">{{ r.name or r.client_id }}</span>
             {% if r.public %}<small class="note">public client</small>{% elif r.secret == 'plaintext' %}<small class="note err-text">secret stored in plain text</small>{% endif %}
             {% if r.issues %}<details class="issues {% if r.issues|selectattr('severity', 'equalto', 'error')|list %}has-errors{% endif %}"><summary>{{ warn() }} {{ r.issues|length }}</summary>
               <ul>{% for i in r.issues %}<li class="{{ i.severity }}">{{ i.message }}</li>{% endfor %}</ul></details>{% endif %}</td>
           <td data-label="Client ID"><code class="client-id" title="{{ r.client_id }}">{{ r.client_id|truncate(28, true, '…') }}</code>
             <button type="button" class="outline secondary small icon-btn" data-copy="{{ r.client_id }}" aria-label="Copy client ID of {{ r.name or r.client_id }}">Copy</button></td>
-          <td data-label="Redirects to">{{ r.hosts|join(', ') or '—' }}</td>
+          <td data-label="Redirects to"><span class="trunc" title="{{ r.hosts|join(', ') }}">{{ r.hosts|join(', ') or '—' }}</span></td>
           <td data-label="Policy"><span class="badge {{ r.policy }}">{{ labels.get(r.policy, r.policy) }}</span></td>
           <td data-label="PKCE">{{ 'yes' if r.pkce else 'no' }}</td>
           <td class="col-actions"><a role="button" class="outline small" href="/clients/{{ r.index }}/edit">Edit</a></td>

@@ -29,7 +29,7 @@
             hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"down"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == all_count - 1 or not sortable %}disabled{% endif %}>&darr;</button>
     {% endif %}
     {% if not r.locked %}<button type="button" class="outline secondary small" title="Switch this rule off without deleting it"
-            hx-post="/rules/{{ r.index }}/disable" hx-target="#rules-section" hx-swap="outerHTML">Disable</button>{% endif %}
+            hx-post="/rules/{{ r.index }}/disable" hx-target="#rules-section" hx-swap="outerHTML">Disable</button>{% else %}<button type="button" class="outline secondary small" disabled title="This rule is protected: it cannot be disabled">Disable</button>{% endif %}
     <a role="button" class="outline small" href="/rules?edit={{ r.index }}" hx-get="/rules/{{ r.index }}/edit" hx-target="#panel" hx-push-url="/rules?edit={{ r.index }}">{{ 'View' if r.locked else 'Edit' }}</a>
   </td>
 </tr>

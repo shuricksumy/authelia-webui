@@ -6,8 +6,9 @@
   <article class="empty"><p>Nothing has been applied yet. Changes you apply appear here, each as a git commit you can inspect and revert to.</p></article>
 {% else %}
 <div class="table-scroll">
-  <table class="history">
-    <thead><tr><th class="h-time">Time (UTC)</th><th class="h-author">Author</th><th>Change</th><th class="h-result">Result</th><th class="col-actions h-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+  <table class="data history">
+    <colgroup><col class="w-l"><col class="w-m"><col><col class="w-xl"><col class="w-l"></colgroup>
+    <thead><tr><th>Time (UTC)</th><th>Author</th><th>Change</th><th>Result</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
       {% for r in rows %}
       <tr>
@@ -30,8 +31,9 @@
 <h2>Audit log</h2>
 {% if not audit %}<p class="muted">No entries yet.</p>{% else %}
 <div class="table-scroll">
-  <table class="history audit">
-    <thead><tr><th class="h-time">Time (UTC)</th><th>User</th><th>From</th><th>Action</th><th>Result</th><th>Commit</th></tr></thead>
+  <table class="data history audit">
+    <colgroup><col class="w-xl"><col class="w-m"><col class="w-m"><col><col class="w-m"><col class="w-m"></colgroup>
+    <thead><tr><th>Time (UTC)</th><th>User</th><th>From</th><th>Action</th><th>Result</th><th>Commit</th></tr></thead>
     <tbody>
       {% for e in audit %}
       <tr><td data-label="Time" class="nowrap">{{ e.ts|utc }}</td><td data-label="User">{{ e.user }}</td><td data-label="From">{{ e.client_ip }}</td>

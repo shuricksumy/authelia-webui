@@ -182,6 +182,13 @@ Repo `authelia-webui`. Product name "Authelia Configurator". Image
 - Apply is blocked when bundled and running Authelia versions differ (default).
 
 ## UI work
+- **One table system:** every table is `table.data` in `.table-scroll` with a `<colgroup>` of
+  `<col class="w-...">` (fixed layout; one flexible column), so columns never shift with content.
+  Truncate long values with `.trunc` + `title`. Below ~66rem a row becomes a card (rem, so it follows
+  the font size). `tests/e2e/test_ui.py` measures column alignment.
+- **Compact type:** Pico grows its root font up to 131% on wide screens; `app.css` sets
+  `--pico-font-size: 87.5%` after Pico. Screenshots include 1920 px for exactly this reason.
+- Mind selector specificity against Pico (e.g. its full-width `button[type=submit]`).
 - Follow SPEC §15: Pico.css + HTMX + SortableJS (all vendored), wireframes as
   the layout reference.
 - After every UI change run `make screenshots`, open the PNGs and review them

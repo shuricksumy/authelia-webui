@@ -16,13 +16,14 @@
 <article class="empty"><p>No tests yet. Add one here, or use <strong>Add as test</strong> in the URL tester on the Rules page.</p></article>
 {% else %}
 <div class="table-scroll">
-  <table class="tests">
+  <table class="data tests">
+    <colgroup><col><col class="w-l"><col class="w-s"><col class="w-m">{% if has_draft %}<col class="w-l">{% endif %}<col class="w-l"></colgroup>
     <thead><tr><th>Request</th><th>Who</th><th>Expected</th><th>Live</th>{% if has_draft %}<th>Draft</th>{% endif %}<th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
       {% for r in results %}
       {% set c = r.case %}
       <tr{% if has_draft and r.fails %} class="status-fail"{% elif has_draft and r.changed %} class="status-edited"{% endif %}>
-        <td data-label="Request"><span class="domain">{{ c.method }} {{ c.url }}</span>{% if c.name %}<small class="note">{{ c.name }}</small>{% endif %}</td>
+        <td data-label="Request"><span class="domain trunc" title="{{ c.method }} {{ c.url }}">{{ c.method }} {{ c.url }}</span>{% if c.name %}<small class="note trunc" title="{{ c.name }}">{{ c.name }}</small>{% endif %}</td>
         <td data-label="Who">{% if c.user %}{{ c.user }}{% if c.groups %} <small>({{ c.groups|join(', ') }})</small>{% endif %}{% else %}anonymous{% endif %}{% if c.ip %} <small>from {{ c.ip }}</small>{% endif %}</td>
         <td data-label="Expected"><span class="badge {{ c.expect }}">{{ labels[c.expect] }}</span></td>
         <td data-label="Live"><span class="badge {{ r.live.policy }}">{{ labels[r.live.policy] }}</span>{% if r.live.policy != c.expect %} <span class="err-text">&#10007;</span>{% else %} <span class="ok-text">&#10003;</span>{% endif %}</td>

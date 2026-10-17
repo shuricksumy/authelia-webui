@@ -74,12 +74,13 @@
   {% if test_results %}
   <section aria-label="Access tests">
     <h2>Access tests <small>live &rarr; draft</small></h2>
-    <div class="table-scroll"><table class="tests">
+    <div class="table-scroll"><table class="data tests">
+      <colgroup><col><col class="w-l"><col class="w-s"><col class="w-m"><col class="w-l"></colgroup>
       <thead><tr><th>Request</th><th>Who</th><th>Expected</th><th>Live</th><th>Draft</th></tr></thead>
       <tbody>
         {% for r in test_results %}{% set c = r.case %}
         <tr{% if r.fails %} class="status-fail"{% elif r.changed %} class="status-edited"{% endif %}>
-          <td data-label="Request"><span class="domain">{{ c.method }} {{ c.url }}</span>{% if c.name %}<small class="note">{{ c.name }}</small>{% endif %}</td>
+          <td data-label="Request"><span class="domain trunc" title="{{ c.method }} {{ c.url }}">{{ c.method }} {{ c.url }}</span>{% if c.name %}<small class="note trunc" title="{{ c.name }}">{{ c.name }}</small>{% endif %}</td>
           <td data-label="Who">{{ c.user or 'anonymous' }}</td>
           <td data-label="Expected"><span class="badge {{ c.expect }}">{{ labels[c.expect] }}</span></td>
           <td data-label="Live"><span class="badge {{ r.live.policy }}">{{ labels[r.live.policy] }}</span></td>

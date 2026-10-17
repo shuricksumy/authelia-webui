@@ -21,15 +21,16 @@
 {% if not rows %}<article class="empty"><p>{{ 'No user matches the filter.' if q else 'No users yet.' }}</p></article>
 {% else %}
 <div class="table-scroll">
-  <table class="users">
+  <table class="data users">
+    <colgroup><col class="w-l"><col><col><col class="w-xl"><col class="w-s"><col class="w-s"></colgroup>
     <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th><th>Status</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
       {% for r in rows %}
       <tr{% if r.disabled %} class="is-disabled"{% endif %}>
-        <td data-label="User"><span class="domain">{{ r.name }}</span>{% if r.name == me %} <small class="note">you</small>{% endif %}
+        <td data-label="User"><span class="domain">{{ r.name }}</span>{% if r.name == me %} <small class="muted">(you)</small>{% endif %}
           {% if r.issues %}<details class="issues has-errors"><summary>{{ warn() }} {{ r.issues|length }}</summary><ul>{% for m in r.issues %}<li class="error">{{ m }}</li>{% endfor %}</ul></details>{% endif %}</td>
-        <td data-label="Name">{{ r.displayname }}</td>
-        <td data-label="Email">{{ r.email or '—' }}</td>
+        <td data-label="Name"><span class="trunc" title="{{ r.displayname }}">{{ r.displayname }}</span></td>
+        <td data-label="Email"><span class="trunc" title="{{ r.email }}">{{ r.email or '—' }}</span></td>
         <td data-label="Groups">{% for g in r.groups %}<span class="chip{% if g == admin_group %} edit{% endif %}">{{ g }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
         <td data-label="Status">{% if r.disabled %}<span class="badge deny">disabled</span>{% else %}<span class="ok-text">active</span>{% endif %}</td>
         <td class="col-actions">{% if writable %}<a role="button" class="outline small" href="/users/{{ r.name|urlencode }}/edit">Edit</a>{% endif %}</td>

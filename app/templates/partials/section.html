@@ -40,13 +40,14 @@
   {% elif view == 'domain' %}
     {% for domain, group_rows in groups %}
       <h2 class="group-title">{{ domain }}</h2>
-      <div class="table-scroll"><table class="rules readonly"><tbody>
+      <div class="table-scroll"><table class="data rules readonly">{% include "partials/rule_cols.html" %}<tbody>
         {% for r in group_rows %}{% include "partials/row.html" %}{% endfor %}
       </tbody></table></div>
     {% else %}<p class="muted">No rule matches the filter.</p>{% endfor %}
   {% else %}
     <div class="table-scroll">
-      <table class="rules" id="rules-table">
+      <table class="data rules" id="rules-table">
+        {% include "partials/rule_cols.html" %}
         <thead><tr>
           <th class="col-handle"><span class="visually-hidden">Reorder</span></th><th class="col-num">#</th><th>Domain</th>
           <th>Paths</th><th>Who</th><th>Policy</th><th class="col-actions"><span class="visually-hidden">Actions</span></th>
@@ -61,11 +62,13 @@
   {% endif %}
   {% if disabled_rows %}
   <h2 class="group-title">Disabled rules <small>({{ disabled_rows|length }}) &middot; Authelia ignores these</small></h2>
-  <div class="table-scroll"><table class="rules disabled-rules"><tbody>
+  <div class="table-scroll"><table class="data rules disabled-rules">{% include "partials/rule_cols.html" %}<tbody>
     {% for d in disabled_rows %}
     <tr>
+      <td class="col-handle"></td><td class="col-num" data-label="Was">{{ d.position + 1 }}</td>
       <td class="col-domain"><span class="domain">{{ d.domains|join(', ') }}</span>
         {% if d.note %}<small class="note">{{ d.note.splitlines()[0]|truncate(70) }}</small>{% endif %}</td>
+      <td class="col-paths" data-label="Paths"><span class="muted">&mdash;</span></td>
       <td class="col-who" data-label="Who">{{ d.who }}</td>
       <td class="col-policy" data-label="Policy"><span class="badge {{ d.policy }}">{{ d.policy_label }}</span></td>
       <td class="col-actions">

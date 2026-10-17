@@ -1,4 +1,9 @@
-/* Authelia Configurator - small layer on top of Pico.css. No inline styles anywhere (CSP). */
+/* Authelia Configurator: a small layer on top of Pico.css. No inline styles anywhere (CSP).
+   Sections: 1 tokens  2 base type and spacing  3 shell  4 layout  5 forms and buttons
+             6 tables (one system for every table)  7 badges, chips, notices  8 dialogs and cards
+             9 editors  10 page-specific  11 small screens */
+
+/* ================================================================== 1. tokens */
 :root {
   --app-bypass-bg: #fff3d1; --app-bypass-fg: #7a4b00;
   --app-1fa-bg: #dcebff;    --app-1fa-fg: #0a3d91;
@@ -10,6 +15,7 @@
   --app-bar-bg: #1d2733;    --app-bar-fg: #f2f5f9;
   --app-draft-bg: #fff3d1;  --app-draft-fg: #5c3b00;
   --app-border: #d8dde5;
+  --app-err-fg: var(--app-deny-fg);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -38,227 +44,231 @@
   --app-border: #323b49;
 }
 
+/* ================================================================== 2. base type and spacing
+   Pico grows the root font with the window width (100% -> 131%, i.e. 21 px on a wide screen).
+   An admin tool wants one steady, compact size: set it after Pico, at every width. */
+:root {
+  --pico-font-size: 87.5%; /* 14 px, from phones to 4K */
+  --pico-line-height: 1.45;
+  --pico-spacing: 0.8rem;
+  --pico-typography-spacing-vertical: 1rem;
+  --pico-form-element-spacing-vertical: 0.5rem;
+  --pico-form-element-spacing-horizontal: 0.7rem;
+  --pico-border-radius: 0.3rem;
+  --app-table-pad-y: 0.4rem;
+  --app-table-pad-x: 0.6rem;
+}
 body { display: flex; flex-direction: column; min-height: 100vh; }
-main { flex: 1; padding-block: 1rem 2rem; width: 100%; max-width: 90rem; margin-inline: auto; }
-h1 { font-size: 1.5rem; margin: 0; }
-h2 { font-size: 1.15rem; }
+main { flex: 1; padding-block: 0.9rem 2rem; width: 100%; max-width: 100rem; margin-inline: auto; }
+h1 { font-size: 1.35rem; margin: 0; }
+h2 { font-size: 1.1rem; }
+h3 { font-size: 1rem; }
+small { font-size: 0.85em; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .muted { color: var(--pico-muted-color); }
 .mono, code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code { font-size: 0.9em; }
 .icon { fill: currentColor; vertical-align: -0.15em; }
+.nowrap { white-space: nowrap; }
+.ok-text { color: var(--app-ok-fg); }
+.err-text { color: var(--app-deny-fg); font-weight: 600; }
+.htmx-request { opacity: 0.7; transition: opacity 120ms; } /* request feedback without <style> (CSP) */
 
-/* shell */
+/* ================================================================== 3. shell */
 .topbar { background: var(--app-bar-bg); color: var(--app-bar-fg); }
-.topbar-inner { display: flex; align-items: center; gap: 1.5rem; padding: 0.6rem 1rem; max-width: 90rem; margin-inline: auto; flex-wrap: wrap; }
+.topbar-inner { display: flex; align-items: center; gap: 1.25rem; padding: 0.5rem 1rem; max-width: 100rem; margin-inline: auto; flex-wrap: wrap; }
 .topbar a { color: inherit; text-decoration: none; }
 .brand { font-weight: 700; letter-spacing: 0.01em; }
-.topbar nav { display: flex; gap: 1.1rem; flex: 1; flex-wrap: wrap; }
+.topbar nav { display: flex; gap: 1rem; flex: 1; flex-wrap: wrap; justify-content: flex-start; }
+.topbar nav ul, .topbar nav li { margin: 0; padding: 0; }
 .topbar nav a[aria-current="page"] { border-bottom: 2px solid currentColor; padding-bottom: 2px; }
 .topbar .soon { opacity: 0.45; cursor: not-allowed; }
 .who-am-i small { opacity: 0.7; }
-.draftbar { position: sticky; top: 0; z-index: 20; background: var(--app-draft-bg); color: var(--app-draft-fg); border-bottom: 1px solid var(--app-border); }
-.draftbar > * { max-width: 90rem; }
-.draftbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.5rem 1rem; }
+.draftbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.4rem 1rem; background: var(--app-draft-bg); color: var(--app-draft-fg); border-bottom: 1px solid var(--app-border); }
+.draftbar > * { max-width: 100rem; }
 .draftbar-actions { display: flex; gap: 0.5rem; }
-.draftbar.stale { outline: 2px solid var(--app-deny-fg); }
-.statusbar { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; padding: 0.6rem 1rem; border-top: 1px solid var(--app-border); font-size: 0.85rem; color: var(--pico-muted-color); }
-button.small, [role="button"].small { padding: 0.3rem 0.7rem; font-size: 0.85rem; margin: 0; width: auto; }
 .draftbar [role="button"], .draftbar button { margin: 0; }
-
-/* layout with optional editor panel */
-.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
-.layout:has(#panel > *) { grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem); align-items: start; }
-.panel:empty { display: none; }
-.panel { border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 1rem 1.25rem; background: var(--pico-card-background-color); position: sticky; top: 4rem; max-height: calc(100vh - 5rem); overflow: auto; }
-@media (max-width: 960px) {
-  .layout:has(#panel > *) { grid-template-columns: minmax(0, 1fr); }
-  .layout:has(#panel > *) .panel { order: -1; position: static; max-height: none; }
-  .layout:has(#panel > *) .main-col { display: none; } /* editor is the whole page on small screens */
-}
-
-/* toolbar + filters */
-.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-bottom: 1rem; }
-.toolbar h1 { margin-right: auto; }
-.toolbar-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-.toolbar [role="button"], .toolbar button { margin: 0; width: auto; }
-.inline-form { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
-.inline-form label { margin: 0; color: var(--pico-muted-color); white-space: nowrap; }
-.inline-form select { margin: 0; width: auto; padding-block: 0.35rem; }
-.filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; align-items: center; margin-bottom: 0.75rem; }
-.filters input[type="search"] { margin: 0; flex: 1 1 16rem; max-width: 28rem; }
-.view-switch { display: flex; gap: 1rem; margin: 0; border: 0; padding: 0; }
-.view-switch label { margin: 0; }
-
-/* table */
-.table-scroll { overflow-x: auto; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); }
-table.rules { margin: 0; font-size: 0.92rem; }
-table.rules th, table.rules td { padding: 0.5rem 0.6rem; vertical-align: top; }
-table.rules thead th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); white-space: nowrap; }
-.col-handle { width: 1.6rem; } .col-num { width: 3.2rem; white-space: nowrap; } .col-actions { white-space: nowrap; text-align: right; }
-.col-domain .domain { font-weight: 600; word-break: break-word; }
-.col-domain .note { display: block; color: var(--pico-muted-color); margin-top: 0.1rem; }
-.col-policy { white-space: nowrap; }
-.drag-handle { cursor: grab; color: var(--pico-muted-color); display: inline-block; padding: 0.15rem; }
-.drag-handle:active { cursor: grabbing; }
-tr.status-moved, tr.status-edited, tr.status-new { box-shadow: inset 3px 0 0 var(--app-warn-fg); }
-.marker { display: block; font-size: 0.7rem; color: var(--app-warn-fg); text-transform: uppercase; letter-spacing: 0.03em; }
-.sortable-ghost { opacity: 0.45; }
-.col-paths details, .issues { margin: 0; }
-.col-paths summary, .issues summary { cursor: pointer; padding: 0; margin: 0; }
-.col-paths summary { list-style: none; color: var(--pico-primary); }
-.col-paths summary::-webkit-details-marker, .issues summary::-webkit-details-marker { display: none; }
-ul.regex { margin: 0.35rem 0 0; padding-left: 1rem; }
-ul.regex code { font-size: 0.8rem; word-break: break-all; background: none; padding: 0; }
-.group-title { margin: 1.25rem 0 0.4rem; font-size: 1rem; }
-.icon-btn { padding: 0.15rem 0.5rem; margin: 0 0.1rem 0 0; min-width: 2rem; }
-td .small[role="button"], td button.small { margin: 0; }
-.lock { color: var(--pico-muted-color); margin-left: 0.25rem; }
-.issues { display: inline-block; margin-left: 0.35rem; color: var(--app-warn-fg); font-size: 0.85rem; }
-.issues.has-errors { color: var(--app-deny-fg); }
-.issues summary { display: inline; }
-.issues ul { position: absolute; z-index: 5; max-width: 22rem; margin: 0.3rem 0 0; padding: 0.6rem 0.8rem 0.6rem 1.6rem; background: var(--pico-card-background-color); border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); box-shadow: var(--pico-card-box-shadow); color: var(--pico-color); white-space: normal; }
-.issues li.error { color: var(--app-deny-fg); }
-
-/* badges: colour is never the only signal - the label text is always shown */
-.badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.03em; }
-.badge.bypass { background: var(--app-bypass-bg); color: var(--app-bypass-fg); }
-.badge.one_factor { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
-.badge.two_factor { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
-.badge.deny { background: var(--app-deny-bg); color: var(--app-deny-fg); }
-
-/* notices, flash, chips */
-.notice { padding: 0.75rem 1rem; border-radius: var(--pico-border-radius); border: 1px solid var(--app-border); margin: 0 0 1rem; }
-.notice.error { background: var(--app-deny-bg); color: var(--app-deny-fg); border-color: transparent; }
-.notice.info { background: var(--app-hunk-bg); }
-.notice ul { margin: 0.3rem 0 0.3rem 1rem; padding: 0; }
-.flash:empty { display: none; }
-.flash { padding: 0.6rem 1rem; border-radius: var(--pico-border-radius); margin-bottom: 0.75rem; }
-.flash.ok { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
-.flash.error { background: var(--app-deny-bg); color: var(--app-deny-fg); }
-.empty { text-align: center; color: var(--pico-muted-color); }
-.chip { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 0.6rem; font-size: 0.82rem; margin-right: 0.4rem; background: var(--app-hunk-bg); }
-.chip.add { background: var(--app-add-bg); } .chip.del { background: var(--app-del-bg); color: var(--app-deny-fg); }
-.chip.edit { background: var(--app-warn-bg); color: var(--app-warn-fg); }
-.ok-text { color: var(--app-ok-fg); }
-.problems { margin: 0.5rem 0; padding-left: 1.2rem; }
-.problems li.error { color: var(--app-deny-fg); } .problems li.warning { color: var(--app-warn-fg); }
-
-/* editor + dialogs */
-.editor h2 { margin-top: 0; }
-.editor label small, .tester label small { font-weight: 400; color: var(--pico-muted-color); }
-.editor textarea, .editor select, .editor input { margin-bottom: 0.25rem; }
-.editor textarea { font-size: 0.9rem; }
-.editor fieldset { border: 0; padding: 0; margin: 0; }
-.editor .advanced { margin: 0.5rem 0 1rem; }
-.editor-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; }
-.editor-actions > * { margin: 0; width: auto; }
-.validation { min-height: 1.5rem; font-size: 0.9rem; }
-.danger { background: var(--app-deny-bg); border-color: var(--app-deny-fg); color: var(--app-deny-fg); }
-button.danger.outline { background: transparent; }
-.grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
-.tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
-@media (max-width: 640px) { .grid-2, .tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr); gap: 0; } }
-.result { margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--app-border); }
-.result-line { font-size: 1.05rem; }
-.skipped { margin: 0.25rem 0 0.75rem; padding-left: 1.1rem; color: var(--pico-muted-color); font-size: 0.9rem; }
-
-/* review */
-.summary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.5rem; align-items: baseline; }
-.summary dt { color: var(--pico-muted-color); } .summary dd { margin: 0; }
-pre.diff { padding: 0; overflow: auto; font-size: 0.82rem; line-height: 1.45; border: 1px solid var(--app-border); }
-pre.diff span { display: block; padding: 0 0.75rem; white-space: pre; }
-.d-add { background: var(--app-add-bg); } .d-del { background: var(--app-del-bg); }
-.d-hunk, .d-meta { background: var(--app-hunk-bg); color: var(--pico-muted-color); }
-
-/* htmx request feedback without injected <style> (CSP) */
-.htmx-request { opacity: 0.7; transition: opacity 120ms; }
-
-/* --- layout fixes from the first visual review ------------------------------------------ */
-.topbar nav { justify-content: flex-start; }
-.topbar nav ul, .topbar nav li { margin: 0; padding: 0; }
-.view-switch { width: auto; flex-wrap: nowrap; }
-.view-switch label { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
-.view-switch input { margin: 0; }
-.filters input[type="search"] { height: auto; padding-block: 0.5rem; }
-/* compact disclosure: Pico's chevron floats onto its own line inside table cells */
-.col-paths summary::after, .issues summary::after { display: none; }
-.col-paths summary { text-decoration: underline dotted; text-underline-offset: 0.2em; }
-.issues summary { text-decoration: underline dotted; text-underline-offset: 0.2em; }
-/* equal-width row actions so the column lines up whether it says Edit or View */
-.col-actions { display: table-cell; }
-.col-actions .icon-btn { width: 2.2rem; min-width: 2.2rem; text-align: center; padding-inline: 0; }
-.col-actions [role="button"].small { min-width: 4rem; text-align: center; }
-.col-actions > * { vertical-align: middle; }
-
-/* --- containment: absolutely positioned children (visually-hidden, issue popovers) must be
-       clipped by the scroll wrapper, otherwise the whole page scrolls sideways ------------- */
-.table-scroll { position: relative; }
-.col-paths summary { white-space: nowrap; }
-
-/* --- small screens: header on two rows --------------------------------------------------- */
-@media (max-width: 720px) {
-  .topbar-inner { gap: 0.35rem 1rem; padding: 0.6rem 0.9rem; }
-  .brand { order: 1; flex: 1; }
-  .who-am-i { order: 2; }
-  .topbar nav { order: 3; flex: 1 0 100%; gap: 0.35rem 1rem; font-size: 0.92rem; }
-  main { padding-inline: 0.9rem; }
-  .toolbar h1 { flex: 1 0 100%; }
-  .toolbar-actions { flex: 1 0 100%; }
-  .filters input[type="search"] { flex: 1 0 100%; max-width: none; }
-}
-
-/* --- rule rows become cards whenever the *column* is narrow (phone, or desktop with the
-       editor panel open) - container query, not a viewport query ---------------------------- */
-.main-col { container: main / inline-size; min-width: 0; }
-@container main (max-width: 760px) {
-  .table-scroll { border: 0; overflow: visible; }
-  table.rules, table.rules tbody { display: block; }
-  table.rules thead { display: none; }
-  table.rules tr {
-    display: grid; grid-template-columns: 1.4rem 1fr auto; gap: 0.1rem 0.6rem;
-    grid-template-areas: "num domain handle" ". paths paths" ". who who" ". policy policy" "actions actions actions";
-    border: 1px solid var(--app-border); border-radius: var(--pico-border-radius);
-    padding: 0.6rem 0.75rem; margin-bottom: 0.7rem; background: var(--pico-card-background-color);
-  }
-  table.rules td { display: block; padding: 0.1rem 0; border: 0; width: auto; }
-  table.rules .col-num { grid-area: num; font-weight: 700; color: var(--pico-muted-color); width: auto; }
-  table.rules .col-domain { grid-area: domain; }
-  table.rules .col-handle { grid-area: handle; width: auto; }
-  table.rules .col-paths { grid-area: paths; }
-  table.rules .col-who { grid-area: who; }
-  table.rules .col-policy { grid-area: policy; }
-  table.rules .col-actions { grid-area: actions; text-align: left; padding-top: 0.5rem; display: flex; gap: 0.4rem; align-items: center; }
-  table.rules .col-actions > * { margin: 0; }
-  table.rules td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 3.6rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
-  .col-paths details { display: inline-block; vertical-align: top; }
-  .col-paths ul.regex { margin-left: 0; }
-  .issues ul { position: static; box-shadow: none; max-width: none; }
-  .marker { display: inline; margin-left: 0.4rem; }
-  .col-actions [role="button"].small { margin-left: auto; }
-}
-
-/* --- editor: hint text must not overlap the field, and the actions stay reachable ------- */
-.editor textarea ~ small, .editor input ~ small, .editor select ~ small { margin-top: 0.3rem; display: block; }
-.editor label > small:first-child { display: inline; margin: 0; }
-/* only inside the editor panel; never on the review page, where Apply must come after the diff */
-.editor .editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--pico-card-background-color); border-top: 1px solid var(--app-border); }
-
-/* --- apply, banners, history (step 1b) -------------------------------------------------- */
-.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.55rem 1rem; border-bottom: 1px solid var(--app-border); }
+.draftbar.stale { outline: 2px solid var(--app-deny-fg); }
+.statusbar { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; padding: 0.5rem 1rem; border-top: 1px solid var(--app-border); font-size: 0.85rem; color: var(--pico-muted-color); }
+.statusbar.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.statusbar.bad .err-text, .statusbar.bad .ok-text { color: inherit; }
+.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.45rem 1rem; border-bottom: 1px solid var(--app-border); }
 .banner > span { flex: 1 1 20rem; }
 .banner button { margin: 0; width: auto; }
+.banner-actions { display: inline-flex; gap: 0.5rem; }
 .banner.error, .banner.job.failed { background: var(--app-deny-bg); color: var(--app-deny-fg); }
 .banner.warn, .banner.job.rolled-back, .banner.job.refused { background: var(--app-warn-bg); color: var(--app-warn-fg); }
 .banner.job.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
 .banner.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
 .banner a { color: inherit; text-decoration: underline; }
 .banner[hidden], .flash[hidden] { display: none; }
-.flash.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
-.statusbar.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); }
-.err-text { color: var(--app-deny-fg); font-weight: 600; }
-.statusbar.bad .err-text, .statusbar.bad .ok-text { color: inherit; }
 
-.apply-progress { margin-top: 1rem; padding: 1rem 1.25rem; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); background: var(--pico-card-background-color); }
+/* ================================================================== 4. layout */
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+.layout:has(#panel > *) { grid-template-columns: minmax(0, 1fr) minmax(22rem, 30rem); align-items: start; }
+.main-col { container: main / inline-size; min-width: 0; }
+.panel:empty { display: none; }
+.panel { border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 1rem 1.1rem; background: var(--pico-card-background-color); position: sticky; top: 4rem; max-height: calc(100vh - 5rem); overflow: auto; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.1rem; margin-bottom: 0.9rem; }
+.toolbar h1 { margin-right: auto; }
+.toolbar-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.toolbar [role="button"], .toolbar button { margin: 0; width: auto; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; align-items: center; margin-bottom: 0.75rem; }
+.filters input[type="search"] { margin: 0; flex: 1 1 16rem; max-width: 26rem; height: auto; padding-block: 0.4rem; }
+.grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
+.tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.summary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; align-items: baseline; }
+.summary dt { color: var(--pico-muted-color); } .summary dd { margin: 0; }
+.group-title { margin: 1.1rem 0 0.4rem; font-size: 0.95rem; }
+.empty { text-align: center; color: var(--pico-muted-color); }
+
+/* ================================================================== 5. forms and buttons */
+button, [role="button"] { font-size: 0.95rem; }
+button.small, [role="button"].small { padding: 0.25rem 0.65rem; font-size: 0.85rem; margin: 0; width: auto; }
+.icon-btn { padding: 0.15rem 0.5rem; margin: 0 0.1rem 0 0; min-width: 2rem; }
+.danger { background: var(--app-deny-bg); border-color: var(--app-deny-fg); color: var(--app-deny-fg); }
+button.danger.outline { background: transparent; }
+.inline-form { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+.inline-form > * { margin-bottom: 0; }
+.inline-form label { margin: 0; color: var(--pico-muted-color); white-space: nowrap; }
+.inline-form select { margin: 0; width: auto; padding-block: 0.3rem; }
+.input-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.input-row > input { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.input-row > button { flex: 0 0 auto; margin-bottom: 0; width: auto; }
+.view-switch { display: flex; gap: 1rem; margin: 0; border: 0; padding: 0; width: auto; flex-wrap: nowrap; }
+.view-switch label { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; margin: 0; }
+.view-switch input { margin: 0; }
+label.inline-check { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+label.inline-check input { margin: 0; }
+.validation { min-height: 1.4rem; font-size: 0.9rem; }
+
+/* ================================================================== 6. tables
+   Every table is `table.data` inside `.table-scroll`: fixed layout, so a column never moves
+   with its content. Widths come from <col class="w-..."> (one flexible column per table).
+   Cells are vertically centred; long values are cut with an ellipsis and carry a title. */
+.table-scroll { position: relative; overflow-x: auto; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); }
+table.data { width: 100%; table-layout: fixed; margin: 0; font-size: 0.95rem; }
+table.data th, table.data td { padding: var(--app-table-pad-y) var(--app-table-pad-x); vertical-align: middle; overflow-wrap: anywhere; }
+table.data thead th { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); white-space: nowrap; text-align: left; }
+table.data td.top, table.data th.top { vertical-align: top; }
+col.w-2xs { width: 2rem; } col.w-xs { width: 3.5rem; } col.w-s { width: 5.5rem; } col.w-m { width: 8rem; }
+col.w-l { width: 10.5rem; } col.w-xl { width: 14rem; } col.w-act { width: 16rem; } col.w-2xl { width: 18rem; }
+.trunc { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-num { white-space: nowrap; }
+.col-actions { white-space: nowrap; text-align: right; }
+.col-actions > * { vertical-align: middle; margin: 0; }
+.col-actions .icon-btn { width: 2rem; min-width: 2rem; text-align: center; padding-inline: 0; margin-right: 0.15rem; }
+.col-actions [role="button"].small:not(.icon-btn), .col-actions button.small:not(.icon-btn) { min-width: 3.75rem; text-align: center; }
+.col-policy, .col-status { white-space: nowrap; }
+.col-domain .domain, td .domain { font-weight: 600; }
+.col-domain .note, td .note { display: block; color: var(--pico-muted-color); margin-top: 0.1rem; font-weight: 400; }
+td .small[role="button"], td button.small { margin: 0; }
+.drag-handle { cursor: grab; color: var(--pico-muted-color); display: inline-block; padding: 0.15rem; }
+.drag-handle:active { cursor: grabbing; }
+.sortable-ghost { opacity: 0.45; }
+tr.status-moved, tr.status-edited, tr.status-new { box-shadow: inset 3px 0 0 var(--app-warn-fg); }
+tr.status-fail { box-shadow: inset 3px 0 0 var(--app-deny-fg); }
+tr.is-disabled td { opacity: 0.6; }
+table.disabled-rules { opacity: 0.8; }
+.marker { display: block; font-size: 0.7rem; color: var(--app-warn-fg); text-transform: uppercase; letter-spacing: 0.03em; }
+.col-paths details, .issues { margin: 0; }
+.col-paths summary, .issues summary { cursor: pointer; padding: 0; margin: 0; text-decoration: underline dotted; text-underline-offset: 0.2em; }
+.col-paths summary { list-style: none; color: var(--pico-primary); white-space: nowrap; }
+.col-paths summary::-webkit-details-marker, .issues summary::-webkit-details-marker { display: none; }
+.col-paths summary::after, .issues summary::after { display: none; } /* Pico's chevron floats onto its own line */
+ul.regex { margin: 0.35rem 0 0; padding-left: 1rem; }
+ul.regex code { font-size: 0.8rem; word-break: break-all; background: none; padding: 0; }
+.lock { color: var(--pico-muted-color); margin-left: 0.25rem; }
+.issues { display: inline-block; margin-left: 0.35rem; color: var(--app-warn-fg); font-size: 0.85rem; }
+.issues.has-errors { color: var(--app-deny-fg); }
+.issues summary { display: inline; }
+.issues ul { position: absolute; z-index: 5; max-width: 22rem; margin: 0.3rem 0 0; padding: 0.6rem 0.8rem 0.6rem 1.6rem; background: var(--pico-card-background-color); border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); box-shadow: var(--pico-card-box-shadow); color: var(--pico-color); white-space: normal; }
+.issues li.error { color: var(--app-deny-fg); }
+.client-id { white-space: nowrap; }
+/* history rows hold a diff: it scrolls inside its cell instead of widening the table */
+table.history details { margin: 0.3rem 0 0; }
+table.history details summary { cursor: pointer; color: var(--pico-primary); }
+table.history details summary::after { display: none; }
+table.history pre.diff { margin: 0.4rem 0 0; max-width: 100%; overflow: auto; }
+table.history td { vertical-align: top; }
+
+/* diffs */
+pre.diff { padding: 0; overflow: auto; font-size: 0.82rem; line-height: 1.45; border: 1px solid var(--app-border); }
+pre.diff span { display: block; padding: 0 0.75rem; white-space: pre; }
+.d-add { background: var(--app-add-bg); } .d-del { background: var(--app-del-bg); }
+.d-hunk, .d-meta { background: var(--app-hunk-bg); color: var(--pico-muted-color); }
+
+/* ================================================================== 7. badges, chips, notices */
+/* colour is never the only signal: the label text is always shown */
+.badge { display: inline-block; min-width: 3.4rem; text-align: center; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.03em; }
+.badge.bypass { background: var(--app-bypass-bg); color: var(--app-bypass-fg); }
+.badge.one_factor { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
+.badge.two_factor { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
+.badge.deny { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.chip { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 0.6rem; font-size: 0.8rem; margin-right: 0.3rem; background: var(--app-hunk-bg); }
+.chip.add { background: var(--app-add-bg); } .chip.del { background: var(--app-del-bg); color: var(--app-deny-fg); }
+.chip.edit { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.result-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.75rem; font-weight: 700; background: var(--app-hunk-bg); }
+.result-badge.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
+.result-badge.rolled-back, .result-badge.rollback, .result-badge.external, .result-badge.tests, .result-badge.users { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.notice { padding: 0.65rem 0.9rem; border-radius: var(--pico-border-radius); border: 1px solid var(--app-border); margin: 0 0 0.9rem; }
+.notice.error { background: var(--app-deny-bg); color: var(--app-deny-fg); border-color: transparent; }
+.notice.info { background: var(--app-hunk-bg); }
+.notice ul { margin: 0.3rem 0 0.3rem 1rem; padding: 0; }
+.flash:empty { display: none; }
+.flash { padding: 0.5rem 0.9rem; border-radius: var(--pico-border-radius); margin-bottom: 0.75rem; }
+.flash.ok { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
+.flash.error { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.flash.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
+.problems { margin: 0.5rem 0; padding-left: 1.2rem; }
+.problems li.error { color: var(--app-deny-fg); } .problems li.warning { color: var(--app-warn-fg); }
+
+/* ================================================================== 8. dialogs and cards */
+dialog > article { max-height: 92vh; overflow-y: auto; }
+.secret-dialog article { width: min(40rem, 100%); }
+.secret-dialog footer { margin-top: 0.8rem; }
+.secret-dialog .setup-info { margin-top: 1rem; border-top: 1px solid var(--app-border); padding-top: 0.5rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 0.9rem; }
+.cards.groups { grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
+.cards .card { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+.cards .card h3 { margin: 0; }
+.cards .card p { margin: 0; color: var(--pico-muted-color); font-size: 0.9rem; }
+.cards .card form { margin-top: auto; }
+.cards .card label, .cards .card input, .cards .card button { margin-bottom: 0.4rem; }
+ul.members { list-style: none; padding: 0; margin: 0.3rem 0; }
+ul.members li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.15rem 0; }
+ul.members li button { margin: 0; width: auto; }
+.setup-info-box { margin: 0.6rem 0; }
+.setup-list, .secret-dialog .setup-info dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0; }
+.setup-list dd, .secret-dialog .setup-info dd { margin: 0; overflow-wrap: anywhere; }
+pre.snippet { max-height: 26rem; overflow: auto; margin-top: 0.5rem; }
+.result { margin-top: 1rem; padding-top: 0.5rem; border-top: 1px solid var(--app-border); }
+.result-line { font-size: 1rem; }
+.skipped { margin: 0.25rem 0 0.75rem; padding-left: 1.1rem; color: var(--pico-muted-color); font-size: 0.9rem; }
+
+/* ================================================================== 9. editors */
+.editor h2 { margin-top: 0; }
+.editor label small, .tester label small { font-weight: 400; color: var(--pico-muted-color); }
+.editor textarea, .editor select, .editor input { margin-bottom: 0.25rem; }
+.editor textarea { font-size: 0.9rem; }
+.editor fieldset { border: 0; padding: 0; margin: 0; }
+.editor .advanced { margin: 0.5rem 0 1rem; }
+.editor textarea ~ small, .editor input ~ small, .editor select ~ small { margin-top: 0.3rem; display: block; }
+.editor label > small:first-child { display: inline; margin: 0; }
+.editor-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; }
+.editor-actions > button, .editor-actions > [role="button"] { margin: 0; width: auto; } /* beats Pico's full-width submit */
+/* only inside the editor panel; never on the review page, where Apply must come after the diff */
+.editor .editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--pico-card-background-color); border-top: 1px solid var(--app-border); }
+.client-editor { max-width: 52rem; }
+.client-editor details { border-bottom: 1px solid var(--app-border); padding: 0.4rem 0 0.6rem; margin-bottom: 0.4rem; }
+.client-editor details > summary { padding: 0.5rem 0; }
+.client-editor fieldset.checks { margin-bottom: 1rem; }
+.client-editor fieldset.checks label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 1rem 0.3rem 0; }
+.client-editor fieldset.checks label small { display: inline; white-space: nowrap; }
+.client-editor fieldset.checks input[type="checkbox"] { flex: 0 0 auto; margin: 0; }
+
+/* ================================================================== 10. page-specific */
+.apply-progress { margin-top: 1rem; padding: 0.9rem 1.1rem; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); background: var(--pico-card-background-color); }
 .apply-progress h2 { margin-top: 0; }
 .apply-progress.applied { border-color: var(--app-2fa-fg); }
 .apply-progress.rolled-back, .apply-progress.refused { border-color: var(--app-warn-fg); }
@@ -270,119 +280,63 @@ ol.steps li.done .mark { color: var(--app-ok-fg); }
 ol.steps li.failed .mark { color: var(--app-deny-fg); }
 ol.steps li.running { font-weight: 600; }
 ol.steps li.skipped, ol.steps li.pending { color: var(--pico-muted-color); }
-.result-message { font-size: 1.05rem; }
+.result-message { font-size: 1rem; }
 
-table.history { margin: 0; font-size: 0.92rem; }
-table.history td, table.history th { vertical-align: top; padding: 0.5rem 0.6rem; }
-table.history details { margin: 0.3rem 0 0; }
-table.history details summary { cursor: pointer; color: var(--pico-primary); }
-table.history details summary::after { display: none; }
-table.history pre.diff { margin: 0.4rem 0 0; }
-.result-badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 0.6rem; font-size: 0.78rem; font-weight: 700; background: var(--app-hunk-bg); }
-.result-badge.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
-.result-badge.rolled-back, .result-badge.rollback { background: var(--app-warn-bg); color: var(--app-warn-fg); }
-@container main (max-width: 760px) { table.history td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4rem; font-size: 0.72rem; text-transform: uppercase; color: var(--pico-muted-color); } }
+/* ================================================================== 11. small screens */
+@media (max-width: 960px) {
+  .layout:has(#panel > *) { grid-template-columns: minmax(0, 1fr); }
+  .layout:has(#panel > *) .panel { order: -1; position: static; max-height: none; }
+  .layout:has(#panel > *) .main-col { display: none; } /* the editor is the whole page */
+}
 @media (max-width: 720px) {
-  table.history, table.history tbody { display: block; }
-  table.history thead { display: none; }
-  table.history tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; }
-  table.history td { display: block; padding: 0.1rem 0; border: 0; }
-  table.history td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4rem; font-size: 0.72rem; text-transform: uppercase; color: var(--pico-muted-color); }
-  .table-scroll { border: 0; }
+  .topbar-inner { gap: 0.35rem 1rem; padding: 0.5rem 0.9rem; }
+  .brand { order: 1; flex: 1; }
+  .who-am-i { order: 2; }
+  .topbar nav { order: 3; flex: 1 0 100%; gap: 0.35rem 1rem; }
+  main { padding-inline: 0.9rem; }
+  .toolbar h1, .toolbar-actions { flex: 1 0 100%; }
+  .filters input[type="search"] { flex: 1 0 100%; max-width: none; }
+  .setup-list, .secret-dialog .setup-info dl { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .grid-2, .tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 
-/* history: fixed layout so a long diff scrolls inside its cell instead of widening the table */
-.nowrap { white-space: nowrap; }
-table.history:not(.audit) { table-layout: fixed; width: 100%; }
-table.history:not(.audit) .h-time { width: 8.5rem; }
-table.history:not(.audit) .h-author { width: 9.5rem; overflow-wrap: anywhere; }
-table.history:not(.audit) .h-result { width: 11rem; }
-table.history:not(.audit) .h-actions { width: 9rem; }
-table.history td { overflow-wrap: anywhere; }
-table.history pre.diff { max-width: 100%; overflow: auto; }
-table.history .col-actions { text-align: right; }
-table.history .col-actions button { white-space: nowrap; margin: 0; width: auto; }
-@media (max-width: 720px) {
-  table.history:not(.audit) { table-layout: auto; }
-  table.history .col-actions { text-align: left; padding-top: 0.4rem; }
+/* A table row becomes a card when there is no room for its fixed columns (about 66rem): on a narrow
+   viewport for every table, and (container query) for the rules table when the editor panel narrows
+   its column. rem, not px: the thresholds follow the font size. */
+@media (max-width: 66rem) {
+  .table-scroll { border: 0; overflow: visible; }
+  table.data:not(.rules), table.data:not(.rules) tbody { display: block; }
+  table.data:not(.rules) thead, table.data:not(.rules) colgroup { display: none; }
+  table.data:not(.rules) tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
+  table.data:not(.rules) td { display: block; padding: 0.1rem 0; border: 0; box-shadow: none; width: auto; }
+  table.data:not(.rules) td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 5rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  table.data:not(.rules) .col-actions { display: flex; gap: 0.4rem; justify-content: flex-start; padding-top: 0.4rem; }
+  table.data .trunc { white-space: normal; overflow: visible; }
 }
-
-/* Access tests, banners with actions, history kinds (Phase 1c) */
-tr.status-fail { box-shadow: inset 3px 0 0 var(--app-err-fg); }
-.banner { display: flex; gap: .75rem; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-.banner-actions { display: inline-flex; gap: .5rem; }
-.disabled-rules { opacity: .75; }
-table.tests td { vertical-align: top; }
-.result-badge.external, .result-badge.tests, .result-badge.users { background: var(--app-warn-bg); color: var(--app-warn-fg); }
-table.tests .note { display: block; }
-@media (max-width: 720px) {
-  table.tests, table.tests tbody { display: block; }
-  table.tests thead { display: none; }
-  table.tests tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
-  table.tests td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
-  table.tests td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4.2rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
-  table.tests .col-actions { display: flex; gap: 0.4rem; padding-top: 0.4rem; }
-  table.tests .col-actions > * { margin: 0; }
+@container main (max-width: 66rem) {
+  .table-scroll { border: 0; overflow: visible; }
+  table.rules, table.rules tbody { display: block; }
+  table.rules thead, table.rules colgroup { display: none; }
+  table.rules tr {
+    display: grid; grid-template-columns: 1.4rem 1fr auto; gap: 0.1rem 0.6rem;
+    grid-template-areas: "num domain handle" ". paths paths" ". who who" ". policy policy" "actions actions actions";
+    border: 1px solid var(--app-border); border-radius: var(--pico-border-radius);
+    padding: 0.6rem 0.75rem; margin-bottom: 0.7rem; background: var(--pico-card-background-color);
+  }
+  table.rules td { display: block; padding: 0.1rem 0; border: 0; box-shadow: none; width: auto; }
+  table.rules .col-num { grid-area: num; font-weight: 700; color: var(--pico-muted-color); }
+  table.rules .col-domain { grid-area: domain; }
+  table.rules .col-handle { grid-area: handle; }
+  table.rules .col-paths { grid-area: paths; }
+  table.rules .col-who { grid-area: who; }
+  table.rules .col-policy { grid-area: policy; }
+  table.rules .col-actions { grid-area: actions; text-align: left; padding-top: 0.5rem; display: flex; gap: 0.4rem; align-items: center; }
+  table.rules td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 3.6rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  .col-paths details { display: inline-block; vertical-align: top; }
+  .col-paths ul.regex { margin-left: 0; }
+  .issues ul { position: static; box-shadow: none; max-width: none; }
+  .marker { display: inline; margin-left: 0.4rem; }
+  .col-actions [role="button"].small { margin-left: auto; }
 }
-dialog > article { max-height: 92vh; overflow-y: auto; }
-
-/* OIDC clients (Phase 2) */
-.input-row { display: flex; gap: 0.5rem; align-items: stretch; }
-.input-row > input { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
-.input-row > button { flex: 0 0 auto; margin-bottom: 0; width: auto; }
-.client-editor { max-width: 52rem; }
-.client-editor details { border-bottom: 1px solid var(--app-border); padding: 0.4rem 0 0.6rem; margin-bottom: 0.4rem; }
-.client-editor details > summary { padding: 0.5rem 0; }
-.client-editor fieldset.checks { margin-bottom: 1rem; }
-.client-editor fieldset.checks label { display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 1rem 0.3rem 0; }
-.client-editor .editor-actions { display: flex; gap: 0.6rem; justify-content: flex-end; flex-wrap: wrap; margin-top: 1rem; }
-.client-editor .editor-actions > * { width: auto; margin: 0; }
-.secret-dialog article { width: min(40rem, 100%); }
-.secret-dialog .setup-info { margin-top: 1rem; border-top: 1px solid var(--app-border); padding-top: 0.5rem; }
-.secret-dialog .setup-info dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0; }
-.secret-dialog .setup-info dd { margin: 0; overflow-wrap: anywhere; }
-.secret-dialog footer { margin-top: 0.8rem; }
-.client-id { white-space: nowrap; }
-table.clients td { vertical-align: middle; }
-@media (max-width: 720px) {
-  table.clients, table.clients tbody { display: block; }
-  table.clients thead { display: none; }
-  table.clients tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
-  table.clients td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
-  table.clients td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 6rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
-  table.clients .col-actions { padding-top: 0.4rem; }
-  .secret-dialog .setup-info dl { grid-template-columns: 1fr; }
-}
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr)); gap: 1rem; }
-.cards .card { margin: 0; display: flex; flex-direction: column; gap: 0.3rem; }
-.cards .card h3 { margin: 0; font-size: 1.05rem; }
-.cards .card p { margin: 0; color: var(--pico-muted-color); font-size: 0.9rem; }
-.cards .card form { margin-top: auto; }
-.cards .card label, .cards .card input, .cards .card button { margin-bottom: 0.4rem; }
-.setup-info-box { margin: 0.6rem 0; }
-.setup-list { display: grid; grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; margin: 0.4rem 0; }
-.setup-list dd { margin: 0; overflow-wrap: anywhere; }
-pre.snippet { max-height: 26rem; overflow: auto; margin-top: 0.5rem; }
-@media (max-width: 720px) { .setup-list { grid-template-columns: 1fr; } }
-
-/* Users and groups (Phase 3) */
-tr.is-disabled td { opacity: 0.6; }
-table.users td { vertical-align: middle; }
-.cards.groups { grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
-ul.members { list-style: none; padding: 0; margin: 0.3rem 0; }
-ul.members li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.15rem 0; }
-ul.members li button { margin: 0; width: auto; }
-.inline-form { display: flex; gap: 0.5rem; align-items: center; }
-.inline-form > * { margin-bottom: 0; }
-@media (max-width: 720px) {
-  table.users, table.users tbody { display: block; }
-  table.users thead { display: none; }
-  table.users tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
-  table.users td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
-  table.users td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4.5rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
-  table.users .col-actions { padding-top: 0.4rem; }
-}
-label.inline-check { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem; }
-label.inline-check input { margin: 0; }
-.client-editor fieldset.checks label small { display: inline; white-space: nowrap; }
-.client-editor fieldset.checks input[type="checkbox"] { flex: 0 0 auto; margin: 0; }

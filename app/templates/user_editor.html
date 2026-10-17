@@ -18,7 +18,7 @@
       <label for="f-email">Email <input id="f-email" name="email" type="email" value="{{ f.email }}" placeholder="name@example.com"></label>
 
       <fieldset class="checks"><legend>Groups</legend>
-        {% for g in known_groups %}<label><input type="checkbox" name="l_groups" value="{{ g }}" {% if g in f.groups %}checked{% endif %}> {{ g }}{% if g == admin_group %} <small class="nowrap">(admins)</small>{% endif %}</label>{% endfor %}
+        {% for g in known_groups %}<label{% if g == admin_group %} title="Members of this group can use the configurator"{% endif %}><input type="checkbox" name="l_groups" value="{{ g }}" {% if g in f.groups %}checked{% endif %}> {{ g }}{% if g == admin_group %} &#9733;{% endif %}</label>{% endfor %}
         {% for g in f.groups %}{% if g not in known_groups %}<label><input type="checkbox" name="l_groups" value="{{ g }}" checked> {{ g }}</label>{% endif %}{% endfor %}
       </fieldset>
       <label for="f-new-groups">New groups <small>space or comma separated</small>

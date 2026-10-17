@@ -368,3 +368,54 @@ def test_groups_page_shows_members_and_rules(admin: Page) -> None:
     expect(card).to_contain_text("Used by rule")
     expect(card.locator("ul.members")).to_contain_text("family")  # the family user is a member
     assert "$argon2" not in admin.content()
+
+
+# ------------------------------------------------------------------ UI: font and columns
+
+
+def column_lefts(page: Page, table: str) -> list[list[int]]:
+    """x of every cell's left edge, per row (rounded to a pixel)."""
+    return page.evaluate(
+        """(selector) => [...document.querySelectorAll(selector + ' tr')].map(
+             row => [...row.children].map(
+               cell => Math.round(cell.getBoundingClientRect().left)))""",
+        table,
+    )
+
+
+def test_the_font_is_compact_at_every_width(admin: Page) -> None:
+    for width in (1280, 1920, 2560):
+        admin.set_viewport_size({"width": width, "height": 900})
+        open_rules(admin)
+        size = admin.evaluate("() => parseFloat(getComputedStyle(document.body).fontSize)")
+        assert size <= 15, (width, size)  # Pico alone would be 20-21 px here
+
+
+def test_rules_columns_line_up_in_every_row_and_between_domain_groups(admin: Page) -> None:
+    admin.set_viewport_size({"width": 1600, "height": 900})
+    open_rules(admin)
+    rows = [r for r in column_lefts(admin, "#rules-body") if len(r) == 7]
+    assert len(rows) > 5 and all(r == rows[0] for r in rows), "columns shift between rows"
+    header = column_lefts(admin, "#rules-table thead")[0]
+    assert header == rows[0]
+    admin.goto(f"{BASE}/rules?view=domain", wait_until="networkidle")
+    groups = admin.evaluate(
+        """() => [...document.querySelectorAll('table.rules.readonly')].map(
+             t => [...t.querySelector('tr').children].map(
+               c => Math.round(c.getBoundingClientRect().left)))"""
+    )
+    assert len(groups) > 2, groups
+    assert all(g == groups[0] for g in groups), "groups do not line up"
+    assert groups[0] == rows[0]
+
+
+def test_other_tables_have_stable_columns(admin: Page) -> None:
+    admin.set_viewport_size({"width": 1600, "height": 900})
+    for path, selector in (("/clients", "table.clients"), ("/users", "table.users"),
+                           ("/tests", "table.tests"),
+                           ("/history", "table.history:not(.audit)")):  # fmt: skip
+        admin.goto(f"{BASE}{path}", wait_until="networkidle")
+        if admin.locator(f"{selector} tbody tr").count() < 2:
+            continue
+        rows = [r for r in column_lefts(admin, f"{selector} tbody") if len(r) > 3]
+        assert rows and all(r == rows[0] for r in rows), f"{path}: columns shift between rows"
