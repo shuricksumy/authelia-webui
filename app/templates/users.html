@@ -14,7 +14,7 @@
 {% if broken %}
 <article class="notice error" role="alert">The users file could not be read. Check that <code>USERS_FILE</code> points to it.</article>
 {% else %}
-<form class="filters" hx-get="/users" hx-target="body" hx-select="main" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:250ms from:#q">
+<form class="filters" hx-get="/users" hx-target="main" hx-select="main" hx-swap="outerHTML" hx-push-url="true" hx-trigger="input changed delay:250ms from:#q">
   <label for="q" class="visually-hidden">Filter</label>
   <input id="q" type="search" name="q" value="{{ q }}" placeholder="Filter by name, email or group">
 </form>
@@ -32,7 +32,7 @@
         <td data-label="Email">{{ r.email or '—' }}</td>
         <td data-label="Groups">{% for g in r.groups %}<span class="chip{% if g == admin_group %} edit{% endif %}">{{ g }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
         <td data-label="Status">{% if r.disabled %}<span class="badge deny">disabled</span>{% else %}<span class="ok-text">active</span>{% endif %}</td>
-        <td class="col-actions">{% if writable %}<a role="button" class="outline small" href="/users/{{ r.name }}/edit">Edit</a>{% endif %}</td>
+        <td class="col-actions">{% if writable %}<a role="button" class="outline small" href="/users/{{ r.name|urlencode }}/edit">Edit</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

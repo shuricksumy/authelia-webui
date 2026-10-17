@@ -17,12 +17,12 @@
     <p class="muted"><small>Used by rule{{ 's' if g.rules|length != 1 else '' }}: {{ g.rules|join(', ') if g.rules else 'none' }}</small></p>
     <ul class="members">
       {% for m in g.members %}<li><span>{{ m }}</span>
-        {% if writable %}<button type="button" class="outline secondary small" hx-post="/groups/{{ g.name }}/members" hx-vals='{"user": "{{ m }}", "action": "remove", "users_rev": "{{ users_rev }}"}' aria-label="Remove {{ m }} from {{ g.name }}">Remove</button>{% endif %}</li>
+        {% if writable %}<button type="button" class="outline secondary small" hx-post="/groups/{{ g.name|urlencode }}/members" hx-vals="{{ {'user': m, 'action': 'remove', 'users_rev': users_rev}|tojson|forceescape }}" aria-label="Remove {{ m }} from {{ g.name }}">Remove</button>{% endif %}</li>
       {% else %}<li class="muted">no members</li>{% endfor %}
     </ul>
     {% if writable %}
     {% if g.addable %}
-    <form hx-post="/groups/{{ g.name }}/members" hx-swap="none" class="inline-form">
+    <form hx-post="/groups/{{ g.name|urlencode }}/members" hx-swap="none" class="inline-form">
       <input type="hidden" name="action" value="add"><input type="hidden" name="users_rev" value="{{ users_rev }}">
       <label class="visually-hidden" for="add-{{ g.name }}">Add a user to {{ g.name }}</label>
       <select id="add-{{ g.name }}" name="user">{% for u in g.addable %}<option>{{ u }}</option>{% endfor %}</select>
@@ -30,7 +30,7 @@
     </form>
     {% endif %}
     <details><summary>Rename</summary>
-      <form hx-post="/groups/{{ g.name }}/rename" hx-swap="none" class="inline-form">
+      <form hx-post="/groups/{{ g.name|urlencode }}/rename" hx-swap="none" class="inline-form">
         <input type="hidden" name="users_rev" value="{{ users_rev }}">
         <label class="visually-hidden" for="ren-{{ g.name }}">New name for {{ g.name }}</label>
         <input id="ren-{{ g.name }}" name="new_name" placeholder="new name" autocomplete="off" required>

@@ -35,6 +35,8 @@ def typed(cli: AutheliaCLI, main_config: Path, password: str, policy: PasswordPo
     """The hash of a password the admin typed, after checking it against the policy."""
     if policy.mode == "zxcvbn":
         raise PasswordError("Your password policy (zxcvbn) cannot be checked here; generate one.")
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in password):
+        raise PasswordError("The password cannot contain control characters (tabs, line breaks).")
     problems = policy_problems(password, policy)
     if problems:
         raise PasswordError("The password needs " + ", ".join(problems) + ".")

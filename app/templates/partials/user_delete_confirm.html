@@ -5,7 +5,7 @@
       They can no longer log in; rules that name this user keep working for everyone else. Access rules are not changed.</p>
     <footer>
       <button type="button" class="secondary" data-close>Cancel</button>
-      <button type="button" class="danger" hx-post="/users/{{ uname }}/delete" hx-vals='{"users_rev": "{{ users_rev }}"}'>Delete user</button>
+      <button type="button" class="danger" hx-post="/users/{{ uname|urlencode }}/delete" hx-vals="{{ {'users_rev': users_rev}|tojson|forceescape }}">Delete user</button>
     </footer>
   </article>
 </dialog>

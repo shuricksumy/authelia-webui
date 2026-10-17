@@ -180,8 +180,9 @@ class AutheliaCLI:
         """
         if self.docker:
             raise AutheliaCLIError("typed passwords need the local binary")
-        if not password or "\r" in password or "\n" in password:
-            raise AutheliaCLIError("the password cannot be empty or contain line breaks")
+        if not password or any(ord(c) < 0x20 or ord(c) == 0x7F for c in password):
+            # the terminal reader treats these as Enter/Backspace/...: the hash would not match
+            raise AutheliaCLIError("the password cannot be empty or contain control characters")
         argv = self._argv(["crypto", "hash", "generate", "--config", str(main_config),
                            "--no-confirm"], (), False)  # fmt: skip
         out = _run_with_terminal(argv, password, self.timeout_s)
@@ -286,7 +287,10 @@ def _run_with_terminal(argv: Sequence[str], answer: str, timeout_s: float) -> st
     if not sent or proc.returncode != 0:
         raise AutheliaCLIError("crypto hash generate failed")
     text = out.decode(errors="replace")
-    if answer in text:  # never possible with a no-echo prompt; refuse rather than leak it
+    # The prompt does not echo; check the part after it (not the prompt's own words) anyway.
+    after_prompt = text.split(":", 1)[1] if ":" in text else text
+    rest = "\n".join(ln for ln in after_prompt.splitlines() if not ln.strip().startswith("Digest:"))
+    if answer in rest:
         raise AutheliaCLIError("crypto hash generate echoed the input")
     return text
 

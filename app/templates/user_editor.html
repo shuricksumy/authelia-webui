@@ -48,12 +48,12 @@
         <input id="f-password" name="password" type="password" autocomplete="new-password"></label>
       {% else %}
       <p>Password: {{ 'set' if has_password else 'none' }}
-        <button type="button" class="outline small" hx-get="/users/{{ uname }}/password" hx-target="#modal">Set a new password</button></p>
+        <button type="button" class="outline small" hx-get="/users/{{ uname|urlencode }}/password" hx-target="#modal">Set a new password</button></p>
       {% endif %}
     </fieldset>
     <div class="editor-actions">
       <a role="button" class="secondary outline" href="/users">Cancel</a>
-      {% if uname is not none and writable %}<button type="button" class="secondary outline" hx-get="/users/{{ uname }}/delete" hx-target="#modal">Delete</button>{% endif %}
+      {% if uname is not none and writable %}<button type="button" class="secondary outline" hx-get="/users/{{ uname|urlencode }}/delete" hx-target="#modal">Delete</button>{% endif %}
       {% if writable %}<button type="submit">{{ 'Create user' if uname is none else 'Save' }}</button>{% endif %}
     </div>
     <p class="muted"><small>Saved at once. Authelia reloads the users file by itself: nobody is signed out.</small></p>

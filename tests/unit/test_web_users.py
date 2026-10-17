@@ -294,3 +294,22 @@ def test_read_only_when_the_file_is_outside_managed(
     assert "read-only here" in page and "+ New user" not in page and "alice" in page
     r = ui.post("/users/save", {"original": "bob", "displayname": "X", "users_rev": "0" * 16})
     assert r.status_code == 422 and "read-only" in r.text
+
+
+def test_filter_swaps_main_not_the_whole_body(ui: UI) -> None:
+    page = ui.get("/users").text
+    assert 'hx-target="main" hx-select="main"' in page and 'hx-target="body"' not in page
+
+
+def test_odd_names_cannot_break_out_of_the_request_values(ui: UI, uenv: dict[str, Path]) -> None:
+    text = (
+        uenv["users"]
+        .read_text()
+        .replace("groups:\n            - home", 'groups:\n            - \'x","action":"add\'', 1)
+    )
+    uenv["users"].write_text(text)
+    page = ui.get("/groups").text
+    assert '"action": "remove"' not in page  # JSON is entity-escaped inside the attribute
+    assert (
+        "&#34;action&#34;: &#34;remove&#34;" in page or "&#34;action&#34;:&#34;remove&#34;" in page
+    )

@@ -301,3 +301,72 @@ def test_an_existing_repo_starts_tracking_the_users_file(users_env: dict[str, An
                         "alice", engine.users_rev())  # fmt: skip
     log = git(users_env["managed"], "log", "--format=%s").splitlines()
     assert log[:2] == ["Users: x", "Users: start tracking the users file"]
+
+
+# --------------------------------------------------------------------- review fixes (3b)
+
+
+def test_control_characters_are_refused_before_the_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authelia's terminal reader edits on Backspace/Enter: such a hash would never match."""
+    from app import authelia_cli
+
+    def must_not_run(*_: Any) -> str:
+        raise AssertionError("must not run")
+
+    monkeypatch.setattr(authelia_cli, "_run_with_terminal", must_not_run)
+    policy = PasswordPolicy("standard", 8, 0, False, False, False, False)
+    for bad in ("Abcdefg\x08h1!", "Abcdefg\x7f1!", "Abcd\tefg1!", "Abc\x03defg1!"):
+        with pytest.raises(passwords.PasswordError, match="control characters"):
+            passwords.typed(AutheliaCLI.local(), Path("/m.yml"), bad, policy)
+        with pytest.raises(Exception, match="control characters"):
+            AutheliaCLI.local().hash_password(bad, Path("/m.yml"))
+
+
+def test_a_password_that_looks_like_the_prompt_is_not_refused_as_an_echo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app import authelia_cli
+
+    class FakeProc:
+        returncode = 0
+
+        def poll(self) -> int:
+            return 0
+
+        def kill(self) -> None: ...
+
+        def wait(self) -> int:
+            return 0
+
+    script = [b"Enter Password: ", f"\r\n\r\nDigest: {HASH}\r\n".encode(), b""]
+    monkeypatch.setattr(authelia_cli.subprocess, "Popen", lambda *a, **k: FakeProc())
+    import os as real_os
+    import select as real_select
+
+    monkeypatch.setattr(real_select, "select", lambda r, w, x, t: (r, [], []))
+    monkeypatch.setattr(real_os, "read", lambda fd, n: script.pop(0) if script else b"")
+    monkeypatch.setattr(real_os, "write", lambda fd, data: len(data))
+    assert AutheliaCLI.local().hash_password("Password", Path("/m.yml")) == HASH
+
+
+def test_crash_recovery_never_undoes_a_newer_users_file(users_env: dict[str, Any]) -> None:
+    """A password reset Authelia wrote after a crash must survive the recovery of that crash."""
+    import json
+
+    engine = engine_for(users_env)
+    engine.repo.ensure(["access_control.yml", "users.yml"])
+    store = users_env["store"]
+    store.save(store.current().move(3, 4))
+    (users_env["managed"] / "access_control.yml").write_text(store.current().render())  # crashed
+    users = users_env["users"]
+    users.write_text(users.read_text().replace("Bob Example", "Bob After Reset"))  # Authelia
+    (users_env["managed"] / ".apply").mkdir(exist_ok=True)
+    (users_env["managed"] / ".apply" / "in-progress.json").write_text(
+        json.dumps({"old_head": engine.repo.head(), "started_at": "s", "user": "alice"})
+    )
+    engine.recover()
+    assert "Bob After Reset" in users.read_text()
+    status = git(users_env["managed"], "status", "--porcelain", "--untracked-files=no")
+    assert status.strip() == "M users.yml"  # access_control.yml was put back, users.yml kept

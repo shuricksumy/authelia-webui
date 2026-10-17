@@ -610,7 +610,11 @@ class ApplyEngine:
             # Crashed before the commit: the live files may already hold the new text, which
             # Authelia never loaded. Put the committed version back so file == running config;
             # the draft is still there (it is discarded only after the commit).
-            self.repo.restore_all()
+            # Only the files an apply writes: the users file (or access tests) may hold newer
+            # changes Authelia made meanwhile (password resets) that must not be undone.
+            for path in (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME):
+                if self.repo.tracks(path):
+                    self.repo.restore(path)
             marker.unlink(missing_ok=True)
             self._finish(job, request, "refused",
                          "An interrupted apply was undone before it took effect; your change is "
