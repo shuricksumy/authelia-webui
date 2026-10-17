@@ -4,7 +4,7 @@ ARG AUTHELIA_VERSION=4.39.28
 
 FROM authelia/authelia:${AUTHELIA_VERSION} AS authelia
 
-FROM python:3.13-slim AS builder
+FROM python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce AS builder
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /build
@@ -12,7 +12,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Debian (glibc), not Alpine: the Authelia release binary is dynamically linked against glibc.
-FROM python:3.13-slim AS runtime
+FROM python:3.15-slim@sha256:2da676046630d7bf14c6764ae1143dc7fa0377a53f94bf5a642f0b214aca5bce AS runtime
 ARG AUTHELIA_VERSION
 LABEL org.opencontainers.image.title="Authelia Configurator" \
       org.opencontainers.image.licenses="Apache-2.0" \
