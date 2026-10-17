@@ -1,7 +1,8 @@
 name: ghcr-cleanup
 # Removes what piles up in ghcr.io/<owner>/authelia-configurator. release.yml re-points its tags
-# (`latest`, the app version, `authelia-<version>`) on every push and on the weekly rebuild; the
-# image a tag pointed to before then remains as an untagged multi-arch set, and its cosign
+# (`latest`, `authelia-<version>`; an app version tag only once, with its release) on every push and
+# on the weekly rebuild; the image a tag pointed to before then remains as an untagged multi-arch
+# set, and its cosign
 # signature / attestations (tags `sha256-<digest>`) stay behind for an image that is gone.
 #
 # Never deleted: anything tagged. Older `authelia-<version>` and app-version tags are what people

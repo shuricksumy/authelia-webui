@@ -36,6 +36,20 @@ jobs:
           echo "authelia=$(scripts/authelia_version.sh)" >> "$GITHUB_OUTPUT"
           echo "app=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -n1)" >> "$GITHUB_OUTPUT"
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/authelia-configurator" >> "$GITHUB_OUTPUT"
+      - id: rel
+        # A version tag (:0.2.0) is published once, with its GitHub Release; later pushes and the
+        # weekly rebuild only move :authelia-<version> and :latest, so a pinned version never changes.
+        run: |
+          if gh release view "v${APP}" >/dev/null 2>&1; then
+            echo "new=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "new=true" >> "$GITHUB_OUTPUT"
+            echo "tag=${IMAGE}:${APP}" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP: ${{ steps.v.outputs.app }}
+          IMAGE: ${{ steps.v.outputs.image }}
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -55,7 +69,7 @@ jobs:
           sbom: true
           tags: |
             ${{ steps.v.outputs.image }}:authelia-${{ steps.v.outputs.authelia }}
-            ${{ steps.v.outputs.image }}:${{ steps.v.outputs.app }}
+            ${{ steps.rel.outputs.tag }}
             ${{ steps.v.outputs.image }}:latest
       - name: Sign the image (keyless)
         run: cosign sign --yes "${IMAGE}@${DIGEST}"
@@ -63,10 +77,9 @@ jobs:
           IMAGE: ${{ steps.v.outputs.image }}
           DIGEST: ${{ steps.build.outputs.digest }}
       - name: GitHub Release (only for new app versions, not for weekly rebuilds)
-        if: github.event_name == 'workflow_run'
+        if: steps.rel.outputs.new == 'true'
         run: |
           tag="v${APP}"
-          if gh release view "$tag" >/dev/null 2>&1; then echo "release $tag exists"; exit 0; fi
           gh release create "$tag" --generate-notes \
             --title "$tag (Authelia ${AUTHELIA})" \
             --notes "Image: \`${IMAGE}:authelia-${AUTHELIA}\` (digest \`${DIGEST}\`)"
