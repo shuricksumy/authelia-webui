@@ -1,0 +1,41 @@
+name: ghcr-cleanup
+# Removes what piles up in ghcr.io/<owner>/authelia-configurator. release.yml re-points its tags
+# (`latest`, the app version, `authelia-<version>`) on every push and on the weekly rebuild; the
+# image a tag pointed to before then remains as an untagged multi-arch set, and its cosign
+# signature / attestations (tags `sha256-<digest>`) stay behind for an image that is gone.
+#
+# Never deleted: anything tagged. Older `authelia-<version>` and app-version tags are what people
+# pin when they run an older Authelia, so they stay. Deleted: untagged images that no tag (or
+# multi-arch index) still uses, and signatures/attestations whose image no longer exists.
+#
+# Scheduled runs only report (dry run) until a reviewed dry run flips SCHEDULED_DRY_RUN below.
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Only list what would be deleted
+        type: boolean
+        default: true
+  schedule:
+    - cron: "0 5 1 * *" # monthly: one set of orphans per push or weekly rebuild
+
+permissions: {}
+
+env:
+  SCHEDULED_DRY_RUN: "true"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write # delete package versions
+    steps:
+      - uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          owner: ${{ github.repository_owner }}
+          package: authelia-configurator
+          delete-untagged: true
+          delete-orphaned-images: true # signatures/attestations of deleted images
+          dry-run: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.dry-run) || env.SCHEDULED_DRY_RUN }}
+          validate: true # afterwards, check that every kept multi-arch image is still complete
+          log-level: info
