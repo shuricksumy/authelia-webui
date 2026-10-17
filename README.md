@@ -204,6 +204,24 @@ everyone else; it no longer needs `networks:`). A banner on every page says so. 
 group that only you are in (e.g. `ADMIN_GROUP=configurator-admins`) and a WebAuthn/passkey second
 factor: one phished login would otherwise control every rule, client and user.
 
+## Showing it inside a dashboard (optional)
+
+The configurator refuses to be shown in a frame (clickjacking protection). To embed it in a
+dashboard or Home Assistant (an iframe/webpage card or panel), name the sites that may frame it:
+
+```sh
+FRAME_ANCESTORS=https://home.example.com,https://ha.example.com:8123   # or https://*.example.com
+```
+
+Only those sites can frame it; the emergency port never can. Two limits come from the browser and
+Authelia, not from this setting:
+
+- The dashboard must be on the **same site** as the configurator (e.g. both under `example.com`).
+  From another site (an IP address, `homeassistant.local`) the browser does not send Authelia's
+  session cookie into the frame, and you only see a redirect to the login.
+- Authelia's own login page refuses to be framed. When the session has expired, sign in once in a
+  normal tab, then reload the dashboard.
+
 ## Lockout recovery
 
 If Authelia is down and you want the web UI anyway, the optional emergency door gives you a

@@ -60,6 +60,23 @@ EMERGENCY_SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
     (name, b"same-origin") if name == b"referrer-policy" else (name, value)
     for name, value in SECURITY_HEADERS
 ]
+
+
+def frame_headers(
+    headers: list[tuple[bytes, bytes]], ancestors: list[str]
+) -> list[tuple[bytes, bytes]]:
+    """FRAME_ANCESTORS (owner opt-in): those sites may frame the normal port. X-Frame-Options
+    cannot name a site, so it goes; the CSP directive is what browsers obey."""
+    if not ancestors:
+        return headers
+    allowed = f"frame-ancestors {' '.join(ancestors)}".encode()
+    return [
+        (name, value.replace(b"frame-ancestors 'none'", allowed))
+        for name, value in headers
+        if name != b"x-frame-options"
+    ]
+
+
 # Pages and API answers are never cached; vendored static files may be (they are not secret).
 NO_STORE = (b"cache-control", b"no-store")
 STATIC_CACHE = (b"cache-control", b"private, max-age=3600")
@@ -133,6 +150,8 @@ class SecurityMiddleware:
         self.emergency = emergency or Emergency(settings)
         # Its own key: a token from one door is never accepted at the other.
         self.emergency_csrf = CSRF(settings.APP_SECRET_KEY.get_secret_value(), "csrf-emergency-v1")
+        # The emergency door is never framed: it stays reachable from the server only.
+        self.headers = frame_headers(SECURITY_HEADERS, settings.FRAME_ANCESTORS)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -140,9 +159,7 @@ class SecurityMiddleware:
             return
 
         cache = STATIC_CACHE if scope["path"].startswith("/static/") else NO_STORE
-        security = (
-            EMERGENCY_SECURITY_HEADERS if self._on_emergency_port(scope) else SECURITY_HEADERS
-        )
+        security = EMERGENCY_SECURITY_HEADERS if self._on_emergency_port(scope) else self.headers
 
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
