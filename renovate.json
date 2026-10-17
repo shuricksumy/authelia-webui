@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "enabledManagers": ["custom.regex", "dockerfile", "github-actions", "pep621", "uv"],
+  "enabledManagers": ["custom.regex", "dockerfile", "github-actions", "pep621"],
   "customManagers": [
     {
       "customType": "regex",
@@ -27,7 +27,7 @@
       "automerge": false
     },
     {
-      "matchManagers": ["github-actions", "pep621", "uv"],
+      "matchManagers": ["github-actions", "pep621"],
       "matchUpdateTypes": ["patch"],
       "automerge": true
     }
