@@ -14,7 +14,7 @@ from playwright.sync_api import Browser, Page, expect
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 
 from tests.e2e.auth import BASE, sign_in
-from tests.e2e.conftest import AliceSession, open_rules, rule_number
+from tests.e2e.conftest import AliceSession, goto, open_rules, rule_number
 from tests.fixtures.stack import AUTH_HOST, PORTAL_PORT, STACK
 
 pytestmark = pytest.mark.e2e
@@ -89,7 +89,7 @@ def log_back_in_after_restart(page: Page) -> None:
     afresh: the login form must come from the final Authelia instance, not from one that was
     served between the two restarts (a form from the first instance cannot complete a login)."""
     for attempt in range(3):
-        page.goto(f"{BASE}/apply/result")
+        goto(page, f"{BASE}/apply/result")  # retries a transient network change
         page.wait_for_url(f"https://{AUTH_HOST}:{PORTAL_PORT}/**", timeout=60_000)
         # A portal page served while Authelia was still starting may never render its form
         # (seen on CI): load it afresh instead of waiting on a page that cannot finish.
