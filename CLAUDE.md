@@ -162,8 +162,8 @@ Update the replica when you learn new patterns; never add real data to it.
   through `env:` and are validated. `uvx zizmor --offline .github/workflows` must stay clean.
 - `main` is protected (PR + green CI). Dependabot: security PRs only; Renovate: versions.
 - `ghcr-cleanup.yml` (monthly) deletes only untagged images and orphaned cosign/attestation
-  artifacts; tags are never deleted (people pin `authelia-<version>`). Scheduled runs stay dry
-  runs until `SCHEDULED_DRY_RUN` is flipped after a reviewed dry run.
+  artifacts; tags are never deleted (people pin `authelia-<version>`). It runs for real; a manual
+  run can choose dry run.
 
 ## Naming
 Repo `authelia-webui`. Product name "Authelia Configurator". Image

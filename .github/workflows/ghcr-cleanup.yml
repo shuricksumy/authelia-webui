@@ -8,21 +8,18 @@ name: ghcr-cleanup
 # pin when they run an older Authelia, so they stay. Deleted: untagged images that no tag (or
 # multi-arch index) still uses, and signatures/attestations whose image no longer exists.
 #
-# Scheduled runs only report (dry run) until a reviewed dry run flips SCHEDULED_DRY_RUN below.
+# Runs for real; a manual run can be a dry run (list only) instead.
 on:
   workflow_dispatch:
     inputs:
       dry-run:
         description: Only list what would be deleted
         type: boolean
-        default: true
+        default: false
   schedule:
     - cron: "0 5 1 * *" # monthly: one set of orphans per push or weekly rebuild
 
 permissions: {}
-
-env:
-  SCHEDULED_DRY_RUN: "true"
 
 jobs:
   cleanup:
@@ -36,6 +33,6 @@ jobs:
           package: authelia-configurator
           delete-untagged: true
           delete-orphaned-images: true # signatures/attestations of deleted images
-          dry-run: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.dry-run) || env.SCHEDULED_DRY_RUN }}
+          dry-run: ${{ inputs.dry-run == true }} # schedule: no inputs -> a real run
           validate: true # afterwards, check that every kept multi-arch image is still complete
           log-level: info
