@@ -177,3 +177,16 @@ def test_denial_log_cannot_be_forged_with_newlines(caplog: pytest.LogCaptureFixt
     client(INTERNET).get("/x%0aINFO%20fake%20entry")
     record = next(r for r in caplog.records if r.name == "app.security")
     assert "\n" not in record.getMessage()
+
+
+def test_a_refusal_shows_the_address_as_seen_but_not_the_reason() -> None:
+    # through Traefik, from outside the allowed networks
+    outside = client(PROXY).get("/whoami", headers={"X-Forwarded-For": INTERNET, **ADMIN})
+    assert outside.status_code == 403
+    assert f"Your address as seen here: {INTERNET}" in outside.text
+    assert "ALLOWED_CLIENT_CIDRS" not in outside.text and "admin group" not in outside.text
+    # not from Traefik: the forged header is ignored and the real peer is what is shown
+    stranger = "192.0.2.77"
+    direct = client(stranger).get("/whoami", headers={"X-Forwarded-For": VPN_CLIENT, **ADMIN})
+    assert direct.status_code == 403
+    assert f"seen here: {stranger}" in direct.text and VPN_CLIENT not in direct.text

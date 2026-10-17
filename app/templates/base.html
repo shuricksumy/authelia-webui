@@ -54,6 +54,7 @@
       {% else %}<small>(cannot be determined)</small>{% endif %}</span>
     <span>bundled <strong>{{ bundled_version }}</strong>
       {% if runtime.running_version %}{% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003; matches</span>{% endif %}{% endif %}</span>
+    <span title="The address the configurator sees for you (checked against ALLOWED_CLIENT_CIDRS)">you: <strong>{{ identity.client_ip }}</strong></span>
     <span>last apply: {% if last_job and last_job.done %}<strong>{{ last_job.finished|utc }}</strong> ({{ last_job.result }}){% else %}<strong>none</strong>{% endif %}</span>
   </footer>
 </body>

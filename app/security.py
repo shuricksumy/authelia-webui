@@ -160,10 +160,18 @@ class SecurityMiddleware:
         denial = self._check(scope)
         if isinstance(denial, str):
             client = scope.get("client") or ("?", 0)
+            seen = resolve_client_ip(client[0], Headers(scope=scope).get("x-forwarded-for"),
+                                     self.settings.TRUSTED_PROXY_CIDRS)  # fmt: skip
             # %r: the path is attacker-controlled and may contain newlines (log injection)
-            log.warning("denied %s %r from peer %s: %s", scope["method"], scope["path"],
-                        client[0], denial)  # fmt: skip
-            response = PlainTextResponse("Forbidden", status_code=403)
+            log.warning("denied %s %r from peer %s (client %s): %s", scope["method"],
+                        scope["path"], client[0], seen, denial)  # fmt: skip
+            # The address helps an admin set ALLOWED_CLIENT_CIDRS; it is the requester's own, so
+            # it tells nobody anything new. The reason stays in the log only.
+            response = PlainTextResponse(
+                "Forbidden\n\nThe Authelia Configurator only answers its administrators from its"
+                f" allowed networks.\nYour address as seen here: {seen or 'unknown'}\n",
+                status_code=403,
+            )
             await response(scope, receive, send_with_headers)
             return
 
