@@ -69,6 +69,17 @@
         "pinDigest"
       ],
       "automerge": true
+    },
+    {
+      "description": "Stay on Python 3.13 for now: no minor/major Python upgrades (base image or requires-python). Digest and patch refreshes of 3.13-slim still come through (security fixes).",
+      "matchPackageNames": [
+        "python"
+      ],
+      "matchUpdateTypes": [
+        "major",
+        "minor"
+      ],
+      "enabled": false
     }
   ],
   "platformAutomerge": true
