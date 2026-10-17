@@ -27,6 +27,22 @@
   ],
   "packageRules": [
     {
+      "description": "Authelia is tracked only through ARG AUTHELIA_VERSION (custom.regex). The dockerfile manager would see the same version a second time, and a digest pin cannot be written into that ARG: the value is also the image tag suffix (authelia-<version>). Pinning it made the whole 'Pin dependencies' branch fail.",
+      "matchPackageNames": [
+        "authelia/authelia"
+      ],
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "enabled": false
+    },
+    {
+      "matchPackageNames": [
+        "authelia/authelia"
+      ],
+      "pinDigests": false
+    },
+    {
       "matchPackageNames": [
         "authelia/authelia"
       ],
