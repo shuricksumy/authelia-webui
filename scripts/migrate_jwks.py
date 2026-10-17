@@ -181,11 +181,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"note: no key_id was set for {names}; ids were invented, so apps will see a "
               "different 'kid' after the switch.")  # fmt: skip
     print("\nNext (the main file was not touched):")
-    copy = f" (a reduced copy is at {args.reduced_main})" if args.reduced_main else ""
-    print(f"  1. remove the `jwks:` list from the main configuration{copy}")
-    print(f"  2. add {args.container_managed}/{JWKS_NAME} to X_AUTHELIA_CONFIG")
-    print("  3. set X_AUTHELIA_CONFIG_FILTERS=template (Authelia) and "
+    print(f"  1. add {args.container_managed}/{JWKS_NAME} to the end of X_AUTHELIA_CONFIG")
+    print("  2. set X_AUTHELIA_CONFIG_FILTERS=template (Authelia) and "
           "CONFIG_FILTERS=template (configurator), restart both")  # fmt: skip
+    copy = f" ({args.reduced_main} is a copy without it)" if args.reduced_main else ""
+    print("  optional, later: remove the `jwks:` list from the main configuration; the managed "
+          f"file already replaces it{copy}")  # fmt: skip
     return 0
 
 
