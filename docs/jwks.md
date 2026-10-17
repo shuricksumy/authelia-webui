@@ -33,6 +33,13 @@ written by the configurator and the private keys must not live in git.
 
 The template filter processes *every* configuration file. If another file of yours contains
 literal `{{`, escape it before turning the filter on (see Authelia's "Filters" documentation).
+While the filter is on, the configurator refuses to apply a draft whose rules, notes or clients
+contain `{{` or `}}`: Authelia would evaluate them, and templates can read files and environment
+variables.
+
+The key files are mode 600: Authelia and the configurator must run as the **same user** (the
+production example runs both as `AUTHELIA_UID:AUTHELIA_GID`), or Authelia cannot read a key the
+configurator generated and the step is rolled back.
 
 `managed/secrets/` is excluded from git on both new and existing repositories
 (`.gitignore` and `.git/info/exclude`). **Back it up separately** (it is not in the managed

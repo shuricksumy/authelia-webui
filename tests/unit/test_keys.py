@@ -219,3 +219,29 @@ def test_a_crash_before_the_commit_restores_the_keys_file(env: dict[str, Any]) -
     (managed / "oidc_jwks.yml").write_text(before + "# half written\n")
     assert "undone" in (engine.recover() or "")
     assert (managed / "oidc_jwks.yml").read_text() == before and os.path.exists(managed)
+
+
+def test_a_cleanup_problem_after_success_keeps_the_step_applied(
+    env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    engine, _, _ = setup(env, kids=("new", "old"))
+
+    def fail(path: Path | None) -> None:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(keys, "_drop", fail)
+    job = go(engine, op(engine, "retire", "old"))
+    assert job.result == "applied", job.message
+    assert kids(env) == ["new"]
+
+
+def test_template_text_in_a_draft_is_refused_when_the_filter_is_on(env: dict[str, Any]) -> None:
+    engine, _, _ = setup(env)
+    store = env["store"]
+    doc = store.current()
+    node = doc.blocks[0].node()
+    store.save(doc.replace_rule(0, node, note='{{ env "APP_SECRET_KEY" }}'))
+    reasons = engine.preconditions()
+    assert any("evaluate it as a template" in r for r in reasons)
+    env["settings"].CONFIG_FILTERS = ""
+    assert not any("evaluate it as a template" in r for r in engine.preconditions())

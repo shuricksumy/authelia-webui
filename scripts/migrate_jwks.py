@@ -122,8 +122,11 @@ def without_jwks(main_text: str) -> str:
 
 
 def _write_private(path: Path, text: str) -> None:
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    """Write a new file (mode 600). Folders it creates are 700; existing ones are left alone
+    (the managed folder and Authelia's folder belong to the deployment)."""
+    missing = [p for p in (path.parent, *path.parent.parents) if not p.exists()]
+    for folder in reversed(missing):
+        folder.mkdir(mode=0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as handle:
         handle.write(text)

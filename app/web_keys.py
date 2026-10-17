@@ -42,10 +42,10 @@ def _certificate_rows(request: Request) -> list[dict[str, Any]]:
 
 
 @router.get("/keys", response_class=HTMLResponse)
-async def keys_page(request: Request, flash: str = "") -> Response:
-    v = await run_in_threadpool(load_view, request)
+def keys_page(request: Request, flash: str = "") -> Response:  # sync: runs in a worker thread
+    v = load_view(request)
     engine = services_of(request).engine
-    state = await run_in_threadpool(keys.keys_state, engine)
+    state = keys.keys_state(engine)
     waited = None
     if state.prepared_at and state.doc and len(state.doc.blocks) > 1:
         waited = max(0, int(time.time()) - state.prepared_at)
@@ -61,7 +61,7 @@ async def keys_page(request: Request, flash: str = "") -> Response:
 @router.post("/keys/{action}", response_class=HTMLResponse)
 async def keys_step(request: Request, action: str) -> Response:
     data = await request.form()
-    v = load_view(request)
+    v = await run_in_threadpool(load_view, request)
     services = services_of(request)
     identity = identity_of(request.state)
     operation = keys.KeyOp(
@@ -82,5 +82,10 @@ async def keys_step(request: Request, action: str) -> Response:
 
     reasons = await run_in_threadpool(check_and_start)
     if reasons:
-        return render(v, "partials/apply_refused.html", status=422, reasons=reasons)
-    return render(v, "partials/apply_progress.html", **_progress_context(services.board.snapshot()))
+        return await run_in_threadpool(
+            lambda: render(v, "partials/apply_refused.html", status=422, reasons=reasons)
+        )
+    job = services.board.snapshot()
+    return await run_in_threadpool(
+        lambda: render(v, "partials/apply_progress.html", **_progress_context(job))
+    )

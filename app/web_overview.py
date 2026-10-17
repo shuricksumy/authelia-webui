@@ -8,9 +8,12 @@ cannot run becomes a line saying so, never a failed page.
 from __future__ import annotations
 
 import logging
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -73,8 +76,7 @@ def collect(v: View) -> Overview:
                 )
             )
         try:
-            started = services.runtime.inspect(timeout_s=1.0).started_at
-            out.up_since = started.split(".")[0].replace("T", " ") + " UTC"
+            out.up_since = _up_since(services.runtime.inspect(timeout_s=1.0).started_at)
         except RuntimeUnavailable:
             out.up_since = ""
 
@@ -191,7 +193,7 @@ def collect(v: View) -> Overview:
         path = v.settings.AUTHELIA_LOG_FILE
         if path is None:
             return
-        found = logs.counts(path, datetime.now(UTC) - logs.WINDOWS["24h"])
+        found = _log_counts(path)
         out.log_counts = found
         if found and found["error"]:
             out.items.append(
@@ -224,10 +226,41 @@ def collect(v: View) -> Overview:
     return out
 
 
+_COUNTS_TTL_S = 60.0
+_counts_cache: dict[str, tuple[float, dict[str, int] | None]] = {}
+_counts_lock = threading.Lock()
+
+
+def _log_counts(path: Path) -> dict[str, int] | None:
+    """Errors/warnings of the last 24 h, cached for a minute: a large log takes a moment to scan
+    and the dashboard is the landing page."""
+    key = str(path)
+    with _counts_lock:
+        hit = _counts_cache.get(key)
+        if hit and time.monotonic() - hit[0] < _COUNTS_TTL_S:
+            return hit[1]
+    value = logs.counts(path, datetime.now(UTC) - logs.WINDOWS["24h"])
+    with _counts_lock:
+        _counts_cache[key] = (time.monotonic(), value)
+    return value
+
+
+def _up_since(started_at: str) -> str:
+    try:
+        moment = datetime.fromisoformat(started_at.replace("Z", "+00:00").split(".")[0])
+    except ValueError:
+        return ""
+    return (
+        moment.replace(tzinfo=moment.tzinfo or UTC).astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    )
+
+
+# Plain `def` routes: FastAPI runs them in a worker thread. render() does blocking work (status
+# probe, git for the notices), which must never run on the event loop.
 @router.get("/", response_class=HTMLResponse)
-async def overview(request: Request) -> Response:
-    v = await run_in_threadpool(load_view, request)
-    data = await run_in_threadpool(collect, v)
+def overview(request: Request) -> Response:
+    v = load_view(request)
+    data = collect(v)
     return render(v, "overview.html", active="overview", data=data,
                   draft=v.store.changes() if v.store.has_draft() else None,
                   log_configured=v.settings.AUTHELIA_LOG_FILE is not None)  # fmt: skip
@@ -254,9 +287,9 @@ def _query(level: str, window: str, q: str, ip: str) -> tuple[logs.Query, str, s
 
 
 @router.get("/logs", response_class=HTMLResponse)
-async def logs_page(request: Request, level: str = "warn", window: str = "24h", q: str = "",
-                    ip: str = "", older: str = "") -> Response:  # fmt: skip
-    v = await run_in_threadpool(load_view, request)
+def logs_page(request: Request, level: str = "warn", window: str = "24h", q: str = "",
+              ip: str = "", older: str = "") -> Response:  # fmt: skip
+    v = load_view(request)
     path = v.settings.AUTHELIA_LOG_FILE
     query, level, window = _query(level, window, q, ip)
     ctx: dict[str, Any] = {
@@ -274,9 +307,9 @@ async def logs_page(request: Request, level: str = "warn", window: str = "24h", 
         "older": older,
     }
     if path is not None:
-        ctx["page"] = await run_in_threadpool(logs.read, path, query, PAGE, older)
+        ctx["page"] = logs.read(path, query, PAGE, older)
         if not older:
-            found, limited = await run_in_threadpool(logs.problems, path, query.since)
+            found, limited = logs.problems(path, query.since)
             ctx["problems"], ctx["problems_limited"] = found[:15], limited
     return render(v, "logs.html", **ctx)
 

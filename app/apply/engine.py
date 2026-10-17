@@ -281,6 +281,9 @@ class ApplyEngine:
         elif what == "main":
             apply_state.update(self.managed, main_sha=self.main_config_sha())
 
+    def _templated(self) -> bool:
+        return "template" in [f.strip() for f in self.settings.CONFIG_FILTERS.split(",")]
+
     def main_config_sha(self) -> str:
         try:
             return sha256(self.settings.CONFIG_MAIN.read_text())
@@ -339,6 +342,15 @@ class ApplyEngine:
                            "configurator, the same filter Authelia uses.")  # fmt: skip
         if not self.store.has_draft():
             return [*reasons, "There are no unapplied changes."]
+        if self._templated():
+            snap = self.store.snapshot()
+            draft = snap.rules + (snap.clients or "")  # the files Authelia loads
+            if "{{" in draft or "}}" in draft:
+                reasons.append(
+                    "The draft contains '{{' or '}}'. With CONFIG_FILTERS=template Authelia "
+                    "would evaluate it as a template (it can read files and environment "
+                    "variables): remove it from rules, notes and clients."
+                )
         if self.store.is_stale():
             reasons.append(
                 "The live file changed after this draft was started. Discard it and redo the edits."

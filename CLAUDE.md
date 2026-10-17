@@ -28,6 +28,10 @@ Protection of the configurator rules is derived from env (there is no `protected
   Every line is cut at 4 KB and `scrub()`bed (hashes, PEM, JWT, bearer, cookies) *before* parsing.
 - `app/web_overview.py`: `/` computes "Needs attention" from existing modules; each check is
   isolated so one failure becomes a note, never a 500. `/logs`, `/logs/download` live there too.
+- Log lines are scrubbed **before** they are cut (a cut must not split a PEM or token), and the
+  reader never follows symlinks (`O_NOFOLLOW`): Authelia can write the log folder.
+- Routes that render pages are plain `def` (worker thread): `render()` does blocking work
+  (status probe, git), so an `async def` route must call it through `run_in_threadpool`.
 - The production example mounts the log **folder** (logrotate replaces the file; a single-file
   bind mount would go stale). The test stack writes `generated/stack/logs/authelia.log`.
 
@@ -43,6 +47,7 @@ Protection of the configurator rules is derived from env (there is no `protected
   one only after a failed prepare. Key commits have no "Revert to this" in History.
 - `app/certs.py`: chains from the keys file or main config, live TLS handshakes (never trusted,
   only read), `CertWatcher` in a background thread, one notification per certificate and threshold.
+- With the template filter on, `ApplyEngine.preconditions` refuses drafts containing `{{`/`}}`.
 - The test stack is migrated like a real deployment (`scripts/migrate_jwks.py` in
   `tests/fixtures/stack.py`); never hand-edit the keys file format.
 

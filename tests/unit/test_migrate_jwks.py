@@ -96,3 +96,14 @@ def test_cli_prints_no_key_material_and_leaves_the_main_file(
     assert code == 0 and "BEGIN" not in out and "QUJD" not in out
     assert main.read_text() == MAIN and "jwks:" not in reduced.read_text()
     assert m.main(["--config", str(main), "--managed", str(managed)]) == 1  # second run refuses
+
+
+def test_existing_folders_keep_their_permissions(tmp_path: Path) -> None:
+    import os
+
+    managed = tmp_path / "managed"
+    managed.mkdir(mode=0o750)
+    os.chmod(managed, 0o750)  # noqa: S103  (a group-readable folder, as some setups use)
+    m.write(m.plan(MAIN, managed), managed)
+    assert stat.S_IMODE(managed.stat().st_mode) == 0o750  # not tightened behind the user's back
+    assert stat.S_IMODE((managed / "secrets").stat().st_mode) == 0o700

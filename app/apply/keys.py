@@ -227,13 +227,17 @@ def _run(engine: ApplyEngine, op: KeyOp, job: Job, request: ApplyRequest) -> Non
     engine._health_or_rollback(job, request, None, before, commit,
                                verify=lambda: _verify(engine, job, expected))  # fmt: skip
 
-    if job.result == "applied":
-        if op.action == "prepare":
-            apply_state.update(managed, jwks_prepared_at=int(time.time()))
-        if retired is not None:
-            _drop(_own_file(engine, retired))  # only now: a rollback needed it until here
-    elif job.result == "rolled-back":
-        _drop(new_pem)  # the key set that named it is gone again
+    # The step's outcome is final here: tidying up must not turn "applied" into "failed".
+    try:
+        if job.result == "applied":
+            if op.action == "prepare":
+                apply_state.update(managed, jwks_prepared_at=int(time.time()))
+            if retired is not None:
+                _drop(_own_file(engine, retired))  # only now: a rollback needed it until here
+        elif job.result == "rolled-back":
+            _drop(new_pem)  # the key set that named it is gone again
+    except OSError:
+        log.warning("key step finished, but a key file could not be removed")
 
 
 def _verify(engine: ApplyEngine, job: Job, expected: list[str]) -> str | None:

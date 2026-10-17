@@ -170,3 +170,29 @@ def test_problems_are_grouped_by_message_with_the_variable_parts_blanked(tmp_pat
     counted = logs.counts(tmp_path / "a.log", NOW - timedelta(hours=1))
     assert counted == {"error": 3, "warn": 2}
     assert logs.counts(tmp_path / "none.log", NOW) is None
+
+
+def test_a_secret_cut_by_the_line_limit_is_still_hidden(tmp_path: Path) -> None:
+    body = "QUJD" * 2000  # longer than the line limit: the END line is beyond the cut
+    key = "-----BEGIN " + "PRIVATE KEY-----\\n" + body + "\\n-----END PRIVATE KEY-----"
+    path = write(tmp_path / "a.log", [line(1, "error", "dump " + key)])
+    entry = logs.read(path, logs.Query("error")).entries[0]
+    assert "QUJD" not in entry.raw and "<pem>" in entry.raw
+    cut = "-----BEGIN " + "PRIVATE KEY-----\\n" + body  # no END at all (already cut upstream)
+    assert "QUJD" not in logs.parse_line(line(1, "error", cut)).raw
+
+
+def test_symlinks_in_the_log_folder_are_never_followed(tmp_path: Path) -> None:
+    import os
+
+    secret = tmp_path / "secret.pem"
+    secret.write_text("TOP-SECRET-CONTENT\n")
+    live = write(tmp_path / "authelia.log", [line(1, "error", "real")])
+    os.symlink(secret, tmp_path / "authelia.log.1")
+    assert [p.name for p in logs.log_files(live)] == ["authelia.log"]
+    page = logs.read(live, logs.Query("debug"))
+    assert all("TOP-SECRET" not in e.raw for e in page.entries)
+    live.unlink()
+    os.symlink(secret, live)  # the live file itself replaced by a link
+    assert logs.log_files(live) == []
+    assert logs.read(live, logs.Query("debug")).entries == []

@@ -109,3 +109,11 @@ def test_logs_need_the_admin_identity(env: dict[str, Path], logfile: Path) -> No
     ui = with_log(env, logfile)
     ui.headers = {**ui.headers, "Remote-Groups": "family"}
     assert ui.get("/logs").status_code == 403 and ui.get("/logs/download").status_code == 403
+
+
+def test_up_since_is_shown_in_utc_whatever_docker_returns() -> None:
+    from app.web_overview import _up_since
+
+    assert _up_since("2030-01-02T03:04:05.123456789Z") == "2030-01-02 03:04 UTC"
+    assert _up_since("2030-01-02T03:04:05Z") == "2030-01-02 03:04 UTC"
+    assert _up_since("garbage") == ""

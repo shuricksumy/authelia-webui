@@ -42,6 +42,8 @@ _LEVEL_NAMES = {
 }  # fmt: skip
 _LOGFMT = re.compile(r'(\w+)=("(?:[^"\\]|\\.)*"|\S*)')
 _SCRUB = [
+    # a PEM block cut short (line limit) has no END line: hide everything after BEGIN
+    (re.compile(r"-----BEGIN [A-Z ]+-----.*", re.S), "<pem>"),
     (re.compile(r"\beyJ[\w-]{8,}\.[\w-]{8,}\.[\w-]*"), "<jwt>"),
     (re.compile(r"(?i)\b(bearer|basic)\s+[\w.~+/=-]{8,}"), r"\1 <token>"),
     (
@@ -130,7 +132,7 @@ def _salvage(text: str) -> dict[str, Any] | None:
 
 def parse_line(line: str, file: str = "", offset: int = 0) -> Entry:
     """One log line -> Entry; never raises."""
-    clean = scrub(line.strip()[:MAX_LINE])
+    clean = scrub(line.strip())[:MAX_LINE]  # scrub first: a cut must not split a secret
     data: dict[str, Any] | None = None
     if clean.startswith("{"):
         try:
@@ -157,12 +159,21 @@ def log_files(path: Path) -> list[Path]:
     found: list[tuple[float, Path]] = []
     try:
         for candidate in path.parent.iterdir():
-            if rotated.match(candidate.name) and candidate.is_file():
+            if rotated.match(candidate.name) and _regular(candidate):
                 found.append((candidate.stat().st_mtime, candidate))
     except OSError:
         pass
     ordered = [p for _, p in sorted(found, key=lambda item: item[0], reverse=True)]
-    return ([path] if path.is_file() else []) + ordered
+    return ([path] if _regular(path) else []) + ordered
+
+
+def _regular(path: Path) -> bool:
+    """A real file, never a symlink: whoever can write the log folder (Authelia) must not be able
+    to point the viewer at another file the configurator can read (keys, /proc/self/environ)."""
+    try:
+        return path.is_file() and not path.is_symlink()
+    except OSError:
+        return False
 
 
 def _mtime(path: Path) -> datetime | None:
@@ -174,7 +185,8 @@ def _mtime(path: Path) -> datetime | None:
 
 def _plain_backwards(path: Path, end: int | None) -> Iterator[tuple[int, str, int]]:
     """(offset of line, line, bytes read so far) from `end` backwards, whole lines only."""
-    with path.open("rb") as handle:
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))  # swapped since listing
+    with os.fdopen(fd, "rb") as handle:
         handle.seek(0, os.SEEK_END)
         position = size = handle.tell()
         if end is not None:
@@ -205,7 +217,8 @@ def _gzip_backwards(path: Path, end: int | None, keep: int) -> Iterator[tuple[in
     lines: deque[tuple[int, str]] = deque(maxlen=keep)
     offset = 0
     try:
-        with gzip.open(path, "rb") as handle:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        with gzip.open(os.fdopen(fd, "rb"), "rb") as handle:
             for raw in handle:
                 if (end is not None and offset >= end) or offset > GZIP_CAP:
                     break
