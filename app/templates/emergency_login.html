@@ -12,7 +12,7 @@
     <h1>Emergency access</h1>
     <article class="notice error">
       <strong>This door does not use Authelia.</strong> It exists for when Authelia is down. Use it
-      through an SSH tunnel only; every login is recorded.
+      only through an SSH tunnel or an encrypted VPN; every login is recorded.
     </article>
     {% if message %}<p class="flash error" role="alert">{{ message }}</p>{% endif %}
     <form method="post" action="/emergency/login">

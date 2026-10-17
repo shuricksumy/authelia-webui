@@ -431,3 +431,20 @@ def test_only_ip_addresses_can_be_added(tmp_path: Path) -> None:
     assert make_settings(tmp_path, EMERGENCY_HOSTS="").EMERGENCY_HOSTS == []
     assert make_settings(tmp_path, EMERGENCY_HOSTS=" 10.8.1.1 ,[fd00::1]").EMERGENCY_HOSTS == [
         "10.8.1.1", "[fd00::1]"]  # fmt: skip
+
+
+def test_the_emergency_port_lets_its_own_form_send_a_real_origin(tmp_path: Path) -> None:
+    """Over plain HTTP to an IP address Chrome sends no Sec-Fetch-Site, and `no-referrer` would
+    turn the form's Origin into `null`: the door uses `same-origin` instead (and only there)."""
+    door = Door(tmp_path, EMERGENCY_HOSTS="172.30.0.92")
+    page = door.client.get("/emergency/login", headers={"host": "172.30.0.92:8090"})
+    assert page.headers["referrer-policy"] == "same-origin"
+    login = door.client.post(
+        "/emergency/login",
+        data={"password": RIGHT},
+        headers={"host": "172.30.0.92:8090", "Origin": "http://172.30.0.92:8090"},
+    )  # fmt: skip  (what Chrome sends then: a real Origin and no Sec-Fetch-* headers)
+    assert login.status_code == 303
+    assert door.client.get("/healthz").headers["referrer-policy"] == "same-origin"
+    normal = TestClient(door.app, base_url="https://authcfg.example.com", client=("172.20.0.2", 1))
+    assert normal.get("/healthz").headers["referrer-policy"] == "no-referrer"  # unchanged
