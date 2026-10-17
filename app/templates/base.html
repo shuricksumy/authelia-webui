@@ -21,7 +21,8 @@
         <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
         <a href="/tests" {% if active|default('rules') == 'tests' %}aria-current="page"{% endif %}>Access tests</a>
         <a href="/clients" {% if active|default('rules') == 'clients' %}aria-current="page"{% endif %}>OIDC Clients</a>
-        <span class="soon" title="Arrives in a later phase">Users</span>
+        <a href="/users" {% if active|default('rules') == 'users' %}aria-current="page"{% endif %}>Users</a>
+        <a href="/groups" {% if active|default('rules') == 'groups' %}aria-current="page"{% endif %}>Groups</a>
         <a href="/history" {% if active|default('rules') == 'history' %}aria-current="page"{% endif %}>History</a>
       </nav>
       <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>

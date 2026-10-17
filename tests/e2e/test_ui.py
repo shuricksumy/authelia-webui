@@ -283,3 +283,88 @@ def test_deleting_a_client_asks_first(admin: Page) -> None:
     admin.locator("#modal").get_by_role("button", name="Cancel").click()
     expect(admin.locator("dialog")).to_have_count(0)
     assert not (STACK / "managed" / ".draft").exists()
+
+
+# ----------------------------------------------------------------- users and groups (no restart)
+
+USERS = STACK / "managed" / "users.yml"
+FIRST_FACTOR = "http://127.0.0.1:19091/api/firstfactor"
+
+
+def first_factor(username: str, password: str) -> int:
+    import httpx
+
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "auth.example.test:8443",
+               "X-Forwarded-For": "10.8.0.5"}  # fmt: skip
+    body = {"username": username, "password": password, "keepMeLoggedIn": False}
+    return httpx.post(FIRST_FACTOR, json=body, headers=headers, timeout=10).status_code
+
+
+def wait_for_login(username: str, password: str, want: int, seconds: float = 20) -> bool:
+    import time
+
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        if first_factor(username, password) == want:
+            return True
+        time.sleep(3)
+    return False
+
+
+def test_a_user_created_in_the_ui_can_log_in_without_a_restart_and_is_then_locked_out(
+    admin: Page,
+) -> None:
+    original = USERS.read_text()
+    try:
+        admin.goto(f"{BASE}/users/new", wait_until="networkidle")
+        admin.locator("#f-username").fill("e2e-user")
+        admin.locator("#f-displayname").fill("E2E User")
+        admin.locator("#f-email").fill("e2e-user@example.test")
+        admin.locator("#f-new-groups").fill("e2e-group")
+        admin.get_by_role("button", name="Create user").click()
+        password_input = admin.locator("#one-time-secret")
+        expect(password_input).to_have_attribute("type", "password")  # masked until Show
+        password = password_input.input_value()
+        assert len(password) >= 8
+        admin.get_by_label("I have copied the password").check()
+        admin.get_by_role("button", name="Done").click()
+        admin.wait_for_url(f"{BASE}/users")
+        assert password not in admin.content() and password not in USERS.read_text()
+        assert "$argon2" not in admin.content()
+        expect(admin.locator("table.users")).to_contain_text("e2e-user")
+
+        assert wait_for_login("e2e-user", password, 200), "the new user could not log in"
+
+        admin.goto(f"{BASE}/users/e2e-user/edit", wait_until="networkidle")
+        admin.get_by_label("Disabled").check()
+        admin.get_by_role("button", name="Save").click()
+        admin.wait_for_url(f"{BASE}/users?saved=e2e-user")
+        expect(admin.locator("tr.is-disabled")).to_contain_text("e2e-user")
+        import time
+
+        time.sleep(5)
+        assert first_factor("e2e-user", password) == 401  # disabled: refused after the reload
+    finally:
+        USERS.write_text(original)
+
+
+def test_you_cannot_lock_yourself_out(admin: Page) -> None:
+    admin.goto(f"{BASE}/users/alice/edit", wait_until="networkidle")
+    admin.locator('input[name="l_groups"][value="admin"]').uncheck()
+    admin.get_by_role("button", name="Save").click()
+    expect(admin.get_by_text("cannot remove, disable or demote yourself")).to_be_visible()
+    assert "- admin" in USERS.read_text()
+    admin.goto(f"{BASE}/users/alice/edit", wait_until="networkidle")
+    admin.get_by_role("button", name="Delete").click()
+    admin.get_by_role("button", name="Delete user").click()
+    expect(admin.locator("#flash")).to_contain_text("yourself")
+
+
+def test_groups_page_shows_members_and_rules(admin: Page) -> None:
+    admin.goto(f"{BASE}/groups", wait_until="networkidle")
+    card = admin.locator("article.card").filter(
+        has=admin.get_by_role("heading", name="family", exact=True)
+    )
+    expect(card).to_contain_text("Used by rule")
+    expect(card.locator("ul.members")).to_contain_text("family")  # the family user is a member
+    assert "$argon2" not in admin.content()

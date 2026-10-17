@@ -15,7 +15,8 @@ examples in `examples/`, `docs/migration.md`) are implemented; 1c awaits the own
 **Phase 2 (OIDC clients)** is delivered in two steps: **2a** (clients document, three-file draft,
 one-time secrets, lint, apply, editor UI) is reviewed; **2b** (app presets in `app/oidc_templates/*.yml`,
 picker, setup-info box) is implemented and awaits review. **Phase 3 (users)**: **3a** core (users document, checks, lockout guards, passwords,
-`ApplyEngine.update_users`) is implemented; **3b** (Users and Groups pages) is next. Signal restart mode later. Target layout: SPEC §14.
+`ApplyEngine.update_users`) is reviewed; **3b** (`app/web_users.py`: Users and Groups pages, password
+dialogs) is implemented and awaits review. Signal restart mode later. Target layout: SPEC §14.
 The UI edits a **draft** only (`CONFIG_MANAGED_DIR/.draft/`: rules + disabled rules, one combined
 revision); the live files are written only by `app/apply/engine.py`. Access tests are the exception:
 they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).

@@ -313,7 +313,7 @@ tr.status-fail { box-shadow: inset 3px 0 0 var(--app-err-fg); }
 .banner-actions { display: inline-flex; gap: .5rem; }
 .disabled-rules { opacity: .75; }
 table.tests td { vertical-align: top; }
-.result-badge.external, .result-badge.tests { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.result-badge.external, .result-badge.tests, .result-badge.users { background: var(--app-warn-bg); color: var(--app-warn-fg); }
 table.tests .note { display: block; }
 @media (max-width: 720px) {
   table.tests, table.tests tbody { display: block; }
@@ -364,3 +364,25 @@ table.clients td { vertical-align: middle; }
 .setup-list dd { margin: 0; overflow-wrap: anywhere; }
 pre.snippet { max-height: 26rem; overflow: auto; margin-top: 0.5rem; }
 @media (max-width: 720px) { .setup-list { grid-template-columns: 1fr; } }
+
+/* Users and groups (Phase 3) */
+tr.is-disabled td { opacity: 0.6; }
+table.users td { vertical-align: middle; }
+.cards.groups { grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr)); }
+ul.members { list-style: none; padding: 0; margin: 0.3rem 0; }
+ul.members li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; padding: 0.15rem 0; }
+ul.members li button { margin: 0; width: auto; }
+.inline-form { display: flex; gap: 0.5rem; align-items: center; }
+.inline-form > * { margin-bottom: 0; }
+@media (max-width: 720px) {
+  table.users, table.users tbody { display: block; }
+  table.users thead { display: none; }
+  table.users tr { display: block; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); padding: 0.5rem 0.75rem; margin-bottom: 0.6rem; background: var(--pico-card-background-color); }
+  table.users td { display: block; padding: 0.1rem 0; border: 0; width: auto; overflow-wrap: anywhere; }
+  table.users td[data-label]::before { content: attr(data-label); display: inline-block; min-width: 4.5rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); }
+  table.users .col-actions { padding-top: 0.4rem; }
+}
+label.inline-check { display: flex; align-items: center; gap: 0.5rem; margin: 0.5rem 0 1rem; }
+label.inline-check input { margin: 0; }
+.client-editor fieldset.checks label small { display: inline; white-space: nowrap; }
+.client-editor fieldset.checks input[type="checkbox"] { flex: 0 0 auto; margin: 0; }

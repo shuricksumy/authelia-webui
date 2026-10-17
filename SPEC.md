@@ -307,7 +307,8 @@ Provide both options in `examples/`; README recommends A.
 
 ## 9. Users (Phase 3, optional)
 
-`users.yml` with `watch: true` → no restart needed.
+`users.yml` (moved into `managed/` so the app may write it) with `watch: true` → no restart
+needed; changes are saved at once (no draft). Measured behaviour: `docs/users-file.md`.
 - List / add / edit / disable users: username, displayname, email, groups,
   disabled, extra attributes from `authentication_backend.file.extra_attributes`
   (types honoured, e.g. integer).

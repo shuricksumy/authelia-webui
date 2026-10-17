@@ -39,6 +39,7 @@ MAIN = STACK / "configuration.yml"
 ORIGINAL = ""  # the stack's access_control.yml, restored after every scenario
 ORIGINAL_MAIN = ""  # the stack's configuration.yml, restored likewise
 ORIGINAL_TESTS = ""  # and access_tests.yml
+ORIGINAL_USERS = ""  # and users.yml
 
 
 def reset_draft() -> None:
@@ -52,6 +53,7 @@ def reset_draft() -> None:
         LIVE.write_text(ORIGINAL)
         MAIN.write_text(ORIGINAL_MAIN)
         (MANAGED / "access_tests.yml").write_text(ORIGINAL_TESTS)
+        (MANAGED / "users.yml").write_text(ORIGINAL_USERS)
 
 
 def repo() -> ManagedRepo:
@@ -271,7 +273,43 @@ def review_clients(page: Page) -> None:
     page.goto(f"{BASE}/review", wait_until="networkidle")
 
 
+def users_list(page: Page) -> None:
+    page.goto(f"{BASE}/users", wait_until="networkidle")
+
+
+def user_editor(page: Page) -> None:
+    page.goto(f"{BASE}/users/family/edit", wait_until="networkidle")
+
+
+def user_new(page: Page) -> None:
+    page.goto(f"{BASE}/users/new", wait_until="networkidle")
+
+
+def user_password_modal(page: Page) -> None:
+    """Generate a password for bob: the one-time dialog (masked). users.yml is restored after."""
+    page.goto(f"{BASE}/users/bob/edit", wait_until="networkidle")
+    page.get_by_role("button", name="Set a new password").click()
+    page.get_by_role("button", name="Set password").click()
+    page.wait_for_selector("dialog.secret-dialog")
+
+
+def user_delete_confirm(page: Page) -> None:
+    page.goto(f"{BASE}/users/device/edit", wait_until="networkidle")
+    page.get_by_role("button", name="Delete").click()
+    page.wait_for_selector("dialog[open]")
+
+
+def groups_page(page: Page) -> None:
+    page.goto(f"{BASE}/groups", wait_until="networkidle")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
+    "users": users_list,
+    "user-editor": user_editor,
+    "user-new": user_new,
+    "user-password-modal": user_password_modal,
+    "user-delete-confirm": user_delete_confirm,
+    "groups": groups_page,
     "clients": clients_list,
     "client-editor": client_editor,
     "client-picker": client_picker,
@@ -320,10 +358,11 @@ def shoot(context: BrowserContext, name: str, width: str, scheme: str) -> None:
 
 
 def main(only: list[str] | None = None) -> int:
-    global ORIGINAL, ORIGINAL_MAIN, ORIGINAL_TESTS
+    global ORIGINAL, ORIGINAL_MAIN, ORIGINAL_TESTS, ORIGINAL_USERS
     ORIGINAL = LIVE.read_text()
     ORIGINAL_MAIN = MAIN.read_text()
     ORIGINAL_TESTS = (MANAGED / "access_tests.yml").read_text()
+    ORIGINAL_USERS = (MANAGED / "users.yml").read_text()
     OUT.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--host-resolver-rules=MAP *.example.test 127.0.0.1"])

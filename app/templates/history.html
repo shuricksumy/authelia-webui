@@ -18,7 +18,7 @@
             <div hx-get="/history/{{ r.commit.sha }}/diff" hx-trigger="intersect once" hx-swap="innerHTML"><span class="muted">Loading&hellip;</span></div>
           </details></td>
         <td data-label="Result"><span class="result-badge {{ r.kind }}">{{ r.label }}</span>{% if r.current %} <small class="muted">(live)</small>{% endif %}</td>
-        <td class="col-actions">{% if not r.current %}<button type="button" class="outline small" title="Load this version into the draft and open the review" hx-post="/history/{{ r.commit.sha }}/revert">Revert to this</button>{% endif %}</td>
+        <td class="col-actions">{% if not r.current and r.kind not in ('tests', 'users') %}<button type="button" class="outline small" title="Load this version into the draft and open the review" hx-post="/history/{{ r.commit.sha }}/revert">Revert to this</button>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

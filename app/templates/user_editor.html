@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ 'New user' if uname is none else 'Edit user' }}{% endblock %}
+{% block content %}
+<div class="client-editor" id="editor">
+  <div class="toolbar"><h1>{% if uname is none %}New user{% else %}Edit user <code>{{ uname }}</code>{% endif %}</h1></div>
+  {% if not writable %}<article class="notice info">The users file is read-only here (outside the managed folder).</article>{% endif %}
+  {% if errors %}<article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>{% endif %}
+
+  <form id="user-form" hx-post="/users/save" hx-target="#editor" hx-select="#editor" hx-swap="outerHTML" hx-disinherit="*">
+    <input type="hidden" name="original" value="{{ '' if uname is none else uname }}">
+    <input type="hidden" name="users_rev" value="{{ users_rev }}">
+    <fieldset {% if not writable %}disabled{% endif %}>
+      {% if uname is none %}
+      <label for="f-username">Username <small>cannot be changed later</small>
+        <input id="f-username" name="username" value="{{ f.username }}" required autocomplete="off" spellcheck="false"></label>
+      {% endif %}
+      <label for="f-displayname">Display name <input id="f-displayname" name="displayname" value="{{ f.displayname }}" required></label>
+      <label for="f-email">Email <input id="f-email" name="email" type="email" value="{{ f.email }}" placeholder="name@example.com"></label>
+
+      <fieldset class="checks"><legend>Groups</legend>
+        {% for g in known_groups %}<label><input type="checkbox" name="l_groups" value="{{ g }}" {% if g in f.groups %}checked{% endif %}> {{ g }}{% if g == admin_group %} <small class="nowrap">(admins)</small>{% endif %}</label>{% endfor %}
+        {% for g in f.groups %}{% if g not in known_groups %}<label><input type="checkbox" name="l_groups" value="{{ g }}" checked> {{ g }}</label>{% endif %}{% endfor %}
+      </fieldset>
+      <label for="f-new-groups">New groups <small>space or comma separated</small>
+        <input id="f-new-groups" name="new_groups" placeholder="family photos" autocomplete="off" spellcheck="false"></label>
+
+      <label class="inline-check"><input type="checkbox" name="disabled" value="1" {% if f.disabled %}checked{% endif %}> Disabled (cannot log in)</label>
+
+      {% if schema.extra %}
+      <details open><summary><strong>Extra attributes</strong></summary>
+        {% for key, spec in schema.extra.items() %}
+        {% set value = extra_values.get(key) %}
+        <label for="x-{{ key }}">{{ key }} <small>{{ spec.value_type }}{% if spec.multi_valued %}, one per line{% endif %}</small>
+          {% if spec.multi_valued %}<textarea id="x-{{ key }}" name="x_{{ key }}" rows="2">{{ (value or [])|join('\n') }}</textarea>
+          {% elif spec.value_type == 'boolean' %}<select id="x-{{ key }}" name="x_{{ key }}"><option value="">(not set)</option><option value="true" {% if value is true %}selected{% endif %}>yes</option><option value="false" {% if value is false %}selected{% endif %}>no</option></select>
+          {% else %}<input id="x-{{ key }}" name="x_{{ key }}" value="{{ '' if value is none else value }}" {% if spec.value_type == 'integer' %}inputmode="numeric"{% endif %}>{% endif %}
+        </label>
+        {% endfor %}
+      </details>
+      {% endif %}
+
+      {% if uname is none %}
+      <fieldset class="checks"><legend>Password</legend>
+        <label><input type="radio" name="pw_mode" value="generate" checked> Generate one (shown once, meets your password policy)</label>
+        <label><input type="radio" name="pw_mode" value="typed"> Type one</label>
+      </fieldset>
+      <label for="f-password">Password <small>only when you chose "Type one"{% if schema.policy.mode == 'standard' %}: at least {{ schema.policy.min_length }} characters{% endif %}</small>
+        <input id="f-password" name="password" type="password" autocomplete="new-password"></label>
+      {% else %}
+      <p>Password: {{ 'set' if has_password else 'none' }}
+        <button type="button" class="outline small" hx-get="/users/{{ uname }}/password" hx-target="#modal">Set a new password</button></p>
+      {% endif %}
+    </fieldset>
+    <div class="editor-actions">
+      <a role="button" class="secondary outline" href="/users">Cancel</a>
+      {% if uname is not none and writable %}<button type="button" class="secondary outline" hx-get="/users/{{ uname }}/delete" hx-target="#modal">Delete</button>{% endif %}
+      {% if writable %}<button type="submit">{{ 'Create user' if uname is none else 'Save' }}</button>{% endif %}
+    </div>
+    <p class="muted"><small>Saved at once. Authelia reloads the users file by itself: nobody is signed out.</small></p>
+  </form>
+</div>
+{% endblock %}

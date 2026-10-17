@@ -27,6 +27,7 @@ from app.rules.document import DocumentError, RulesDocument
 from app.rules.store import LIVE_NAME, Snapshot, StaleDraftError
 from app.security import identity_of
 from app.ui import diff_lines
+from app.users.document import USERS_NAME
 from app.web import (
     STALE,
     Conflict,
@@ -41,6 +42,7 @@ from app.web import (
 
 router = APIRouter()
 DRAFTED = (LIVE_NAME, DISABLED_NAME, CLIENTS_NAME)
+SHOWN = (*DRAFTED, USERS_NAME)  # files whose changes History can show (hashes redacted)
 
 
 # --------------------------------------------------------------------------- apply
@@ -152,6 +154,8 @@ def history_rows(request: Request) -> list[HistoryRow]:
         newer = commits[i - 1] if i > 0 else None
         if commit.author == "external" or commit.subject.startswith("External change"):
             kind, label = "external", "edited outside the configurator"
+        elif commit.subject.startswith("Users:"):
+            kind, label = "users", "users (no restart)"
         elif commit.subject.startswith("Tests:"):
             kind, label = "tests", "access tests (no restart)"
         elif commit.subject.startswith("Rollback:"):
@@ -186,7 +190,7 @@ def history(request: Request) -> Response:
 def history_diff(request: Request, sha: str) -> Response:
     services = services_of(request)
     try:
-        text = "".join(services.repo.diff(sha, name) for name in DRAFTED)
+        text = "".join(services.repo.diff(sha, name) for name in SHOWN)
     except RepoError:
         return Response("Unknown commit.", status_code=404)
     text = redact(text)  # client secret hashes never reach a page

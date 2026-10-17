@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Groups{% endblock %}
+{% block content %}
+{% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
+<div class="toolbar"><h1>Groups</h1></div>
+<p class="muted">A group is just a name on users. Rules use it with <code>group:name</code>. Changes are saved at once.
+  Create a new group by adding it to a user on the <a href="/users">Users</a> page.</p>
+{% if not writable %}<article class="notice info">The users file is read-only here (outside the managed folder).</article>{% endif %}
+{% if broken %}<article class="notice error" role="alert">The users file could not be read.</article>
+{% elif not groups %}<article class="empty"><p>No groups yet.</p></article>
+{% else %}
+<div class="cards groups">
+  {% for g in groups %}
+  <article class="card">
+    <h3>{{ g.name }}{% if g.admin %} <small class="chip edit">admins of this tool</small>{% endif %}</h3>
+    {% if g.rules and not g.members %}<p class="err-text"><small>No members, but rule{{ 's' if g.rules|length > 1 else '' }} {{ g.rules|join(', ') }} name{{ '' if g.rules|length > 1 else 's' }} this group.</small></p>{% endif %}
+    <p class="muted"><small>Used by rule{{ 's' if g.rules|length != 1 else '' }}: {{ g.rules|join(', ') if g.rules else 'none' }}</small></p>
+    <ul class="members">
+      {% for m in g.members %}<li><span>{{ m }}</span>
+        {% if writable %}<button type="button" class="outline secondary small" hx-post="/groups/{{ g.name }}/members" hx-vals='{"user": "{{ m }}", "action": "remove", "users_rev": "{{ users_rev }}"}' aria-label="Remove {{ m }} from {{ g.name }}">Remove</button>{% endif %}</li>
+      {% else %}<li class="muted">no members</li>{% endfor %}
+    </ul>
+    {% if writable %}
+    {% if g.addable %}
+    <form hx-post="/groups/{{ g.name }}/members" hx-swap="none" class="inline-form">
+      <input type="hidden" name="action" value="add"><input type="hidden" name="users_rev" value="{{ users_rev }}">
+      <label class="visually-hidden" for="add-{{ g.name }}">Add a user to {{ g.name }}</label>
+      <select id="add-{{ g.name }}" name="user">{% for u in g.addable %}<option>{{ u }}</option>{% endfor %}</select>
+      <button type="submit" class="small">Add</button>
+    </form>
+    {% endif %}
+    <details><summary>Rename</summary>
+      <form hx-post="/groups/{{ g.name }}/rename" hx-swap="none" class="inline-form">
+        <input type="hidden" name="users_rev" value="{{ users_rev }}">
+        <label class="visually-hidden" for="ren-{{ g.name }}">New name for {{ g.name }}</label>
+        <input id="ren-{{ g.name }}" name="new_name" placeholder="new name" autocomplete="off" required>
+        <button type="submit" class="small secondary">Rename</button>
+      </form>
+      {% if g.rules %}<p class="err-text"><small>Rules {{ g.rules|join(', ') }} name this group and are <strong>not</strong> changed: edit them afterwards.</small></p>{% endif %}
+    </details>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

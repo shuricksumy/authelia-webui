@@ -1,0 +1,11 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Delete user?</h3></header>
+    <p>This removes <strong>{{ displayname or uname }}</strong> (<code>{{ uname }}</code>) from the users file <em>now</em>.
+      They can no longer log in; rules that name this user keep working for everyone else. Access rules are not changed.</p>
+    <footer>
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="danger" hx-post="/users/{{ uname }}/delete" hx-vals='{"users_rev": "{{ users_rev }}"}'>Delete user</button>
+    </footer>
+  </article>
+</dialog>
