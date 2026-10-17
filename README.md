@@ -168,8 +168,12 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 
 ## Production setup
 
-See [`docs/migration.md`](docs/migration.md) and the commented files in [`examples/`](examples/)
-(compose with the socket proxy, Traefik static and dynamic configuration, the protected rules).
+- **Fresh install:** [`examples/production/`](examples/production/) is a complete, production-like
+  stack (Traefik with HTTPS and a VPN-only entrypoint, Authelia, the configurator, the socket
+  proxy, a demo app). Its README walks through secrets, networks and the first login; CI validates
+  it with the real Authelia.
+- **Existing Authelia:** [`docs/migration.md`](docs/migration.md) and the snippets in
+  [`examples/`](examples/) (compose with the socket proxy, Traefik configuration, protected rules).
 
 ## Lockout recovery
 

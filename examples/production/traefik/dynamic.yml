@@ -1,0 +1,35 @@
+# Traefik dynamic configuration (file provider). Replace example.com with your DOMAIN.
+http:
+  routers:
+    authelia: # the login portal, public
+      rule: Host(`auth.example.com`)
+      entryPoints: [websecure]
+      service: authelia
+      tls: {certResolver: le}
+
+    configurator: # VPN-only entrypoint and Authelia; the app checks the network and group again
+      rule: Host(`authcfg.example.com`)
+      entryPoints: [internal]
+      service: configurator
+      middlewares: [authelia]
+      tls: {certResolver: le}
+
+    whoami: # demo app
+      rule: Host(`whoami.example.com`)
+      entryPoints: [websecure]
+      service: whoami
+      middlewares: [authelia]
+      tls: {certResolver: le}
+
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        trustForwardHeader: true
+        # Listed headers are overwritten by Authelia's answer, so a client cannot forge them.
+        authResponseHeaders: [Remote-User, Remote-Groups, Remote-Email, Remote-Name]
+
+  services:
+    authelia: {loadBalancer: {servers: [{url: "http://authelia:9091"}]}}
+    configurator: {loadBalancer: {servers: [{url: "http://configurator:8080"}]}}
+    whoami: {loadBalancer: {servers: [{url: "http://whoami:80"}]}}

@@ -1,0 +1,90 @@
+# Authelia main configuration for the production example. Copy to configuration.yml and replace
+# every __CHANGE_ME_...__ (README.md shows how to generate each value with the authelia binary).
+# Keep this file mode 600: it holds secrets. The configurator mounts it read-only.
+#
+# access_control, OIDC clients and users are NOT here: they live in managed/ and are edited
+# through the configurator (see X_AUTHELIA_CONFIG in compose.yml).
+
+theme: auto
+
+server:
+  address: 'tcp://0.0.0.0:9091/'
+
+log:
+  level: info
+  format: json
+  file_path: /config/authelia.log # the configurator shows errors from it after a failed apply
+  keep_stdout: true
+
+totp:
+  issuer: example.com
+
+identity_validation:
+  reset_password:
+    jwt_secret: '__CHANGE_ME_jwt_secret__'
+
+authentication_backend:
+  file:
+    path: /config/managed/users.yml # managed: the configurator edits users (no restart needed)
+    watch: true
+    search:
+      email: true
+    password:
+      algorithm: argon2
+      argon2:
+        variant: argon2id
+        iterations: 3
+        memory: 65536
+        parallelism: 4
+        key_length: 32
+        salt_length: 16
+
+password_policy:
+  standard:
+    enabled: true
+    min_length: 12
+    require_uppercase: true
+    require_lowercase: true
+    require_number: true
+    require_special: true
+
+session:
+  secret: '__CHANGE_ME_session_secret__'
+  cookies:
+    - domain: 'example.com'
+      authelia_url: 'https://auth.example.com'
+      default_redirection_url: 'https://whoami.example.com'
+  # Without Redis, sessions live in memory: every apply (restart) signs everyone out once.
+  # redis:
+  #   host: redis
+  #   port: 6379
+
+regulation:
+  max_retries: 3
+  find_time: 2m
+  ban_time: 10m
+
+storage:
+  encryption_key: '__CHANGE_ME_storage_encryption_key__'
+  local:
+    path: /config/db.sqlite3
+
+notifier:
+  # Password resets and 2FA registration send emails. For production use SMTP:
+  # smtp:
+  #   address: 'submissions://smtp.example.com:465'
+  #   username: 'authelia@example.com'
+  #   password: '__CHANGE_ME_smtp_password__'
+  #   sender: 'Authelia <authelia@example.com>'
+  filesystem:
+    filename: /config/notification.txt
+
+identity_providers:
+  oidc:
+    hmac_secret: '__CHANGE_ME_oidc_hmac_secret__'
+    jwks:
+      - key_id: 'main'
+        algorithm: 'RS256'
+        use: 'sig'
+        key: |
+          __CHANGE_ME_oidc_private_key_pem__

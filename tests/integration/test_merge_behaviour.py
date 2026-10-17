@@ -156,3 +156,36 @@ def test_every_oidc_preset_validates_with_the_real_authelia(
     clients_file = write(tmp_path / "all_presets.yml", doc.render())
     res = cli.validate([parts["main"], parts["ac"], extra, clients_file])
     assert res.ok and not res.warnings, res.raw
+
+
+def test_the_production_example_validates_once_its_secrets_are_filled_in(
+    cli: AutheliaCLI, tmp_path: Path
+) -> None:
+    """examples/production: main config + starting managed files, as the README tells users to
+    fill them in, are accepted by the real Authelia without errors or warnings."""
+    import re
+
+    root = Path(__file__).resolve().parents[2] / "examples" / "production" / "authelia"
+    keys = tmp_path / "keys"
+    keys.mkdir()
+    proc = cli.run(["crypto", "pair", "rsa", "generate", "--bits", "2048", "--directory",
+                    str(keys)], mounts=[keys], writable=True)  # fmt: skip
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    pem = (keys / "private.pem").read_text().strip()
+    text = (root / "configuration.example.yml").read_text()
+    for name in ("jwt_secret", "session_secret", "storage_encryption_key", "oidc_hmac_secret"):
+        text = text.replace(f"__CHANGE_ME_{name}__", cli.rand(64))
+    indent = re.search(r"^( *)__CHANGE_ME_oidc_private_key_pem__", text, re.M).group(1)  # type: ignore[union-attr]
+    text = text.replace(f"{indent}__CHANGE_ME_oidc_private_key_pem__",
+                        "\n".join(indent + line for line in pem.splitlines()))  # fmt: skip
+    live = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
+    assert not [ln for ln in live if "__CHANGE_ME_" in ln], "a placeholder was left unfilled"
+    main = write(tmp_path / "configuration.yml", text)
+    ac = write(
+        tmp_path / "access_control.yml", (root / "managed/access_control.example.yml").read_text()
+    )
+    clients = write(
+        tmp_path / "oidc_clients.yml", (root / "managed/oidc_clients.example.yml").read_text()
+    )
+    res = cli.validate([main, ac, clients])
+    assert res.ok and not res.warnings, res.raw

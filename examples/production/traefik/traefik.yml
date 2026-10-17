@@ -1,0 +1,32 @@
+# Traefik static configuration.
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint: {to: websecure, scheme: https}
+  websecure:
+    address: ":443"
+  internal: # the configurator only; published on the VPN address in compose.yml
+    address: ":8443"
+
+certificatesResolvers:
+  le:
+    acme:
+      email: admin@example.com
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web
+      # If authcfg.<domain> is not resolvable from the internet (internal DNS only), use a DNS
+      # challenge instead, e.g. (with your DNS provider's token in Traefik's environment):
+      # dnsChallenge:
+      #   provider: cloudflare
+
+providers:
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+log:
+  level: INFO
+accessLog: {}
