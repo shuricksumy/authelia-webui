@@ -1,18 +1,18 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Single source of truth for the Authelia version: updated by Renovate / authelia-watch.yml.
 ARG AUTHELIA_VERSION=4.39.28
 
 FROM authelia/authelia:${AUTHELIA_VERSION} AS authelia
 
-FROM python:3.13-slim AS builder
-COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /usr/local/bin/uv
+FROM python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS builder
+COPY --from=ghcr.io/astral-sh/uv:0.13@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/opt/venv
 WORKDIR /build
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
 # Debian (glibc), not Alpine: the Authelia release binary is dynamically linked against glibc.
-FROM python:3.13-slim AS runtime
+FROM python:3.13-slim@sha256:70729b46c69b4f1e97c4822c1af3df53a1476cf5ddc6c087c0c10bc3a5678c2f AS runtime
 ARG AUTHELIA_VERSION
 LABEL org.opencontainers.image.title="Authelia Configurator" \
       org.opencontainers.image.licenses="Apache-2.0" \
