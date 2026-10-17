@@ -13,7 +13,7 @@ server:
 log:
   level: info
   format: json
-  file_path: /config/authelia.log # the configurator shows errors from it after a failed apply
+  file_path: /config/logs/authelia.log # read by the configurator's Logs page; rotate it on the host
   keep_stdout: true
 
 totp:

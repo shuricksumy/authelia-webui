@@ -83,6 +83,7 @@ def adapt_main(text: str) -> str:
     text = text.replace("example.com", DOMAIN)
     portal = f"authelia_url: 'https://{AUTH_HOST}'"
     text = text.replace(portal, f"authelia_url: 'https://{AUTH_HOST}:{PORTAL_PORT}'")
+    text = text.replace("file_path: /config/authelia.log", "file_path: /config/logs/authelia.log")
     # Phase 3: the users file lives in the managed dir (the configurator writes it)
     return text.replace("path: /config/users.yml", f"path: /config/managed/{USERS_NAME}")
 
@@ -191,12 +192,13 @@ def prepare(authelia: str = "auto") -> Path:
     shutil.copy(files["users.yml"], managed / USERS_NAME)
     (managed / "access_tests.yml").write_text(ACCESS_TESTS)
 
+    (STACK / "logs").mkdir()  # Authelia's log, shown read-only by the configurator
     certs = STACK / "certs"
     cli.rsa_certificate(certs, f"*.{DOMAIN}", sans=(f"*.{DOMAIN}", DOMAIN))
     traefik = STACK / "traefik"
     traefik.mkdir()
     (traefik / "dynamic.yml").write_text(traefik_dynamic())
-    for path in (STACK, managed, certs, traefik):
+    for path in (STACK, managed, certs, traefik, STACK / "logs"):
         path.chmod(0o755)  # containers run as the caller's uid, but Traefik runs as root
     for key in certs.iterdir():
         key.chmod(0o644)  # test-only wildcard cert for example.test

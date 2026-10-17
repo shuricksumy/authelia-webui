@@ -101,14 +101,15 @@ services:
       TRUSTED_PROXY_CIDRS: 172.30.0.2/32 # Traefik only
       AUTHELIA_CONTAINER: authelia
       AUTHELIA_HEALTH_URL: http://authelia:9091/api/health
-      AUTHELIA_LOG_FILE: /config/authelia.log # shown on rollbacks (log.file_path in Authelia)
+      AUTHELIA_LOG_FILE: /config/logs/authelia.log # Logs page and rollback hints (log.file_path)
       DOCKER_PROXY_URL: http://socket-proxy:2375
       USERS_FILE: /config/managed/users.yml
       APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY (openssl rand -base64 48)}
       NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
     volumes:
       - ./authelia/configuration.yml:/config/configuration.yml:ro # never written by the configurator
-      - ./authelia/authelia.log:/config/authelia.log:ro
+      # A folder, not the file: logrotate replaces the file, a single-file mount would go stale
+      - ./authelia/logs:/config/logs:ro
       - ./authelia/managed:/config/managed # the only place it writes
     networks: [edge, proxy]
     depends_on:

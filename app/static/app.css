@@ -282,6 +282,26 @@ ol.steps li.running { font-weight: 600; }
 ol.steps li.skipped, ol.steps li.pending { color: var(--pico-muted-color); }
 .result-message { font-size: 1rem; }
 
+.attention { list-style: none; margin: 0 0 1.2rem; padding: 0; display: grid; gap: 0.4rem; }
+.attention li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.7rem; padding: 0.5rem 0.8rem; border-radius: var(--pico-border-radius); background: var(--app-hunk-bg); }
+.attention li.error { background: var(--app-deny-bg); color: var(--app-deny-fg); }
+.attention li.warning { background: var(--app-warn-bg); color: var(--app-warn-fg); }
+.attention li > span:nth-child(2) { flex: 1 1 18rem; }
+.attention a { color: inherit; text-decoration: underline; }
+.badge-sev { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; min-width: 4.5rem; }
+.notice.ok { background: var(--app-2fa-bg); color: var(--app-2fa-fg); border-color: transparent; }
+.cards.overview { margin-bottom: 1rem; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.3rem 0; }
+dl.facts dt { color: var(--pico-muted-color); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+.log-filters select, .log-filters input { width: auto; min-width: 11rem; margin: 0; }
+.log-entry summary { cursor: pointer; list-style: none; }
+.log-entry summary::-webkit-details-marker { display: none; }
+pre.log-raw { margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; font-size: 0.8rem; }
+.log-table td small, .problems-table td small { display: block; }
+.log-more { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 0.8rem; }
+.log-more [role="button"] { margin: 0; width: auto; }
+
 /* ================================================================== 11. small screens */
 @media (max-width: 960px) {
   .layout:has(#panel > *) { grid-template-columns: minmax(0, 1fr); }

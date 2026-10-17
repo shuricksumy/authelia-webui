@@ -32,10 +32,12 @@ x-configurator-env: &configurator-env
   AUTHELIA_HEALTH_URL: http://authelia:9091/api/health
   APP_SECRET_KEY: ${TEST_APP_SECRET_KEY:?run via make so a secret is generated}
   USERS_FILE: /config/managed/users.yml
+  AUTHELIA_LOG_FILE: /config/logs/authelia.log
 
 x-configurator-volumes: &configurator-volumes
   - ./tests/fixtures/generated/stack/configuration.yml:/config/configuration.yml:ro
   - ./tests/fixtures/generated/stack/managed:/config/managed
+  - ./tests/fixtures/generated/stack/logs:/config/logs:ro # Authelia writes it, read-only here
 
 networks:
   stack:

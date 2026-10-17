@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -307,7 +308,34 @@ def groups_page(page: Page) -> None:
     page.goto(f"{BASE}/groups", wait_until="networkidle")
 
 
+def overview_page(page: Page) -> None:
+    failed_logins()
+    page.goto(f"{BASE}/", wait_until="networkidle")
+
+
+def failed_logins() -> None:
+    """A few wrong passwords (nobody real) so the log has something to group."""
+    import httpx
+
+    for name, ip in (("mallory", "10.8.0.77"), ("mallory", "10.8.0.77"), ("trent", "10.8.0.78")):
+        httpx.post(
+            "http://127.0.0.1:19091/api/firstfactor",
+            json={"username": name, "password": "wrong-password", "keepMeLoggedIn": False},
+            headers={"X-Forwarded-Proto": "https", "X-Forwarded-Host": "auth.example.test:8443",
+                     "X-Forwarded-For": ip},
+            timeout=10,
+        )  # fmt: skip
+    time.sleep(2)  # Authelia delays answers to unknown users and writes the line a moment later
+
+
+def logs_page(page: Page) -> None:
+    failed_logins()
+    page.goto(f"{BASE}/logs?level=error&window=1h", wait_until="networkidle")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
+    "overview": overview_page,
+    "logs": logs_page,
     "users": users_list,
     "user-editor": user_editor,
     "user-new": user_new,

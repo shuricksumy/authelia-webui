@@ -330,11 +330,6 @@ def check_index(v: View, index: int) -> None:
 # --------------------------------------------------------------------------- pages
 
 
-@router.get("/", include_in_schema=False)
-def home() -> RedirectResponse:
-    return RedirectResponse("/rules", status_code=303)
-
-
 @router.get("/rules", response_class=HTMLResponse)
 def rules_page(
     request: Request,

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Overview</h1></div>
+
+<section aria-labelledby="attention-h">
+  <h2 id="attention-h">Needs attention</h2>
+  {% if data.items %}
+  <ul class="attention">
+    {% for item in data.items %}
+    <li class="{{ item.severity }}"><span class="badge-sev">{{ 'Problem' if item.severity == 'error' else ('Warning' if item.severity == 'warning' else 'Note') }}</span>
+      <span>{{ item.text }}</span>{% if item.href %} <a href="{{ item.href }}">Open</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <article class="notice ok"><strong>Nothing needs attention.</strong> Rules, access tests, OIDC clients and users all check out.</article>
+  {% endif %}
+</section>
+
+<div class="cards overview">
+  <article class="card">
+    <h3>Authelia</h3>
+    <p>{% if runtime.healthy %}<span class="ok-text">&#10003; healthy</span>{% elif runtime.healthy is false %}<span class="err-text">&#10007; not healthy</span>{% else %}<span class="muted">health unknown</span>{% endif %}</p>
+    <dl class="facts">
+      <dt>Running</dt><dd>{{ runtime.running_version or 'unknown' }}</dd>
+      <dt>Bundled</dt><dd>{{ runtime.bundled_version }}{% if runtime.running_version %} {% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003;</span>{% endif %}{% endif %}</dd>
+      <dt>Up since</dt><dd>{{ data.up_since or 'unknown' }}</dd>
+    </dl>
+  </article>
+
+  <article class="card">
+    <h3>Changes</h3>
+    <dl class="facts">
+      <dt>Draft</dt><dd>{% if draft %}{{ change_count }} unapplied change{{ '' if change_count == 1 else 's' }} <a href="/review">Review</a>{% else %}none{% endif %}</dd>
+      <dt>Last apply</dt><dd>{% if last_job and last_job.done %}{{ last_job.finished|utc }} <span class="result-badge {{ last_job.result }}">{{ last_job.result }}</span>{% else %}none yet{% endif %}</dd>
+    </dl>
+    <p><a href="/history">History</a></p>
+  </article>
+
+  <article class="card">
+    <h3>Configuration</h3>
+    <dl class="facts">
+      {% for label, value in data.counts.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
+    </dl>
+  </article>
+
+  <article class="card">
+    <h3>Authelia log</h3>
+    {% if not log_configured %}
+    <p>No log file is configured. Set <code>log.file_path</code> in Authelia and <code>AUTHELIA_LOG_FILE</code> here to read it on the <a href="/logs">Logs</a> page.</p>
+    {% elif data.log_counts is none %}
+    <p>The log file could not be read yet. <a href="/logs">Logs</a></p>
+    {% else %}
+    <dl class="facts">
+      <dt>Errors, 24 h</dt><dd>{% if data.log_counts.error %}<span class="err-text">{{ data.log_counts.error }}</span>{% else %}0{% endif %}</dd>
+      <dt>Warnings, 24 h</dt><dd>{{ data.log_counts.warn }}</dd>
+    </dl>
+    <p><a href="/logs?level=error&amp;window=24h">Errors</a> &middot; <a href="/logs">All problems</a></p>
+    {% endif %}
+  </article>
+</div>
+{% endblock %}

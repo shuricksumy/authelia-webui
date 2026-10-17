@@ -419,3 +419,44 @@ def test_other_tables_have_stable_columns(admin: Page) -> None:
             continue
         rows = [r for r in column_lefts(admin, f"{selector} tbody") if len(r) > 3]
         assert rows and all(r == rows[0] for r in rows), f"{path}: columns shift between rows"
+
+
+# --------------------------------------------------------------------- overview and logs
+
+
+def test_overview_is_the_landing_page(admin: Page) -> None:
+    admin.goto(f"{BASE}/", wait_until="networkidle")
+    expect(admin.get_by_role("heading", name="Overview")).to_be_visible()
+    expect(admin.get_by_role("heading", name="Needs attention")).to_be_visible()
+    expect(admin.get_by_role("link", name="Overview")).to_have_attribute("aria-current", "page")
+
+
+def test_a_failed_login_shows_up_under_top_problems(admin: Page) -> None:
+    import time
+
+    import httpx
+
+    headers = {"X-Forwarded-Proto": "https", "X-Forwarded-Host": "auth.example.test:8443",
+               "X-Forwarded-For": "10.8.0.77"}  # fmt: skip
+    body = {"username": "nobody-e2e", "password": "wrong-password-e2e", "keepMeLoggedIn": False}
+    assert httpx.post("http://127.0.0.1:19091/api/firstfactor", json=body, headers=headers,
+                      timeout=10).status_code == 401  # fmt: skip
+    for _ in range(10):  # the log line is written a moment later
+        admin.goto(f"{BASE}/logs?level=error&window=1h", wait_until="networkidle")
+        if admin.locator(
+            'table.log-table td[data-label="Remote IP"]', has_text="10.8.0.77"
+        ).count():
+            break
+        time.sleep(1)
+    expect(admin.get_by_role("heading", name="Top problems")).to_be_visible()
+    expect(
+        admin.locator("table.problems-table").get_by_text("Unsuccessful 1FA").first
+    ).to_be_visible()
+    expect(
+        admin.locator('table.log-table td[data-label="Remote IP"]', has_text="10.8.0.77").first
+    ).to_be_visible()
+    admin.set_viewport_size({"width": 1600, "height": 900})
+    rows = [r for r in column_lefts(admin, "table.log-table tbody") if len(r) > 3]
+    assert rows and all(r == rows[0] for r in rows)
+    download = admin.request.get(f"{BASE}/logs/download?level=error&window=1h")
+    assert download.ok and "Unsuccessful 1FA" in download.text()

@@ -21,6 +21,7 @@ from app.settings import Settings, load_settings
 from app.web import router
 from app.web_apply import router as apply_router
 from app.web_oidc import router as oidc_router
+from app.web_overview import router as overview_router
 from app.web_tests import router as tests_router
 from app.web_users import router as users_router
 
@@ -71,15 +72,19 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
         }
 
     app.state.templates = Jinja2Templates(directory=str(HERE / "templates"))
-    app.state.templates.env.filters["utc"] = lambda ts: datetime.fromtimestamp(
-        int(ts), UTC
-    ).strftime("%Y-%m-%d %H:%M UTC")
+
+    def utc(ts: Any) -> str:
+        moment = ts if isinstance(ts, datetime) else datetime.fromtimestamp(int(ts), UTC)
+        return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
+
+    app.state.templates.env.filters["utc"] = utc
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     app.include_router(router)
     app.include_router(apply_router)
     app.include_router(tests_router)
     app.include_router(oidc_router)
     app.include_router(users_router)
+    app.include_router(overview_router)
     # Outermost: every request (incl. static files) passes the IP/identity/CSRF checks.
     app.add_middleware(SecurityMiddleware, settings=settings)
     return app

@@ -151,6 +151,17 @@ The *Users* and *Groups* pages edit the users file. It must live in the managed 
 - **Groups** are names on users: the page lists members and the rules that use each group. Renaming
   a group does not change rules; it lists the ones to adjust.
 
+## Overview and logs
+
+`/` is an overview: Authelia's health and versions, the draft and the last apply, counts, and a
+**Needs attention** list built from the checks the other pages already run (rule and client
+problems, failing access tests, a single admin, errors in the log). **Logs** reads Authelia's log
+file (`AUTHELIA_LOG_FILE`) plus the copies logrotate leaves next to it, read-only: filter by level,
+time, text and remote IP, see the **top problems** grouped by message, page back through older
+entries, or download the filtered lines. Password hashes, tokens and keys are hidden before
+anything is shown. The configurator never rotates logs; the host does, see
+`examples/production/logrotate/authelia`.
+
 ## Notifications (optional)
 
 Set `NOTIFY_WEBHOOK_URL` to get a message when an apply finishes (applied, rolled back, failed)

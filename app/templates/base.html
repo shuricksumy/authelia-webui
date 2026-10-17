@@ -16,14 +16,16 @@
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="/rules">Authelia Configurator</a>
+      <a class="brand" href="/">Authelia Configurator</a>
       <nav aria-label="Main">
+        <a href="/" {% if active|default('rules') == 'overview' %}aria-current="page"{% endif %}>Overview</a>
         <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
         <a href="/tests" {% if active|default('rules') == 'tests' %}aria-current="page"{% endif %}>Access tests</a>
         <a href="/clients" {% if active|default('rules') == 'clients' %}aria-current="page"{% endif %}>OIDC Clients</a>
         <a href="/users" {% if active|default('rules') == 'users' %}aria-current="page"{% endif %}>Users</a>
         <a href="/groups" {% if active|default('rules') == 'groups' %}aria-current="page"{% endif %}>Groups</a>
         <a href="/history" {% if active|default('rules') == 'history' %}aria-current="page"{% endif %}>History</a>
+        <a href="/logs" {% if active|default('rules') == 'logs' %}aria-current="page"{% endif %}>Logs</a>
       </nav>
       <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>
     </div>

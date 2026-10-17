@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<div class="toolbar">
+  <h1>Authelia log</h1>
+  {% if configured %}<div class="toolbar-actions"><a role="button" class="outline secondary" href="/logs/download?level={{ level }}&amp;window={{ window }}&amp;q={{ q|urlencode }}&amp;ip={{ ip|urlencode }}" title="The lines shown by the current filter, with secrets hidden">Download</a></div>{% endif %}
+</div>
+{% if not configured %}
+<article class="notice info">
+  <p>No log file is configured, so there is nothing to show.</p>
+  <ol>
+    <li>In Authelia's configuration set <code>log.file_path</code> (and <code>log.format: json</code> for the best results).</li>
+    <li>Give the configurator read-only access to that folder and set <code>AUTHELIA_LOG_FILE</code> to the file.</li>
+    <li>Rotate the file on the host with logrotate: see <code>examples/production/logrotate/authelia</code>.</li>
+  </ol>
+</article>
+{% else %}
+<form class="filters log-filters" method="get" action="/logs" hx-get="/logs" hx-target="main" hx-select="main" hx-swap="outerHTML" hx-push-url="true" hx-trigger="change, input changed delay:400ms from:#q, input changed delay:400ms from:#ip">
+  <label for="level" class="visually-hidden">Level</label>
+  <select id="level" name="level">{% for value, label in levels %}<option value="{{ value }}"{% if value == level %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <label for="window" class="visually-hidden">Time</label>
+  <select id="window" name="window">{% for value, label in windows %}<option value="{{ value }}"{% if value == window %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+  <label for="q" class="visually-hidden">Text</label>
+  <input id="q" type="search" name="q" value="{{ q }}" placeholder="Search the message" autocomplete="off">
+  <label for="ip" class="visually-hidden">Remote IP</label>
+  <input id="ip" type="search" name="ip" value="{{ ip }}" placeholder="Remote IP" autocomplete="off">
+  <noscript><button type="submit" class="small">Filter</button></noscript>
+</form>
+
+{% if page.files == 0 %}
+<article class="notice info">The log file does not exist yet (or cannot be read). Authelia creates it when it first logs something.</article>
+{% else %}
+{% if problems %}
+<section aria-labelledby="top-h">
+  <h2 id="top-h">Top problems</h2>
+  <div class="table-scroll">
+    <table class="data problems-table">
+      <colgroup><col class="w-s"><col class="w-xs"><col><col class="w-xl"><col class="w-xl"></colgroup>
+      <thead><tr><th>Level</th><th>Count</th><th>Message</th><th>First seen</th><th>Last seen</th></tr></thead>
+      <tbody>
+        {% for p in problems %}
+        <tr>
+          <td data-label="Level"><span class="badge {{ 'deny' if p.level == 'error' else 'one_factor' }}">{{ p.level }}</span></td>
+          <td data-label="Count">{{ p.count }}</td>
+          <td data-label="Message"><span class="trunc" title="{{ p.sample.message }}">{{ p.sample.message }}</span>
+            {% if p.sample.fields.error %}<small class="muted trunc" title="{{ p.sample.fields.error }}">{{ p.sample.fields.error }}</small>{% endif %}
+            {% if p.top_ips %}<small class="muted">from {% for ip_, n in p.top_ips %}{{ ip_ }} ({{ n }}){{ ', ' if not loop.last }}{% endfor %}</small>{% endif %}</td>
+          <td data-label="First seen" class="nowrap">{{ p.first|utc if p.first else '—' }}</td>
+          <td data-label="Last seen" class="nowrap">{{ p.last|utc if p.last else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if problems_limited %}<p class="muted"><small>The log is large: only the most recent part was counted.</small></p>{% endif %}
+</section>
+{% endif %}
+
+<h2>Entries</h2>
+{% if not page.entries %}
+<article class="empty"><p>No entries match{{ ' in this time range' if window != 'all' }}. Try a wider time range or a lower level.</p></article>
+{% else %}
+<div class="table-scroll">
+  <table class="data log-table">
+    <colgroup><col class="w-l"><col class="w-s"><col><col class="w-l"></colgroup>
+    <thead><tr><th>Time (UTC)</th><th>Level</th><th>Message</th><th>Remote IP</th></tr></thead>
+    <tbody>
+      {% for e in page.entries %}
+      <tr>
+        <td data-label="Time" class="nowrap">{{ e.time|utc if e.time else '—' }}</td>
+        <td data-label="Level">{% if e.level %}<span class="badge {{ {'error': 'deny', 'warn': 'bypass', 'info': 'one_factor', 'debug': 'one_factor'}[e.level] }}">{{ e.level }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td data-label="Message">
+          {% if e.level %}
+          <details class="log-entry"><summary><span class="trunc" title="{{ e.message }}">{{ e.message }}</span></summary>
+            <pre class="log-raw">{{ e.raw }}</pre></details>
+          {% else %}<span class="trunc" title="{{ e.raw }}">{{ e.raw }}</span>{% endif %}
+        </td>
+        <td data-label="Remote IP" class="nowrap">{{ e.fields.remote_ip or '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="log-more">
+  {% if page.older %}<a role="button" class="outline" href="/logs?level={{ level }}&amp;window={{ window }}&amp;q={{ q|urlencode }}&amp;ip={{ ip|urlencode }}&amp;older={{ page.older|urlencode }}">Older entries</a>{% endif %}
+  {% if older %}<a href="/logs?level={{ level }}&amp;window={{ window }}&amp;q={{ q|urlencode }}&amp;ip={{ ip|urlencode }}">Back to the newest</a>{% endif %}
+  {% if page.limited %}<small class="muted">The log is large: the search stopped before reaching the end of the time range.</small>{% endif %}
+</p>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}

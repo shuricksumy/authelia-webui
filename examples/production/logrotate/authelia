@@ -1,0 +1,21 @@
+# Host-side rotation for Authelia's log file (the configurator only reads logs, never rotates).
+#
+# Install:   sudo cp logrotate/authelia /etc/logrotate.d/authelia
+#            then edit the path and the container name below to match your setup.
+# Test:      sudo logrotate --debug /etc/logrotate.d/authelia
+#
+# Authelia reopens its log file on SIGHUP, so no copytruncate is needed and no lines are lost.
+# The configurator's Logs page reads the live file and the rotated copies (.1, .2.gz, ...).
+/opt/authelia-stack/authelia/logs/authelia.log {
+    daily
+    maxsize 50M
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 1000 1000
+    postrotate
+        docker kill --signal=HUP authelia >/dev/null 2>&1 || true
+    endscript
+}

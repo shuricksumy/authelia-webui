@@ -22,6 +22,15 @@ revision); the live files are written only by `app/apply/engine.py`. Access test
 they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).
 Protection of the configurator rules is derived from env (there is no `protected_rules.yml`).
 
+## Architecture notes (Phase 4b: overview and logs)
+- `app/logs.py` is the only log reader: bounded (line/byte budget), newest first, plain files read
+  backwards in chunks, `.gz` streamed with only the tail kept. Paging cursor = `file:offset`.
+  Every line is cut at 4 KB and `scrub()`bed (hashes, PEM, JWT, bearer, cookies) *before* parsing.
+- `app/web_overview.py`: `/` computes "Needs attention" from existing modules; each check is
+  isolated so one failure becomes a note, never a 500. `/logs`, `/logs/download` live there too.
+- The production example mounts the log **folder** (logrotate replaces the file; a single-file
+  bind mount would go stale). The test stack writes `generated/stack/logs/authelia.log`.
+
 ## Architecture notes (Phase 3: users)
 - The users file must live in `CONFIG_MANAGED_DIR` to be writable (`ApplyEngine.users_name`);
   outside it the UI is read-only. Changes save at once via `update_users` (no draft, no

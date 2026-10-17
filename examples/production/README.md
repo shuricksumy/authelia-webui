@@ -20,7 +20,7 @@ authelia/managed/*.example.yml            -> authelia/managed/*.yml (starting ru
 cp production.env.example .env
 cp authelia/configuration.example.yml authelia/configuration.yml && chmod 600 authelia/configuration.yml
 for f in access_control oidc_clients users; do cp authelia/managed/$f.example.yml authelia/managed/$f.yml; done
-touch authelia/authelia.log && mkdir -p letsencrypt
+mkdir -p authelia/logs letsencrypt
 ```
 
 Generate each secret with the Authelia binary of the version you run (`V=4.39.28`):
@@ -65,6 +65,14 @@ when asked; the code arrives in `authelia/notification.txt` until SMTP is set up
 3. **Access tests**: add a few "must stay public / must need 2FA" checks.
 4. **Rules**: add your apps; apply. Every apply is validated, committed and rolled back if
    Authelia does not come back healthy.
+
+## Log rotation
+
+Authelia's log grows without limit. Rotate it on the **host**: copy `logrotate/authelia` to
+`/etc/logrotate.d/authelia`, set the path of `authelia/logs/authelia.log` and your container name,
+and test with `sudo logrotate --debug /etc/logrotate.d/authelia`. Authelia reopens the file on
+`SIGHUP`, so nothing is lost. The configurator only reads: its **Logs** page shows the live file
+and the rotated copies (`.1`, `.2.gz`, ...).
 
 ## Notes
 
