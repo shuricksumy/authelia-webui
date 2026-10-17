@@ -338,7 +338,34 @@ def keys_page(page: Page) -> None:
     page.goto(f"{BASE}/keys", wait_until="networkidle")
 
 
+def backup_page(page: Page) -> None:
+    page.goto(f"{BASE}/backup", wait_until="networkidle")
+    page.get_by_label("I will store this archive safely").check()
+    page.get_by_role("button", name="Prepare the download").click()
+    page.wait_for_selector("#backup-link a")
+
+
+def emergency_login(page: Page) -> None:
+    page.goto("http://localhost:8090/emergency/login", wait_until="networkidle")
+    page.get_by_label("Emergency password").fill("wrong-password-for-the-picture")
+    page.get_by_role("button", name="Sign in").click()
+    page.wait_for_selector(".flash.error")
+
+
+def emergency_session(page: Page) -> None:
+    from tests.fixtures.stack import EMERGENCY_PASSWORD
+
+    # the emergency cookie lives on `localhost`: it never touches the Authelia session cookies
+    page.goto("http://localhost:8090/emergency/login", wait_until="networkidle")
+    page.get_by_label("Emergency password").fill(EMERGENCY_PASSWORD)
+    page.get_by_role("button", name="Sign in").click()
+    page.wait_for_selector(".banner.error")
+
+
 SCREENS: dict[str, Callable[[Page], None]] = {
+    "backup": backup_page,
+    "emergency-login": emergency_login,
+    "emergency-session": emergency_session,
     "keys": keys_page,
     "overview": overview_page,
     "logs": logs_page,

@@ -8,16 +8,18 @@ so the browser may lose its session mid-apply: the outcome is persisted (JobBoar
 from __future__ import annotations
 
 import threading
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, Response
+from fastapi.responses import HTMLResponse, Response, StreamingResponse
 
-from app.apply import audit
-from app.apply.engine import ApplyRequest
+from app import backup
+from app.apply import audit, notify
+from app.apply.engine import ApplyRequest, Refused
 from app.apply.jobs import Job
 from app.apply.repo import Commit, RepoError
 from app.authelia_cli import redact
@@ -187,6 +189,74 @@ def history(request: Request) -> Response:
     entries = audit.recent(v.settings.CONFIG_MANAGED_DIR, 50)
     return render(v, "history.html", rows=history_rows(request), audit=list(reversed(entries)),
                   active="history")  # fmt: skip
+
+
+# --------------------------------------------------------------------------- backup
+
+
+@router.get("/backup", response_class=HTMLResponse)
+def backup_page(request: Request) -> Response:
+    v = load_view(request)
+    return render(v, "backup.html", active="history",
+                  has_keys=(v.settings.CONFIG_MANAGED_DIR / "secrets").is_dir())  # fmt: skip
+
+
+@router.post("/backup/prepare", response_class=HTMLResponse)
+async def backup_prepare(request: Request) -> Response:
+    """The confirmation: only after it does the page get a one-minute download link."""
+    data = await request.form()
+    v = await run_in_threadpool(load_view, request)
+    if str(data.get("confirm", "")) != "1":
+        return await run_in_threadpool(
+            lambda: render(v, "partials/backup_link.html", status=422, link="", error=True)
+        )
+    token = _backup_tokens(request).issue(identity_of(request.state).username)
+    return await run_in_threadpool(
+        lambda: render(
+            v, "partials/backup_link.html", link=f"/backup/download?token={token}", error=False
+        )
+    )
+
+
+@router.get("/backup/download")
+def backup_download(request: Request, token: str = "") -> Response:
+    identity = identity_of(request.state)
+    settings = request.app.state.settings
+    if not _backup_tokens(request).verify(token, identity.username):
+        return Response("This download link has expired. Open the backup page again.",
+                        status_code=403, media_type="text/plain")  # fmt: skip
+    engine = services_of(request).engine
+    try:
+        with engine.exclusive():  # no apply may change the files while they are archived
+            handle, info = backup.make_archive(settings.CONFIG_MANAGED_DIR)
+    except Refused as exc:
+        return Response(str(exc), status_code=409, media_type="text/plain")
+    except (backup.BackupError, OSError) as exc:
+        return Response(f"The backup could not be made ({type(exc).__name__}).", status_code=500,
+                        media_type="text/plain")  # fmt: skip
+    summary = f"{info.files} files, {info.size} bytes" + (", with keys" if info.has_keys else "")
+    audit.append(settings.CONFIG_MANAGED_DIR, audit.AuditEntry(
+        ts=audit.now(), user=identity.username, client_ip=str(identity.client_ip), action="backup",
+        result="downloaded", commit="", summary=summary,
+    ))  # fmt: skip
+    notify.send(settings, "backup", "downloaded", identity.username, summary)
+
+    def stream() -> Iterator[bytes]:
+        try:
+            while chunk := handle.read(64 * 1024):
+                yield chunk
+        finally:
+            handle.close()
+
+    return StreamingResponse(
+        stream(), media_type="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{backup.filename()}"',
+                 "Content-Length": str(info.size)},
+    )  # fmt: skip
+
+
+def _backup_tokens(request: Request) -> backup.Tokens:
+    return backup.Tokens(request.app.state.settings.APP_SECRET_KEY.get_secret_value())
 
 
 @router.get("/history/{sha}/diff", response_class=HTMLResponse)

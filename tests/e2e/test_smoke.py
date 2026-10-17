@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 
 import pytest
@@ -30,4 +31,9 @@ def test_configurator_is_healthy_and_publishes_no_ports(stack: dict[str, str]) -
             ["docker", "inspect", "-f", "{{json .NetworkSettings.Ports}}", cid],
             capture_output=True, text=True, check=True,
         ).stdout.strip()  # fmt: skip
-        assert ports in {"{}", "null", '{"8080/tcp":null}'}, (service, ports)  # nothing on the host
+        published = json.loads(ports) or {}
+        # nothing on the host, except the configurator's emergency port, on loopback only
+        allowed = {"8090/tcp"} if service == "configurator" else set()
+        assert {k for k, v in published.items() if v} == allowed, (service, ports)
+        for bindings in published.values():
+            assert all(b["HostIp"] == "127.0.0.1" for b in bindings or []), (service, ports)

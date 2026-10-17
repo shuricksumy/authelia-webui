@@ -17,10 +17,12 @@ from fastapi.templating import Jinja2Templates
 
 from app import certs
 from app.apply.services import ApplyServices, build_services
+from app.emergency import Emergency
 from app.security import SecurityMiddleware
 from app.settings import Settings, load_settings
 from app.web import router
 from app.web_apply import router as apply_router
+from app.web_emergency import router as emergency_router
 from app.web_keys import router as keys_router
 from app.web_oidc import router as oidc_router
 from app.web_overview import router as overview_router
@@ -91,6 +93,9 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
     app.include_router(users_router)
     app.include_router(overview_router)
     app.include_router(keys_router)
+    app.include_router(emergency_router)
     # Outermost: every request (incl. static files) passes the IP/identity/CSRF checks.
-    app.add_middleware(SecurityMiddleware, settings=settings)
+    emergency = Emergency(settings)
+    app.state.emergency = emergency
+    app.add_middleware(SecurityMiddleware, settings=settings, emergency=emergency)
     return app

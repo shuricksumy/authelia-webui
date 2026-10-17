@@ -106,6 +106,13 @@ services:
       USERS_FILE: /config/managed/users.yml
       APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY (openssl rand -base64 48)}
       NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
+      # Break-glass login for when Authelia is down; see docs/emergency.md. Both or neither.
+      EMERGENCY_PORT: ${EMERGENCY_PORT:-}
+      EMERGENCY_PASSWORD_HASH: ${EMERGENCY_PASSWORD_HASH:-}
+    ports:
+      # Loopback only, never 0.0.0.0: reach it with `ssh -L 8090:127.0.0.1:8090 you@server`.
+      # Without EMERGENCY_PORT nothing listens there.
+      - "127.0.0.1:${EMERGENCY_PORT:-8090}:${EMERGENCY_PORT:-8090}"
     volumes:
       - ./authelia/configuration.yml:/config/configuration.yml:ro # never written by the configurator
       # A folder, not the file: logrotate replaces the file, a single-file mount would go stale

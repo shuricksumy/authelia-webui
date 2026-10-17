@@ -196,7 +196,11 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 
 ## Lockout recovery
 
-If a bad change locks you out, over SSH on the Docker host:
+If Authelia is down and you want the web UI anyway, the optional emergency door gives you a
+password-protected port on the server's loopback address (reach it with an SSH tunnel):
+`docs/emergency.md`.
+
+Otherwise, if a bad change locks you out, over SSH on the Docker host:
 
 ```sh
 git -C /path/to/config/managed revert HEAD
@@ -205,8 +209,14 @@ docker restart authelia
 
 ## Backups
 
-The managed git repo is local only and contains password hashes. Back up `CONFIG_MANAGED_DIR`
-together with the rest of your Authelia config folder, and never push it anywhere public.
+The managed git repo is local only and contains password hashes. **History → Backup** downloads
+one `.tar.gz` of everything the configurator manages: the rules, clients, users, the full history,
+the audit log and the OIDC private key files (which are not in git). It asks for a confirmation,
+is recorded in the audit log, and the archive holds password hashes and private keys: keep it
+encrypted. Restore by stopping the configurator, extracting it into the Authelia config folder
+(`tar -xzf authelia-managed-....tar.gz -C /path/to/authelia`, which recreates `managed/`), keeping
+`managed/secrets/` at mode 700, and starting it again. The main `configuration.yml` is not part of
+it: back that up with your normal host backups. Never push any of this anywhere public.
 
 ## Development
 

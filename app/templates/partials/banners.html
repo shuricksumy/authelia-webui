@@ -1,3 +1,10 @@
+{% if emergency %}
+<div class="banner error" role="alert">
+  <span><strong>Emergency access.</strong> Authelia is not protecting this session: you signed in with the emergency password.
+    Fix what is broken, then sign out.</span>
+  <button type="button" class="outline secondary small" hx-post="/emergency/logout">Sign out</button>
+</div>
+{% endif %}
 {% if runtime.bad or runtime.mismatch_warns %}
 <div class="banner {{ 'error' if runtime.bad else 'warn' }}" role="alert">{{ runtime.explanation }}</div>
 {% endif %}

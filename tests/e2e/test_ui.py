@@ -464,3 +464,59 @@ def test_a_failed_login_shows_up_under_top_problems(admin: Page) -> None:
         "/logs/download?level=error&window=1h",
     )
     assert ok and "Unsuccessful 1FA" in text
+
+
+# --------------------------------------------------------------------- backup, emergency door
+
+
+def test_emergency_door_signs_in_shows_the_banner_and_downloads_a_backup(
+    browser: Browser, stack: dict[str, str]
+) -> None:
+    import tarfile
+
+    from tests.fixtures.stack import EMERGENCY_PASSWORD, EMERGENCY_PORT
+
+    door = f"http://localhost:{EMERGENCY_PORT}"
+    context = browser.new_context(accept_downloads=True)  # no Authelia session at all
+    page = context.new_page()
+    try:
+        page.goto(f"{door}/rules")
+        expect(page).to_have_url(f"{door}/emergency/login")
+        page.get_by_label("Emergency password").fill("not-the-password")
+        page.get_by_role("button", name="Sign in").click()
+        expect(page.get_by_text("Wrong password.")).to_be_visible()
+
+        page.get_by_label("Emergency password").fill(EMERGENCY_PASSWORD)
+        page.get_by_role("button", name="Sign in").click()
+        expect(page.get_by_text("Authelia is not protecting this session")).to_be_visible()
+        expect(page.get_by_role("heading", name="Overview")).to_be_visible()
+        page.goto(f"{door}/rules", wait_until="networkidle")
+        expect(page.locator("#rules-body tr").first).to_be_visible()  # the whole UI works
+
+        page.goto(f"{door}/backup", wait_until="networkidle")
+        page.get_by_role("button", name="Prepare the download").click()
+        expect(page.get_by_text("Tick the box")).to_have_count(0)  # the browser enforces it first
+        page.get_by_label("I will store this archive safely").check()
+        page.get_by_role("button", name="Prepare the download").click()
+        with page.expect_download() as download:
+            page.get_by_role("button", name="Download the backup").click()  # a styled link
+        assert download.value.suggested_filename.startswith("authelia-managed-")
+        with tarfile.open(download.value.path(), "r:gz") as tar:
+            names = tar.getnames()
+        assert "managed/access_control.yml" in names
+        assert any(n.startswith("managed/secrets/jwks/") and n.endswith(".pem") for n in names)
+        assert not [n for n in names if "/.draft" in n or "/.apply" in n]
+
+        page.get_by_role("button", name="Sign out").click()
+        expect(page).to_have_url(f"{door}/emergency/login")
+        page.goto(f"{door}/rules")
+        expect(page).to_have_url(f"{door}/emergency/login")
+    finally:
+        context.close()
+
+
+def test_backup_page_on_the_normal_url_warns_and_needs_the_confirmation(admin: Page) -> None:
+    admin.goto(f"{BASE}/history", wait_until="networkidle")
+    admin.get_by_role("button", name="Backup").click()  # a link styled as a button
+    expect(admin.get_by_text("contains password hashes and private keys")).to_be_visible()
+    expect(admin.get_by_label("I will store this archive safely")).not_to_be_checked()

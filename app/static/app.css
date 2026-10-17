@@ -301,6 +301,9 @@ pre.log-raw { margin: 0.4rem 0 0; padding: 0.5rem 0.7rem; white-space: pre-wrap;
 .log-table td small, .problems-table td small { display: block; }
 .log-more { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 0.8rem; }
 .log-more [role="button"] { margin: 0; width: auto; }
+.backup-form button, #backup-link [role="button"] { width: auto; }
+.emergency-login { max-width: 32rem; margin-top: 3rem; }
+.emergency-login button { width: auto; }
 .rotation-start { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; margin-top: 1rem; }
 .rotation-start button { margin: 0; width: auto; }
 .rotation-start .muted { flex: 1 1 20rem; }

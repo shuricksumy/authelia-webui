@@ -1,0 +1,6 @@
+{% if error %}
+<p class="flash error" role="alert">Tick the box to confirm first.</p>
+{% else %}
+<p class="flash ok" role="status">Ready. This link works for one minute.</p>
+<a role="button" href="{{ link }}">Download the backup</a>
+{% endif %}

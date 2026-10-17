@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Backup{% endblock %}
+{% block content %}
+<div class="toolbar"><h1>Backup</h1></div>
+<p>One archive of everything the configurator manages, so a lost disk or a bad day can be undone:</p>
+<ul>
+  <li>the rules, OIDC clients, users, access tests and disabled rules;</li>
+  <li>the full history (the git repository) and the audit log;</li>
+  <li>{% if has_keys %}the OIDC <strong>private signing keys</strong> (they are not in git, so without them Authelia cannot be restored){% else %}no signing key files: the keys are still in the main configuration (see <a href="/keys">Keys</a>){% endif %}.</li>
+</ul>
+<article class="notice error">
+  <strong>The archive contains password hashes{% if has_keys %} and private keys{% endif %}.</strong>
+  Keep it encrypted and off shared drives. The download is recorded in the audit log.
+</article>
+<p class="muted">Not included: the main <code>configuration.yml</code> (this tool never reads its secrets). Back it up with your normal host backups.</p>
+<form class="backup-form" hx-post="/backup/prepare" hx-target="#backup-link" hx-swap="innerHTML">
+  <label><input type="checkbox" name="confirm" value="1" required> I will store this archive safely</label>
+  <button type="submit">Prepare the download</button>
+</form>
+<div id="backup-link" aria-live="polite"></div>
+<p class="muted"><small>To restore, stop the configurator, extract it into the Authelia config folder (<code>tar -xzf authelia-managed-....tar.gz -C /path/to/authelia</code> recreates <code>managed/</code>), keep <code>secrets/</code> at mode 700, and start it again. <a href="/history">Back to History</a>.</small></p>
+{% endblock %}

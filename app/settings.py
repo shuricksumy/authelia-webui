@@ -12,12 +12,13 @@ from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, ValidationError, field_validator
+from pydantic import Field, SecretStr, ValidationError, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 type Network = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 MIN_SECRET_KEY_BYTES = 32
+APP_PORT = 8080  # the normal port (Dockerfile, healthcheck, compose)
 
 
 class RestartMode(StrEnum):
@@ -86,6 +87,11 @@ class Settings(BaseSettings):
     # host[:port] list whose TLS certificates are checked; unset: AUTH_DOMAIN and
     # CONFIGURATOR_DOMAIN on 443; empty: no live check.
     CERT_CHECK_HOSTS: str | None = None
+    # Break-glass access for when Authelia itself is down (docs/emergency.md): a second port that
+    # the compose file must publish on the host's 127.0.0.1 only, protected by one password.
+    # Both unset (the default) means no such port exists.
+    EMERGENCY_PORT: int | None = Field(default=None, ge=1024, le=65535)
+    EMERGENCY_PASSWORD_HASH: SecretStr | None = None  # an Authelia digest ($argon2id$...)
     APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 
@@ -93,6 +99,22 @@ class Settings(BaseSettings):
     @classmethod
     def _cidrs(cls, value: object) -> list[Network]:
         return parse_cidrs(value)
+
+    @field_validator("EMERGENCY_PORT", "EMERGENCY_PASSWORD_HASH", mode="before")
+    @classmethod
+    def _empty_emergency_is_unset(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
+
+    @model_validator(mode="after")
+    def _emergency_needs_both(self) -> Settings:
+        digest = self.EMERGENCY_PASSWORD_HASH
+        if (self.EMERGENCY_PORT is None) != (digest is None):
+            raise ValueError("EMERGENCY_PORT and EMERGENCY_PASSWORD_HASH must be set together")
+        if self.EMERGENCY_PORT == APP_PORT:
+            raise ValueError(f"EMERGENCY_PORT must differ from the application port {APP_PORT}")
+        if digest is not None and not digest.get_secret_value().startswith("$"):
+            raise ValueError("EMERGENCY_PASSWORD_HASH must be an Authelia password digest ($...)")
+        return self
 
     @field_validator("AUTHELIA_LOG_FILE", "NOTIFY_WEBHOOK_URL", mode="before")
     @classmethod

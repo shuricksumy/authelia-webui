@@ -35,6 +35,21 @@ Protection of the configurator rules is derived from env (there is no `protected
 - The production example mounts the log **folder** (logrotate replaces the file; a single-file
   bind mount would go stale). The test stack writes `generated/stack/logs/authelia.log`.
 
+## Architecture notes (backup and emergency access)
+- `app/backup.py`: tar.gz of `managed/` (tracked files, `.git`, `secrets/`, audit log; no `.draft`,
+  `.apply`, locks, symlinks). The download is a GET with a one-minute signed token issued by the
+  confirming POST (a browser cannot send the CSRF header on a download), built under the apply lock,
+  audited. It contains hashes and private keys: never log or store the archive.
+- `app/emergency.py` + `app/serve.py`: one uvicorn server on two sockets (8080 and
+  `EMERGENCY_PORT`). `SecurityMiddleware` branches on the **local port**: on the emergency port it
+  ignores Remote-*/X-Forwarded-For, requires Host `localhost`/`127.0.0.1`, an own signed
+  `HttpOnly`/`SameSite=Strict` cookie (30 min idle, 2 h), CSRF and a local Origin. Password check
+  = `authelia crypto hash validate` on a pty (`AutheliaCLI.validate_password`; a mismatch exits 0,
+  so only the exact positive message counts). 5 failures lock 15 min, persisted in state.json.
+  `/emergency/*` is a 404 on the normal port. `make dev` (uvicorn --reload) has no emergency port.
+- Compose must publish the port as `127.0.0.1:` only; the test stack does and an integration test
+  asserts it.
+
 ## Architecture notes (Phase 4c: keys and certificates)
 - Signing keys are **files** (`managed/secrets/jwks/<kid>.pem`, mode 600, git-excluded in
   `.gitignore` and `.git/info/exclude`); `managed/oidc_jwks.yml` names them through Authelia's

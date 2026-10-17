@@ -267,3 +267,94 @@ def test_generated_client_secret_works_at_the_real_token_endpoint(stack: dict[st
     assert second["result"] == "applied", second
     assert token_status("machine-e2e", first["secret"]) == 401  # rotated: the old one is dead
     assert token_status("machine-e2e", second["secret"]) == 200
+
+
+# --------------------------------------------------------------------- emergency access
+
+EMERGENCY = "http://127.0.0.1:8090"
+CHECK_SCRIPT = """
+import json, os
+from app.authelia_cli import AutheliaCLI
+cli = AutheliaCLI.local()
+digest = os.environ["EMERGENCY_PASSWORD_HASH"]
+right = os.environ["T_PASSWORD"]
+print(json.dumps([
+    cli.validate_password(right, digest),
+    cli.validate_password(right + "x", digest),
+    cli.validate_password("", digest),
+    cli.validate_password("a\\rb", digest),
+    cli.validate_password(right, digest + " --config /etc/passwd"),
+    cli.validate_password(right, "plaintext"),
+]))
+"""
+
+
+def test_the_bundled_binary_checks_the_emergency_password(stack: dict[str, str]) -> None:
+    from tests.fixtures.stack import EMERGENCY_PASSWORD
+
+    out = exec_python(stack, "configurator", CHECK_SCRIPT, {"T_PASSWORD": EMERGENCY_PASSWORD})
+    assert out.returncode == 0, out.stderr[-1500:]
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == [
+        True,
+        False,
+        False,
+        False,
+        False,
+        False,
+    ]
+
+
+def emergency_login(password: str) -> httpx.Response:
+    return httpx.post(
+        f"{EMERGENCY}/emergency/login", data={"password": password},
+        headers={"Origin": EMERGENCY}, follow_redirects=False, timeout=30,
+    )  # fmt: skip
+
+
+def test_the_emergency_port_is_loopback_only_and_checks_the_password(
+    stack: dict[str, str],
+) -> None:
+    from tests.fixtures.stack import EMERGENCY_PASSWORD
+
+    published = subprocess.run(
+        ["docker", "compose", "-f", str(ROOT / "compose.test.yml"), "port", "configurator", "8090"],
+        capture_output=True, text=True, check=True, env=stack, cwd=ROOT,
+    ).stdout.strip()  # fmt: skip
+    assert published.startswith("127.0.0.1:"), published  # never 0.0.0.0
+    assert httpx.get(f"{EMERGENCY}/emergency/login", timeout=10).status_code == 200
+    assert httpx.get(f"{EMERGENCY}/emergency/login", headers={"Host": "evil.example.com"},
+                     timeout=10).status_code == 403  # fmt: skip
+    assert emergency_login("not-the-password").status_code == 401
+    good = emergency_login(EMERGENCY_PASSWORD)
+    assert good.status_code == 303 and "HttpOnly" in good.headers["set-cookie"]
+
+
+def test_the_configurator_is_reachable_while_authelia_is_down(stack: dict[str, str]) -> None:
+    """The reason the door exists: with Authelia stopped the normal URL fails (Traefik cannot ask
+    Authelia), the emergency port still serves the whole UI."""
+    import time
+
+    from tests.fixtures.stack import EMERGENCY_PASSWORD
+
+    cookie = emergency_login(EMERGENCY_PASSWORD).headers["set-cookie"].split(";")[0]
+    normal = "https://127.0.0.1:8444/rules"
+    subprocess.run(["docker", "stop", "-t", "5", AUTHELIA], check=True, capture_output=True)
+    try:
+        down = httpx.get(normal, headers={"Host": "authcfg.example.test:8444"}, verify=False,  # noqa: S501
+                         follow_redirects=False, timeout=15)  # fmt: skip
+        assert down.status_code >= 500, down.status_code
+        page = httpx.get(f"{EMERGENCY}/rules", headers={"Cookie": cookie}, timeout=30)
+        assert page.status_code == 200 and "Emergency access." in page.text
+        assert "not healthy" in page.text or "cannot be determined" in page.text
+        logs = httpx.get(f"{EMERGENCY}/logs", headers={"Cookie": cookie}, timeout=30)
+        assert logs.status_code == 200
+    finally:
+        subprocess.run(["docker", "start", AUTHELIA], check=True, capture_output=True)
+        deadline = time.time() + 90
+        while time.time() < deadline:
+            try:
+                if httpx.get("http://127.0.0.1:19091/api/health", timeout=3).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            time.sleep(1)

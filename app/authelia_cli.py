@@ -194,6 +194,27 @@ class AutheliaCLI:
             raise AutheliaCLIError("crypto hash generate: unexpected output")
         return digest
 
+    def validate_password(self, password: str, digest: str) -> bool:
+        """Whether `password` matches the Authelia `digest` (any algorithm Authelia understands).
+
+        The password goes to a pseudo-terminal, never to a command line. Fails closed: only the
+        exact positive answer counts; a mismatch exits 0 with a different message, so the exit
+        code alone proves nothing. Local binary only.
+        """
+        if self.docker:
+            raise AutheliaCLIError("password checks need the local binary")
+        if (
+            not password
+            or len(password) > 256
+            or any(ord(c) < 0x20 or ord(c) == 0x7F for c in password)
+            or not digest.startswith("$")
+            or any(c.isspace() for c in digest)
+        ):
+            return False
+        argv = self._argv(["crypto", "hash", "validate", "--", digest], (), False)
+        out = _run_with_terminal(argv, password, self.timeout_s, "crypto hash validate")
+        return "The password matches the digest." in out and "does not match" not in out
+
     def generate_password(self, main_config: Path, length: int = 20,
                           charset: str = "ascii") -> tuple[str, str]:  # fmt: skip
         """A random password made by Authelia and its hash (main config's algorithm), as a pair."""
@@ -274,7 +295,9 @@ def _labelled(text: str, label: str) -> str:
     return ""
 
 
-def _run_with_terminal(argv: Sequence[str], answer: str, timeout_s: float) -> str:
+def _run_with_terminal(
+    argv: Sequence[str], answer: str, timeout_s: float, what: str = "crypto hash generate"
+) -> str:
     """Run `argv` on a pseudo-terminal and type `answer` + Enter at its first prompt."""
     import pty
     import select
@@ -312,13 +335,13 @@ def _run_with_terminal(argv: Sequence[str], answer: str, timeout_s: float) -> st
         proc.wait()
         os.close(master)
     if not sent or proc.returncode != 0:
-        raise AutheliaCLIError("crypto hash generate failed")
+        raise AutheliaCLIError(f"{what} failed")
     text = out.decode(errors="replace")
     # The prompt does not echo; check the part after it (not the prompt's own words) anyway.
     after_prompt = text.split(":", 1)[1] if ":" in text else text
     rest = "\n".join(ln for ln in after_prompt.splitlines() if not ln.strip().startswith("Digest:"))
     if answer in rest:
-        raise AutheliaCLIError("crypto hash generate echoed the input")
+        raise AutheliaCLIError(f"{what} echoed the input")
     return text
 
 

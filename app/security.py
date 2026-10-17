@@ -20,15 +20,16 @@ from __future__ import annotations
 import ipaddress
 import logging
 import secrets
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from starlette.datastructures import Headers
-from starlette.responses import PlainTextResponse
+from starlette.responses import PlainTextResponse, RedirectResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from app.emergency import COOKIE, USERNAME, Emergency, peer_ip
 from app.settings import Network, Settings
 
 log = logging.getLogger("app.security")
@@ -115,10 +116,13 @@ class CSRF:
 
 
 class SecurityMiddleware:
-    def __init__(self, app: ASGIApp, settings: Settings) -> None:
+    def __init__(
+        self, app: ASGIApp, settings: Settings, emergency: Emergency | None = None
+    ) -> None:
         self.app = app
         self.settings = settings
         self.csrf = CSRF(settings.APP_SECRET_KEY.get_secret_value())
+        self.emergency = emergency or Emergency(settings)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -137,6 +141,10 @@ class SecurityMiddleware:
             await self.app(scope, receive, send_with_headers)
             return
 
+        if self._on_emergency_port(scope):
+            await self._emergency(scope, receive, send, send_with_headers)
+            return
+
         denial = self._check(scope)
         if isinstance(denial, str):
             client = scope.get("client") or ("?", 0)
@@ -151,6 +159,68 @@ class SecurityMiddleware:
         scope["state"]["identity"] = denial
         scope["state"]["csrf_token"] = self.csrf.issue(denial.username)
         await self.app(scope, receive, send_with_headers)
+
+    def _on_emergency_port(self, scope: Scope) -> bool:
+        server = scope.get("server")
+        port = self.emergency.port
+        return bool(port is not None and server and server[1] == port)
+
+    async def _emergency(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        send_with_headers: Callable[[Message], Awaitable[None]],
+    ) -> None:
+        """The break-glass port: Host check, then the emergency session instead of Authelia's."""
+        em = self.emergency
+        headers = Headers(scope=scope)
+        path = scope["path"]
+        if (headers.get("host") or "").lower() not in em.allowed_hosts():
+            log.warning("emergency port: refused Host %r", headers.get("host"))
+            await PlainTextResponse("Forbidden", status_code=403)(scope, receive, send_with_headers)
+            return
+        scope.setdefault("state", {})
+        scope["state"]["emergency"] = True
+        public = path == "/emergency/login" or path.startswith("/static/")
+        started = em.read(_cookie(headers, COOKIE))
+        ip = peer_ip((scope.get("client") or (None, 0))[0])
+        if scope["method"] not in SAFE_METHODS and not _same_emergency_origin(headers, em, path):
+            await PlainTextResponse("Forbidden", status_code=403)(scope, receive, send_with_headers)
+            return
+        if started is None and not public:
+            if scope["method"] in SAFE_METHODS:
+                response: Response = RedirectResponse("/emergency/login", status_code=303)
+            else:
+                response = PlainTextResponse("Forbidden", status_code=403)
+            await response(scope, receive, send_with_headers)
+            return
+        if started is not None and ip is not None:
+            identity = Identity(USERNAME, (self.settings.ADMIN_GROUP,), ip)
+            if (
+                scope["method"] not in SAFE_METHODS
+                and not public
+                and not self.csrf.verify(headers.get(CSRF_HEADER), identity.username)
+            ):
+                await PlainTextResponse("Forbidden", status_code=403)(
+                    scope, receive, send_with_headers
+                )
+                return
+            scope["state"]["identity"] = identity
+            scope["state"]["csrf_token"] = self.csrf.issue(identity.username)
+
+        async def send_renewed(message: Message) -> None:
+            # Sliding idle timeout: every answer renews the cookie (logout clears it instead)
+            if (
+                message["type"] == "http.response.start"
+                and started is not None
+                and path != "/emergency/logout"
+            ):
+                message["headers"] = [*message.get("headers", []),
+                                      (b"set-cookie", em.cookie_header(started))]  # fmt: skip
+            await send_with_headers(message)
+
+        await self.app(scope, receive, send_renewed)
 
     def _check(self, scope: Scope) -> Identity | str:
         s = self.settings
@@ -181,6 +251,28 @@ class SecurityMiddleware:
             if not _same_origin(headers, s.CONFIGURATOR_DOMAIN):
                 return "cross-origin request"
         return Identity(username, groups, client_ip)
+
+
+def _cookie(headers: Headers, name: str) -> str | None:
+    for part in (headers.get("cookie") or "").split(";"):
+        key, _, value = part.strip().partition("=")
+        if key == name:
+            return value
+    return None
+
+
+def _same_emergency_origin(headers: Headers, em: Emergency, path: str) -> bool:
+    origin = headers.get("origin")
+    fetch_site = headers.get("sec-fetch-site")
+    if origin is None:
+        return fetch_site in (None, "same-origin")
+    if origin.lower() == "null":
+        # Our own `Referrer-Policy: no-referrer` makes browsers send `Origin: null` on a plain
+        # form POST, i.e. the login form. Accept that there only, and only when the browser says
+        # the request is same-origin (a header a page cannot forge); any other POST uses HTMX,
+        # which sends the real origin.
+        return path == "/emergency/login" and fetch_site == "same-origin"
+    return origin.lower() in em.allowed_origins()
 
 
 def _same_origin(headers: Headers, host: str) -> bool:

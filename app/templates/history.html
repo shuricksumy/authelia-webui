@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}History{% endblock %}
 {% block content %}
-<h1>History</h1>
+<div class="toolbar"><h1>History</h1><div class="toolbar-actions"><a role="button" class="outline secondary" href="/backup">Backup</a></div></div>
 {% if not rows %}
   <article class="empty"><p>Nothing has been applied yet. Changes you apply appear here, each as a git commit you can inspect and revert to.</p></article>
 {% else %}

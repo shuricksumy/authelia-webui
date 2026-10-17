@@ -48,6 +48,9 @@ TRAEFIK_IP = "172.29.250.10"
 STACK = GENERATED / "stack"
 USERS_NAME = "users.yml"
 USERNAME = "alice"
+EMERGENCY_PORT = 8090
+# Test-only password of the emergency door; only its digest is written (gitignored stack dir).
+EMERGENCY_PASSWORD = "emergency-" + "test-only-pass"
 # Test-only TOTP secret, computed so no secret-looking literal sits in the source.
 TOTP_SECRET = base64.b32encode(b"12345678901234567890").decode().rstrip("=")
 X_AUTHELIA_CONFIG = ",".join(
@@ -212,6 +215,11 @@ def prepare(authelia: str = "auto") -> Path:
         key.chmod(0o644)  # test-only wildcard cert for example.test
 
     version = re.search(r"authelia/authelia:(\S+)", " ".join(cli.argv_prefix))
+    # the emergency password's digest, as compose reads it (single quotes keep the `$` literal)
+    (STACK / "emergency.env").write_text(
+        f"EMERGENCY_PASSWORD_HASH='{cli.hash_argon2(EMERGENCY_PASSWORD)}'\n"
+    )
+    (STACK / "emergency.env").chmod(0o600)
     seed_totp(version.group(1) if version else _pinned_version())
     credentials = json.loads(files["credentials.json"].read_text())
     (STACK.parent / "credentials.json").write_text(
