@@ -163,21 +163,25 @@ def test_the_production_example_validates_once_its_secrets_are_filled_in(
 ) -> None:
     """examples/production: main config + starting managed files, as the README tells users to
     fill them in, are accepted by the real Authelia without errors or warnings."""
-    import re
+
+    from dataclasses import replace
 
     root = Path(__file__).resolve().parents[2] / "examples" / "production" / "authelia"
-    keys = tmp_path / "keys"
-    keys.mkdir()
+    # README step 1: the signing key as a file, named by managed/oidc_jwks.yml (template filter)
+    keys = tmp_path / "managed" / "secrets" / "jwks"
+    keys.mkdir(parents=True)
     proc = cli.run(["crypto", "pair", "rsa", "generate", "--bits", "2048", "--directory",
-                    str(keys)], mounts=[keys], writable=True)  # fmt: skip
+                    str(keys), "--file.private-key", "main.pem", "--file.public-key",
+                    "main.pub.pem"], mounts=[keys], writable=True)  # fmt: skip
     assert proc.returncode == 0, proc.stdout + proc.stderr
-    pem = (keys / "private.pem").read_text().strip()
+    jwks = (root / "managed/oidc_jwks.example.yml").read_text()
+    jwks = write(
+        tmp_path / "oidc_jwks.yml", jwks.replace("/config/managed", str(tmp_path / "managed"))
+    )
     text = (root / "configuration.example.yml").read_text()
     for name in ("jwt_secret", "session_secret", "storage_encryption_key", "oidc_hmac_secret"):
         text = text.replace(f"__CHANGE_ME_{name}__", cli.rand(64))
-    indent = re.search(r"^( *)__CHANGE_ME_oidc_private_key_pem__", text, re.M).group(1)  # type: ignore[union-attr]
-    text = text.replace(f"{indent}__CHANGE_ME_oidc_private_key_pem__",
-                        "\n".join(indent + line for line in pem.splitlines()))  # fmt: skip
+    assert "{{" not in text  # the main file goes through the template filter too
     live = [ln for ln in text.splitlines() if not ln.lstrip().startswith("#")]
     assert not [ln for ln in live if "__CHANGE_ME_" in ln], "a placeholder was left unfilled"
     main = write(tmp_path / "configuration.yml", text)
@@ -187,5 +191,5 @@ def test_the_production_example_validates_once_its_secrets_are_filled_in(
     clients = write(
         tmp_path / "oidc_clients.yml", (root / "managed/oidc_clients.example.yml").read_text()
     )
-    res = cli.validate([main, ac, clients])
+    res = replace(cli, filters="template").validate([main, ac, clients, jwks])
     assert res.ok and not res.warnings, res.raw

@@ -1,0 +1,10 @@
+# Managed by the Authelia Configurator: the OIDC signing keys (rotate on its Keys page).
+# The private keys are files in secrets/jwks/ (never in git); this file only names them and
+# needs X_AUTHELIA_CONFIG_FILTERS=template.
+identity_providers:
+  oidc:
+    jwks:
+      - key_id: 'main'
+        algorithm: 'RS256'
+        use: 'sig'
+        key: {{ secret "/config/managed/secrets/jwks/main.pem" | mindent 10 "|" | msquote }}

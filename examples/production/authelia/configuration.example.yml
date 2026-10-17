@@ -2,8 +2,10 @@
 # every __CHANGE_ME_...__ (README.md shows how to generate each value with the authelia binary).
 # Keep this file mode 600: it holds secrets. The configurator mounts it read-only.
 #
-# access_control, OIDC clients and users are NOT here: they live in managed/ and are edited
-# through the configurator (see X_AUTHELIA_CONFIG in compose.yml).
+# access_control, OIDC clients, users and the OIDC signing keys are NOT here: they live in managed/
+# and are edited through the configurator (see X_AUTHELIA_CONFIG in compose.yml). Authelia reads
+# every file through its template filter: never write two opening curly braces in a row here,
+# not even in a comment (Authelia would read them as a template).
 
 theme: auto
 
@@ -54,10 +56,11 @@ session:
     - domain: 'example.com'
       authelia_url: 'https://auth.example.com'
       default_redirection_url: 'https://whoami.example.com'
-  # Without Redis, sessions live in memory: every apply (restart) signs everyone out once.
-  # redis:
-  #   host: redis
-  #   port: 6379
+  # Sessions in Redis: every apply restarts Authelia, and nobody is signed out by it.
+  # The password comes from AUTHELIA_SESSION_REDIS_PASSWORD (compose.yml / .env).
+  redis:
+    host: redis
+    port: 6379
 
 regulation:
   max_retries: 3
@@ -82,9 +85,5 @@ notifier:
 identity_providers:
   oidc:
     hmac_secret: '__CHANGE_ME_oidc_hmac_secret__'
-    jwks:
-      - key_id: 'main'
-        algorithm: 'RS256'
-        use: 'sig'
-        key: |
-          __CHANGE_ME_oidc_private_key_pem__
+    # The signing keys (jwks) are in managed/oidc_jwks.yml, their private keys in
+    # managed/secrets/jwks/ (README.md, step 1). The configurator rotates them on its Keys page.
