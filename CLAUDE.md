@@ -161,6 +161,9 @@ Update the replica when you learn new patterns; never add real data to it.
   authelia-watch, which pushes a branch); values from outside (API answers) reach `run:` only
   through `env:` and are validated. `uvx zizmor --offline .github/workflows` must stay clean.
 - `main` is protected (PR + green CI). Dependabot: security PRs only; Renovate: versions.
+- `ghcr-cleanup.yml` (monthly) deletes only untagged images and orphaned cosign/attestation
+  artifacts; tags are never deleted (people pin `authelia-<version>`). It runs for real; a manual
+  run can choose dry run.
 
 ## Naming
 Repo `authelia-webui`. Product name "Authelia Configurator". Image
