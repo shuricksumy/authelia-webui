@@ -109,6 +109,7 @@ services:
       # Break-glass login for when Authelia is down; see docs/emergency.md. Both or neither.
       EMERGENCY_PORT: ${EMERGENCY_PORT:-}
       EMERGENCY_PASSWORD_HASH: ${EMERGENCY_PASSWORD_HASH:-}
+      EMERGENCY_HOSTS: ${EMERGENCY_HOSTS:-} # optional extra IPs it answers to (docs/emergency.md)
     ports:
       # Loopback only, never 0.0.0.0: reach it with `ssh -L 8090:127.0.0.1:8090 you@server`.
       # Without EMERGENCY_PORT nothing listens there.

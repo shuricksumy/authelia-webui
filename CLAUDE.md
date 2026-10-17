@@ -49,7 +49,8 @@ Protection of the configurator rules is derived from env (there is no `protected
   container cannot lock the owner out), 20 from all addresses lock everyone; kept in
   `.apply/emergency.json`. The cookie is bound to the password digest and a generation counter that
   sign-out increments; the emergency door has its own CSRF key. Host: any port of
-  localhost/127.0.0.1/[::1]; a POST's Origin must equal `http://<Host>`.
+  localhost/127.0.0.1/[::1] or an IP in `EMERGENCY_HOSTS` (IP literals only; names are refused
+  because of DNS rebinding); a POST's Origin must equal `http://<Host>`.
   `/emergency/*` is a 404 on the normal port. `make dev` (uvicorn --reload) has no emergency port.
 - Compose must publish the port as `127.0.0.1:` only; the test stack does and an integration test
   asserts it.
