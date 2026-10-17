@@ -238,8 +238,10 @@ Repo `authelia-webui`. Product name "Authelia Configurator". Image
   auto-revert on failure.
 - Preserve unknown YAML keys and comments (ruamel.yaml round-trip).
 - Protected rules cannot be deleted or weakened.
-- Internal-only: fail closed if `ALLOWED_CLIENT_CIDRS` is unset; trust
-  forwarded/identity headers only from `TRUSTED_PROXY_CIDRS`.
+- Internal-only by default: fail closed if `ALLOWED_CLIENT_CIDRS` is unset; trust
+  forwarded/identity headers only from `TRUSTED_PROXY_CIDRS`. The owner's explicit
+  `ALLOW_ANY_CLIENT_NETWORK=true` drops only the network check (never identity, group or 2FA)
+  and shows a banner; `check_protected` then skips the outside-address probes.
 - Apply is blocked when bundled and running Authelia versions differ (default).
 
 ## UI work

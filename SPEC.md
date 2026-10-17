@@ -48,6 +48,7 @@ to start (fail closed).
 | `CONFIGURATOR_DOMAIN` | `authcfg.example.com` | Host this app is served on |
 | `ADMIN_GROUP` | `admin` | Group required to use the app |
 | `ALLOWED_CLIENT_CIDRS` | `10.8.0.0/24,192.168.1.0/24` | **Required.** Client networks allowed (VPN/LAN). Empty → refuse to start |
+| `ALLOW_ANY_CLIENT_NETWORK` | `false` | Owner opt-in (§8): answer admins from any network, so only Authelia (identity, `ADMIN_GROUP`, 2FA) protects the tool. A banner says so on every page |
 | `TRUSTED_PROXY_CIDRS` | `172.20.0.0/16` | Docker network of Traefik; only these may set forwarded headers |
 | `AUTHELIA_CONTAINER` | `authelia` | Container name for restart / version check |
 | `AUTHELIA_HEALTH_URL` | `http://authelia:9091/api/health` | Health endpoint |
@@ -282,6 +283,11 @@ Provide both options in `examples/`; README recommends A.
   not set them (pinned by an e2e test on a deliberately bypassed host). With any other
   proxy, strip them explicitly before the auth request.
 - Fail closed: missing/empty `ALLOWED_CLIENT_CIDRS` → refuse to start.
+- Owner opt-in `ALLOW_ANY_CLIENT_NETWORK=true` (added at the owner's request): the network check
+  (this layer and the protected rule's `networks`) is dropped; identity is not. Requests must
+  still come through the trusted proxy with Authelia's `Remote-User`/`Remote-Groups`, the user
+  must be in `ADMIN_GROUP`, and the protected rule must still require `two_factor` for that
+  group and deny everyone else. Recommended with a dedicated admin group and WebAuthn.
 
 ### Other app security
 - CSRF tokens on all state-changing requests; session cookie

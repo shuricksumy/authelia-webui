@@ -194,6 +194,16 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 - **Existing Authelia:** [`docs/migration.md`](docs/migration.md) and the snippets in
   [`examples/`](examples/) (compose with the socket proxy, Traefik configuration, protected rules).
 
+## Reachable from anywhere (optional, not the default)
+
+By default the configurator only answers from `ALLOWED_CLIENT_CIDRS` (your VPN/LAN), on top of
+Authelia. If you prefer to rely on Authelia alone, set `ALLOW_ANY_CLIENT_NETWORK=true`: admins can
+then use it from any network, still only through Traefik + Authelia, still only members of
+`ADMIN_GROUP`, still with two-factor (the protected rule must keep `two_factor` and a `deny` for
+everyone else; it no longer needs `networks:`). A banner on every page says so. Use a dedicated
+group that only you are in (e.g. `ADMIN_GROUP=configurator-admins`) and a WebAuthn/passkey second
+factor: one phished login would otherwise control every rule, client and user.
+
 ## Lockout recovery
 
 If Authelia is down and you want the web UI anyway, the optional emergency door gives you a

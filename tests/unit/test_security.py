@@ -190,3 +190,32 @@ def test_a_refusal_shows_the_address_as_seen_but_not_the_reason() -> None:
     direct = client(stranger).get("/whoami", headers={"X-Forwarded-For": VPN_CLIENT, **ADMIN})
     assert direct.status_code == 403
     assert f"seen here: {stranger}" in direct.text and VPN_CLIENT not in direct.text
+
+
+def test_allow_any_client_network_still_needs_the_proxy_identity_and_group() -> None:
+    def open_client(peer: str) -> TestClient:
+        s = settings()
+        s.ALLOW_ANY_CLIENT_NETWORK = True
+        app = create_app(s)
+
+        @app.get("/whoami")
+        def whoami(request: Request) -> dict[str, object]:
+            return {"user": identity_of(request.state).username}
+
+        return TestClient(app, client=(peer, 5000), base_url="https://authcfg.example.com")
+
+    via_proxy = open_client(PROXY)
+    # any client address is accepted through the proxy, with Authelia's admin identity
+    assert (
+        via_proxy.get("/whoami", headers={"X-Forwarded-For": INTERNET, **ADMIN}).status_code == 200
+    )
+    # ...but never without the admin group or without an identity
+    non_admin = {"Remote-User": "bob", "Remote-Groups": "family"}
+    assert (
+        via_proxy.get("/whoami", headers={"X-Forwarded-For": INTERNET, **non_admin}).status_code
+        == 403
+    )
+    assert via_proxy.get("/whoami", headers={"X-Forwarded-For": INTERNET}).status_code == 403
+    # and headers from anyone but the proxy are still ignored
+    direct = open_client(INTERNET)
+    assert direct.get("/whoami", headers=ADMIN).status_code == 403

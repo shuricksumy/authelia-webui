@@ -5,6 +5,12 @@
   <button type="button" class="outline secondary small" hx-post="/emergency/logout">Sign out</button>
 </div>
 {% endif %}
+{% if any_network and not emergency %}
+<div class="banner warn" role="status">
+  <span><strong>Reachable from any network.</strong> Only Authelia protects this tool (group
+    <code>{{ admin_group }}</code>, two-factor). <code>ALLOW_ANY_CLIENT_NETWORK</code> is on.</span>
+</div>
+{% endif %}
 {% if runtime.bad or runtime.mismatch_warns %}
 <div class="banner {{ 'error' if runtime.bad else 'warn' }}" role="alert">{{ runtime.explanation }}</div>
 {% endif %}

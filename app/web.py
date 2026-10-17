@@ -151,6 +151,8 @@ def shell_context(request: Request) -> dict[str, Any]:
         "notices": services.engine.notices(),
         "cert_warnings": services.certs.expiring() if services.certs else [],
         "emergency": bool(getattr(request.state, "emergency", False)),
+        "any_network": request.app.state.settings.ALLOW_ANY_CLIENT_NETWORK,
+        "admin_group": request.app.state.settings.ADMIN_GROUP,
     }
 
 

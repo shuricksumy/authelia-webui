@@ -1,10 +1,11 @@
 """Application-level access control (SPEC §8 layer 4) and CSRF.
 
 Every request except /healthz must:
-1. come from a client IP inside ALLOWED_CLIENT_CIDRS. The client IP is taken from
-   X-Forwarded-For only when the TCP peer is a trusted proxy (TRUSTED_PROXY_CIDRS), using
-   the rightmost address that is not itself a trusted proxy. Any malformed entry makes us
-   fall back to the peer address (fail closed);
+1. come from a client IP inside ALLOWED_CLIENT_CIDRS (skipped only with the owner's explicit
+   ALLOW_ANY_CLIENT_NETWORK=true, which leaves the checks to Authelia's identity). The client
+   IP is taken from X-Forwarded-For only when the TCP peer is a trusted proxy
+   (TRUSTED_PROXY_CIDRS), using the rightmost address that is not itself a trusted proxy. Any
+   malformed entry makes us fall back to the peer address (fail closed);
 2. carry Remote-User / Remote-Groups from a trusted proxy (Authelia forwardAuth via
    Traefik), with ADMIN_GROUP among the groups. These headers are ignored from anyone else.
 
@@ -250,7 +251,7 @@ class SecurityMiddleware:
         client_ip = resolve_client_ip(peer, headers.get("x-forwarded-for"), s.TRUSTED_PROXY_CIDRS)
         if client_ip is None:
             return "unparsable peer address"
-        if not _in(client_ip, s.ALLOWED_CLIENT_CIDRS):
+        if not s.ALLOW_ANY_CLIENT_NETWORK and not _in(client_ip, s.ALLOWED_CLIENT_CIDRS):
             return f"client {client_ip} not in ALLOWED_CLIENT_CIDRS"
 
         peer_ip = ipaddress.ip_address(peer) if peer else None
