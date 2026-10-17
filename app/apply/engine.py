@@ -49,6 +49,9 @@ from app.rules.store import (
     sha256,
 )
 from app.settings import Settings, VersionMismatch
+from app.users.document import UsersDocument
+from app.users.lint import lint_users, lockout_problems
+from app.users.schema import load_schema
 
 log = logging.getLogger("app.apply")
 
@@ -150,6 +153,68 @@ class ApplyEngine:
             result="committed", commit=sha[:12], summary="Managed files were edited by hand.",
         ))  # fmt: skip
         return sha
+
+    # ------------------------------------------------------------------ users (SPEC §9)
+
+    @property
+    def users_name(self) -> str | None:
+        """The users file's name when it lives in the managed dir (else it is read-only here)."""
+        path = self.settings.USERS_FILE
+        return path.name if path.parent.resolve() == self.managed.resolve() else None
+
+    def users_rev(self) -> str:
+        try:
+            return sha256(self.settings.USERS_FILE.read_text())[:16]
+        except FileNotFoundError:
+            return sha256("")[:16]
+
+    def update_users(
+        self,
+        change: Callable[[UsersDocument], tuple[UsersDocument, str]],
+        user: str,
+        expected_rev: str | None,
+    ) -> str:
+        """Change the users file at once (Authelia reloads it: no restart). Under the apply lock:
+        hand edits (and Authelia's own writes, e.g. password resets) are committed first, the
+        revision is checked, the result is validated, lockouts are refused, and the write is a
+        compare-and-swap against the file on disk."""
+        name = self.users_name
+        if name is None:
+            raise Refused("The users file is outside the managed folder, so it is read-only here.")
+        path = self.settings.USERS_FILE
+        with self._exclusive():
+            self.repo.ensure((*TRACKED, name))
+            if not self.repo.tracks(name):
+                self.repo.commit([name], "Users: start tracking the users file", "", "configurator")
+            self._commit_external_unlocked()
+            text = path.read_text()
+            if expected_rev is not None and expected_rev != sha256(text)[:16]:
+                raise Refused("The users changed in the meantime. Reload the page and retry.")
+            before = UsersDocument.parse(text)
+            after, subject = change(before)
+            old, new = before.users(), after.users()
+            touched = {n for n in new if old.get(n) != new.get(n)}
+            touched |= {n for n in after.names() if before.names().count(n) == 0}
+            touched |= {n for n in new if n in old and before.raw(n).get("password")
+                        != after.raw(n).get("password")}  # fmt: skip
+            schema = load_schema(self.settings.CONFIG_MAIN)
+            has_pw = {n: after.has_password(n) for n in after.names()}
+            errors = [m for who, sev, m in lint_users(new, schema, has_pw)
+                      if sev == "error" and who in touched]  # fmt: skip
+            errors += lockout_problems(old, new, user, self.settings.ADMIN_GROUP)
+            if errors:
+                raise Refused(" ".join(errors[:5]))
+            if path.read_text() != text:  # Authelia wrote it while we were working
+                raise Refused(
+                    "Authelia changed the users file just now. Reload the page and retry."
+                )
+            self._atomic_write(path, after.render())
+            sha = self.repo.commit([name], " ".join(subject.split())[:120], "", author=user)
+            audit.append(self.managed, audit.AuditEntry(
+                ts=audit.now(), user=user, client_ip="-", action="users", result="saved",
+                commit=sha[:12], summary=" ".join(subject.split())[:200],
+            ))  # fmt: skip
+            return sha
 
     def tests_rev(self) -> str:
         """Revision of access_tests.yml as the page saw it (edits by index check it)."""

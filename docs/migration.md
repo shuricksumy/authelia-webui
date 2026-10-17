@@ -69,6 +69,28 @@ lock yourself out.
 4. `docker compose up -d`. Authelia restarts once with the split files; the behaviour must be
    unchanged. If it does not start, put the backup back (step 1) and read `docker logs authelia`.
 
+## 5b. Let the configurator manage users (optional, Phase 3)
+
+The configurator only writes inside `managed/`. To manage users from the UI, move the users file
+there once:
+
+```sh
+cp -p authelia/users.yml authelia/managed/users.yml
+```
+
+then in `authelia/configuration.yml` set
+
+```yaml
+authentication_backend:
+  file:
+    path: /config/managed/users.yml
+    watch: true   # Authelia reloads the file itself: user changes need no restart
+```
+
+and give the configurator `USERS_FILE=/config/managed/users.yml` (no separate users mount).
+Restart Authelia once. Keep the old `users.yml` as a backup until you have logged in again.
+Password resets that Authelia writes itself show up in History as "External change".
+
 ## 6. First login and a test apply
 
 1. Open the configurator over the VPN and sign in with 2FA. The page should show your rules.

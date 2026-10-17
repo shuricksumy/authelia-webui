@@ -45,6 +45,7 @@ PORTAL_PORT, INTERNAL_PORT = 8443, 8444
 ALLOWED_NETWORKS = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
 TRAEFIK_IP = "172.29.250.10"
 STACK = GENERATED / "stack"
+USERS_NAME = "users.yml"
 USERNAME = "alice"
 # Test-only TOTP secret, computed so no secret-looking literal sits in the source.
 TOTP_SECRET = base64.b32encode(b"12345678901234567890").decode().rstrip("=")
@@ -81,7 +82,9 @@ ACCESS_TESTS = f"""# Access tests: each request and the policy it must get.
 def adapt_main(text: str) -> str:
     text = text.replace("example.com", DOMAIN)
     portal = f"authelia_url: 'https://{AUTH_HOST}'"
-    return text.replace(portal, f"authelia_url: 'https://{AUTH_HOST}:{PORTAL_PORT}'")
+    text = text.replace(portal, f"authelia_url: 'https://{AUTH_HOST}:{PORTAL_PORT}'")
+    # Phase 3: the users file lives in the managed dir (the configurator writes it)
+    return text.replace("path: /config/users.yml", f"path: /config/managed/{USERS_NAME}")
 
 
 def adapt_access_control(text: str) -> str:
@@ -185,7 +188,7 @@ def prepare(authelia: str = "auto") -> Path:
     (managed / OIDC_CLIENTS_NAME).write_text(
         result.oidc_clients_text.replace("example.com", DOMAIN)
     )
-    shutil.copy(files["users.yml"], STACK / "users.yml")
+    shutil.copy(files["users.yml"], managed / USERS_NAME)
     (managed / "access_tests.yml").write_text(ACCESS_TESTS)
 
     certs = STACK / "certs"

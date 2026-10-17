@@ -14,11 +14,27 @@ live probe after restart, external-change auto-commit, main-config banner, notif
 examples in `examples/`, `docs/migration.md`) are implemented; 1c awaits the owner's review.
 **Phase 2 (OIDC clients)** is delivered in two steps: **2a** (clients document, three-file draft,
 one-time secrets, lint, apply, editor UI) is reviewed; **2b** (app presets in `app/oidc_templates/*.yml`,
-picker, setup-info box) is implemented and awaits review. Next: Phase 3 (users, optional). Signal restart mode later. Target layout: SPEC §14.
+picker, setup-info box) is implemented and awaits review. **Phase 3 (users)**: **3a** core (users document, checks, lockout guards, passwords,
+`ApplyEngine.update_users`) is implemented; **3b** (Users and Groups pages) is next. Signal restart mode later. Target layout: SPEC §14.
 The UI edits a **draft** only (`CONFIG_MANAGED_DIR/.draft/`: rules + disabled rules, one combined
 revision); the live files are written only by `app/apply/engine.py`. Access tests are the exception:
 they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).
 Protection of the configurator rules is derived from env (there is no `protected_rules.yml`).
+
+## Architecture notes (Phase 3: users)
+- The users file must live in `CONFIG_MANAGED_DIR` to be writable (`ApplyEngine.users_name`);
+  outside it the UI is read-only. Changes save at once via `update_users` (no draft, no
+  restart: Authelia reloads the file with `watch: true`, measured in `docs/users-file.md`).
+- Authelia keeps the old users **silently** when a new file is invalid: validate before writing
+  (`app/users/lint.py`). Lockout guards: nobody removes/disables/demotes themselves; the
+  `ADMIN_GROUP` never ends up empty.
+- `app/users/document.py` edits per-user text blocks; only changed keys are rewritten and every
+  edit is re-parsed and compared. `users()` never returns `password`.
+- Typed passwords go to `authelia crypto hash generate --config` on a **pseudo-terminal**
+  (it does not read stdin; `--password` would expose the password as a command line). Generated
+  ones come from `--random`. Both use the main config's algorithm.
+- Authelia rewrites the users file on password resets: the engine commits that as an external
+  change first and compares-and-swaps before writing.
 
 ## Architecture notes (Phase 2: OIDC clients)
 - `app/blocklist.py` is the text-block machinery (prefix | items | suffix) shared by the rules

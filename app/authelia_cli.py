@@ -171,6 +171,42 @@ class AutheliaCLI:
             raise AutheliaCLIError("crypto hash generate pbkdf2 --random: unexpected output")
         return secret, digest
 
+    def hash_password(self, password: str, main_config: Path) -> str:
+        """Hash a user password with the main config's algorithm and parameters.
+
+        Measured on 4.39: `crypto hash generate` does not read stdin; it takes `--password`
+        (visible to other processes as a command line) or a terminal. So the password is typed
+        into a pseudo-terminal, like a person would. Local binary only.
+        """
+        if self.docker:
+            raise AutheliaCLIError("typed passwords need the local binary")
+        if not password or "\r" in password or "\n" in password:
+            raise AutheliaCLIError("the password cannot be empty or contain line breaks")
+        argv = self._argv(["crypto", "hash", "generate", "--config", str(main_config),
+                           "--no-confirm"], (), False)  # fmt: skip
+        out = _run_with_terminal(argv, password, self.timeout_s)
+        digest = _labelled(out, "Digest")
+        if not digest.startswith("$"):
+            raise AutheliaCLIError("crypto hash generate: unexpected output")
+        return digest
+
+    def generate_password(self, main_config: Path, length: int = 20,
+                          charset: str = "ascii") -> tuple[str, str]:  # fmt: skip
+        """A random password made by Authelia and its hash (main config's algorithm), as a pair."""
+        proc = self.run([
+            "crypto", "hash", "generate", "--config", str(main_config), "--random",
+            "--random.length", str(length), "--random.charset", charset,
+        ], mounts=[main_config.parent])  # fmt: skip
+        if proc.returncode != 0:
+            raise AutheliaCLIError("crypto hash generate --random failed")
+        password, digest = (
+            _labelled(proc.stdout, "Random Password"),
+            _labelled(proc.stdout, "Digest"),
+        )
+        if not password or not digest.startswith("$"):
+            raise AutheliaCLIError("crypto hash generate --random: unexpected output")
+        return password, digest
+
     def hash_pbkdf2(self, password: str) -> str:
         proc = self.run(
             ["crypto", "hash", "generate", "pbkdf2", "--variant", "sha512", "--password", password]
@@ -199,6 +235,60 @@ class AutheliaCLI:
         if proc.returncode != 0:
             raise AutheliaCLIError("crypto certificate rsa generate failed")
         return directory / "private.pem", directory / "public.crt"
+
+
+def _labelled(text: str, label: str) -> str:
+    """The value of the line 'label: value' (exact label; other labelled lines are ignored)."""
+    for line in text.replace("\r", "").splitlines():
+        name, sep, value = line.partition(":")
+        if sep and name.strip() == label:
+            return value.strip()
+    return ""
+
+
+def _run_with_terminal(argv: Sequence[str], answer: str, timeout_s: float) -> str:
+    """Run `argv` on a pseudo-terminal and type `answer` + Enter at its first prompt."""
+    import pty
+    import select
+    import time
+
+    master, slave = pty.openpty()
+    try:
+        proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave, close_fds=True,
+                                env=child_environment())  # fmt: skip
+    except OSError as exc:
+        os.close(master)
+        os.close(slave)
+        raise AutheliaCLIError(f"could not run authelia: {type(exc).__name__}") from None
+    os.close(slave)
+    out, sent, deadline = b"", False, time.monotonic() + timeout_s
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.2)
+            if ready:
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError:  # the child closed the terminal
+                    break
+                if not chunk:
+                    break
+                out += chunk
+                if not sent and out.rstrip().endswith(b":"):
+                    os.write(master, answer.encode() + b"\r")  # raw mode: Enter is CR
+                    sent = True
+            elif proc.poll() is not None:
+                break
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        proc.wait()
+        os.close(master)
+    if not sent or proc.returncode != 0:
+        raise AutheliaCLIError("crypto hash generate failed")
+    text = out.decode(errors="replace")
+    if answer in text:  # never possible with a no-echo prompt; refuse rather than leak it
+        raise AutheliaCLIError("crypto hash generate echoed the input")
+    return text
 
 
 def _value_after_colon(proc: subprocess.CompletedProcess[str], what: str) -> str:

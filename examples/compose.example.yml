@@ -76,11 +76,14 @@ services:
       AUTHELIA_CONTAINER: authelia
       AUTHELIA_HEALTH_URL: http://authelia:9091/api/health
       DOCKER_PROXY_URL: http://socket-proxy:2375
+      USERS_FILE: /config/managed/users.yml
       APP_SECRET_KEY: ${APP_SECRET_KEY:?set APP_SECRET_KEY (openssl rand -base64 48)}
       # NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL}   # optional, see the README
     volumes:
       - ./authelia/configuration.yml:/config/configuration.yml:ro # never written by the configurator
-      - ./authelia/users.yml:/config/users.yml:ro
+      # users.yml lives in managed/ (authentication_backend.file.path, see docs/migration.md 5b);
+      # with it outside managed/, mount it read-only instead and users are read-only in the UI:
+      # - ./authelia/users.yml:/config/users.yml:ro
       - ./authelia/managed:/config/managed # the only place the configurator writes
     networks: [edge, proxy]
     depends_on:

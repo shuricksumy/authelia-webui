@@ -103,6 +103,9 @@ class ManagedRepo:
         """Tracked files changed or staged outside the configurator (e.g. edited over SSH)."""
         return bool(self._git("status", "--porcelain", "--untracked-files=no").strip())
 
+    def tracks(self, path: str) -> bool:
+        return bool(self._git("ls-files", "--", path).strip())
+
     def head(self) -> str:
         return self._git("rev-parse", "HEAD").strip()
 
