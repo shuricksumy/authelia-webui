@@ -1,34 +1,73 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "enabledManagers": ["custom.regex", "dockerfile", "github-actions", "pep621"],
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
+  ],
+  "enabledManagers": [
+    "custom.regex",
+    "dockerfile",
+    "github-actions",
+    "pep621"
+  ],
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Pinned Authelia version (single source of truth, SPEC §11.1)",
-      "managerFilePatterns": ["/^Dockerfile$/"],
-      "matchStrings": ["ARG AUTHELIA_VERSION=(?<currentValue>\\S+)"],
+      "description": "Pinned Authelia version (single source of truth, SPEC \u00a711.1)",
+      "managerFilePatterns": [
+        "/^Dockerfile$/"
+      ],
+      "matchStrings": [
+        "ARG AUTHELIA_VERSION=(?<currentValue>\\S+)"
+      ],
       "datasourceTemplate": "docker",
       "depNameTemplate": "authelia/authelia"
     }
   ],
   "packageRules": [
     {
-      "matchPackageNames": ["authelia/authelia"],
+      "matchPackageNames": [
+        "authelia/authelia"
+      ],
       "groupName": "authelia",
       "commitMessageTopic": "authelia",
       "automerge": true,
       "automergeType": "pr",
-      "matchUpdateTypes": ["patch", "minor"]
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ]
     },
     {
-      "matchPackageNames": ["authelia/authelia"],
-      "matchUpdateTypes": ["major"],
+      "matchPackageNames": [
+        "authelia/authelia"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "automerge": false
     },
     {
-      "matchManagers": ["github-actions", "pep621"],
-      "matchUpdateTypes": ["patch"],
+      "matchManagers": [
+        "github-actions",
+        "pep621"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true
+    },
+    {
+      "description": "Base-image digest refreshes (OS security rebuilds) merge themselves when CI is green",
+      "matchManagers": [
+        "dockerfile"
+      ],
+      "matchUpdateTypes": [
+        "digest",
+        "pin",
+        "pinDigest"
+      ],
       "automerge": true
     }
   ],

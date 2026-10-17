@@ -79,6 +79,7 @@ def fetch_tls(target: str, timeout_s: float = HANDSHAKE_TIMEOUT_S) -> CertInfo:
     context = ssl.create_default_context()
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE  # read, never trust: we only report on the certificate
+    context.minimum_version = ssl.TLSVersion.TLSv1_2  # explicit (it is the default since 3.10)
     try:
         with (
             socket.create_connection((host, number), timeout=timeout_s) as raw,

@@ -4,8 +4,9 @@ This tool manages access control for your services, so security reports are welc
 
 ## Reporting a vulnerability
 
-Please use GitHub's **private vulnerability reporting** (the repository's *Security* tab,
-*Report a vulnerability*). Do not open a public issue for security problems, and do not include real
+Please use GitHub's **private vulnerability reporting**:
+<https://github.com/shuricksumy/authelia-webui/security/advisories/new> (the repository's
+*Security* tab, *Report a vulnerability*). Do not open a public issue for security problems, and do not include real
 domains, secrets or configuration in a report: a minimal synthetic reproduction is enough.
 
 We aim to acknowledge a report within a few days and to fix confirmed issues before any public disclosure.

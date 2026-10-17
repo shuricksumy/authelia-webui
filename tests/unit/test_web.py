@@ -389,3 +389,18 @@ def test_sneaky_path_limited_bypass_on_the_configurator_is_refused(ui: UI) -> No
     moved = ui.post("/rules/move", {"src": "6", "dst": "1"})
     assert moved.status_code == 422 and "weaken a protected rule" in moved.text
     assert ui.domains()[1] == "authcfg.example.com" and ui.domains()[6] == "authcfg.example.com"
+
+
+def test_subject_lines_split_on_and_and_plus_in_linear_time() -> None:
+    import time
+
+    from app.ui import parse_subject_lines
+
+    assert parse_subject_lines("user:alice and group:dev\ngroup:admin\n  \nuser:bob + group:x") == [
+        ["user:alice", "group:dev"], ["group:admin"], ["user:bob", "group:x"]]  # fmt: skip
+    assert parse_subject_lines("group:a AND group:b") == [["group:a", "group:b"]]
+    assert parse_subject_lines("user:a+group:b") == [["user:a+group:b"]]  # needs spaces, as before
+    assert parse_subject_lines("and group:a and") == [["group:a"]]
+    started = time.monotonic()
+    parse_subject_lines("a" + " " * 200_000 + "b")  # the ReDoS input for the old regex
+    assert time.monotonic() - started < 1
