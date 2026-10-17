@@ -1,0 +1,16 @@
+# Starting OIDC clients (copy to oidc_clients.yml). Authelia needs at least one client while the
+# provider is configured; add real ones in the configurator (presets for common apps) and delete
+# this placeholder there.
+identity_providers:
+  oidc:
+    clients:
+      - client_id: 'placeholder'
+        client_name: 'Placeholder (delete me)'
+        public: true
+        authorization_policy: 'two_factor'
+        require_pkce: true
+        pkce_challenge_method: 'S256'
+        redirect_uris:
+          - 'https://whoami.example.com/callback'
+        scopes: ['openid', 'profile']
+        token_endpoint_auth_method: 'none'

@@ -1,0 +1,11 @@
+# Starting users (copy to users.yml). Replace the hash, then manage users in the configurator.
+# Hash a first password:  docker run --rm -it authelia/authelia:<version> \
+#   authelia crypto hash generate --config /config/configuration.yml   (or see README.md)
+users:
+  admin:
+    displayname: 'First Admin'
+    email: 'admin@example.com'
+    groups:
+      - 'admin'
+    disabled: false
+    password: '__CHANGE_ME_argon2_password_hash__'

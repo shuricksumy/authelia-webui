@@ -1,0 +1,32 @@
+# Starting rules for a fresh install (copy to access_control.yml). After that, edit them in the
+# configurator. The first four rules keep the portal, OIDC and the configurator working and are
+# protected (the configurator will not let you weaken them).
+access_control:
+  default_policy: deny
+  networks:
+    - name: vpn
+      networks: [10.8.0.0/24]
+  rules:
+    # OIDC / portal endpoints must be public or logins and discovery break.
+    - domain: auth.example.com
+      resources:
+        - '^/\.well-known/openid-configuration$'
+        - '^/jwks\.json$'
+        - '^/api/oidc/.*'
+      policy: bypass
+
+    - domain: auth.example.com
+      policy: one_factor
+
+    # The configurator: admins, on the VPN, with 2FA. Everyone else: a hard no.
+    - domain: authcfg.example.com
+      networks: [vpn]
+      subject: 'group:admin'
+      policy: two_factor
+
+    - domain: authcfg.example.com
+      policy: deny
+
+    # Demo app.
+    - domain: whoami.example.com
+      policy: two_factor

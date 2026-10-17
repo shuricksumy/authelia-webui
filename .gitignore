@@ -2,7 +2,9 @@
 *.sqlite3
 configuration.yml
 users.yml
-managed/
+# the contents of any managed/ folder (real deployment data), except the synthetic examples
+**/managed/*
+!examples/production/authelia/managed/*.example.yml
 .env
 .env.*
 !.env.example

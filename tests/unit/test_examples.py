@@ -92,3 +92,14 @@ def test_production_compose_resolves_with_sample_values() -> None:
     if "Cannot connect to the Docker daemon" in proc.stderr:
         pytest.skip("docker daemon is not running")
     assert proc.returncode == 0, proc.stderr[-800:]
+
+
+def test_production_example_files_are_in_git() -> None:
+    """The root .gitignore excludes managed/ folders (real data). The synthetic examples are
+    re-included; this fails locally when one is not tracked, instead of only in CI."""
+    tracked = subprocess.run(
+        ["git", "ls-files", "examples/production"], capture_output=True, text=True,
+        check=True, cwd=EXAMPLES.parent,
+    ).stdout.split()  # fmt: skip
+    for name in ("access_control", "oidc_clients", "users"):
+        assert f"examples/production/authelia/managed/{name}.example.yml" in tracked

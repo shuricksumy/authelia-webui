@@ -458,5 +458,9 @@ def test_a_failed_login_shows_up_under_top_problems(admin: Page) -> None:
     admin.set_viewport_size({"width": 1600, "height": 900})
     rows = [r for r in column_lefts(admin, "table.log-table tbody") if len(r) > 3]
     assert rows and all(r == rows[0] for r in rows)
-    download = admin.request.get(f"{BASE}/logs/download?level=error&window=1h")
-    assert download.ok and "Unsuccessful 1FA" in download.text()
+    # fetched by the page itself: Playwright's request API ignores Chromium's host-resolver rule
+    ok, text = admin.evaluate(
+        "async (url) => { const r = await fetch(url); return [r.ok, await r.text()]; }",
+        "/logs/download?level=error&window=1h",
+    )
+    assert ok and "Unsuccessful 1FA" in text
