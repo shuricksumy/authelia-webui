@@ -36,7 +36,8 @@ def sign_in(page: Page, username: str | None = None, password: str | None = None
     page.get_by_role("textbox", name="Password").fill(password or creds["password"])
     page.get_by_role("button", name="Sign in").click()
     if totp:
-        page.wait_for_url("**/2fa/one-time-password**")
+        # as generous as the final redirect: Authelia may just have restarted twice (rollback)
+        page.wait_for_url("**/2fa/one-time-password**", timeout=60_000)
         page.locator("input[autocomplete=one-time-code]").first.click()
         page.keyboard.type(fresh_totp(creds["totp_secret"]), delay=40)
     # Both flows end with Authelia redirecting back to the app (a non-admin lands on its 403).
