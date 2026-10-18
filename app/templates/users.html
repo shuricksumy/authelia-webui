@@ -21,7 +21,7 @@
 {% if not rows %}<article class="empty"><p>{{ 'No user matches the filter.' if q else 'No users yet.' }}</p></article>
 {% else %}
 <div class="table-scroll">
-  <table class="data users">
+  <table class="data users" data-colkey="users">
     <colgroup><col class="w-l"><col><col><col class="w-xl"><col class="w-s"><col class="w-s"></colgroup>
     <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th><th>Status</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>

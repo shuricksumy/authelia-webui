@@ -421,6 +421,50 @@ def test_other_tables_have_stable_columns(admin: Page) -> None:
         assert rows and all(r == rows[0] for r in rows), f"{path}: columns shift between rows"
 
 
+def test_columns_can_be_resized_kept_and_reset(admin: Page) -> None:
+    """Drag a header edge: the column follows, the flexible column absorbs it, rows still line up,
+    the width survives a reload and applies to the By-domain tables too; double-click resets."""
+    admin.set_viewport_size({"width": 1600, "height": 900})
+    open_rules(admin)
+    who = admin.locator("#rules-table thead th").nth(4)
+    before = who.bounding_box()
+    assert before
+    grip = who.locator(".col-grip")
+    box = grip.bounding_box()
+    assert box
+    admin.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+    admin.mouse.down()
+    admin.mouse.move(box["x"] + box["width"] / 2 + 120, box["y"] + box["height"] / 2, steps=5)
+    admin.mouse.up()
+    after = who.bounding_box()
+    assert after and abs(after["width"] - before["width"] - 120) <= 3
+    rows = [r for r in column_lefts(admin, "#rules-body") if len(r) == 7]
+    assert all(r == rows[0] for r in rows)
+    admin.reload(wait_until="networkidle")
+    kept = admin.locator("#rules-table thead th").nth(4).bounding_box()
+    assert kept and abs(kept["width"] - after["width"]) <= 1
+    admin.goto(f"{BASE}/rules?view=domain", wait_until="networkidle")
+    grouped = admin.locator("table.rules.readonly tr").first.locator("td").nth(4).bounding_box()
+    assert grouped and abs(grouped["width"] - after["width"]) <= 1
+    open_rules(admin)
+    admin.locator("#rules-table thead th").nth(4).locator(".col-grip").dblclick()
+    reset = admin.locator("#rules-table thead th").nth(4).bounding_box()
+    assert reset and abs(reset["width"] - before["width"]) <= 1
+
+
+def test_a_rules_paths_open_under_its_domain(admin: Page) -> None:
+    admin.set_viewport_size({"width": 1600, "height": 900})
+    open_rules(admin)
+    row = admin.locator("#rules-body tr", has=admin.locator(".paths-toggle")).first
+    paths = row.locator(".paths-list")
+    expect(paths).to_be_hidden()
+    row.locator(".paths-toggle summary").click()
+    expect(paths).to_be_visible()
+    domain = row.locator(".col-domain").bounding_box()
+    listed = paths.bounding_box()
+    assert domain and listed and listed["x"] >= domain["x"] and listed["width"] > 200
+
+
 # --------------------------------------------------------------------- overview and logs
 
 

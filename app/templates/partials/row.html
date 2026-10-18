@@ -5,11 +5,12 @@
   <td class="col-domain">
     <span class="domain">{{ r.domains|join(', ') }}</span>
     {% if r.note %}<small class="note">{{ r.note.splitlines()[0]|truncate(70) }}</small>{% endif %}
+    {# shown by the "N paths" toggle in the Paths column: here it has the width of the widest column #}
+    {% if r.resources %}<ul class="regex paths-list">{% for p in r.resources %}<li><code>{{ p }}</code></li>{% endfor %}</ul>{% endif %}
   </td>
   <td class="col-paths" data-label="Paths">
     {% if r.resources %}
-    <details><summary>{{ r.resources|length }} path{{ '' if r.resources|length == 1 else 's' }}</summary>
-      <ul class="regex">{% for p in r.resources %}<li><code>{{ p }}</code></li>{% endfor %}</ul></details>
+    <details class="paths-toggle"><summary>{{ r.resources|length }} path{{ '' if r.resources|length == 1 else 's' }}</summary></details>
     {% else %}<span class="muted">all</span>{% endif %}
   </td>
   <td class="col-who" data-label="Who">{{ r.who }}</td>
