@@ -19,8 +19,8 @@
 
 <div class="cards overview">
   <article class="card">
-    <h3>Authelia</h3>
-    <p>{% if runtime.healthy %}<span class="ok-text">&#10003; healthy</span>{% elif runtime.healthy is false %}<span class="err-text">&#10007; not healthy</span>{% else %}<span class="muted">health unknown</span>{% endif %}</p>
+    <header><h3>Authelia</h3>
+      {% if runtime.healthy %}<span class="pill ok">&#10003; healthy</span>{% elif runtime.healthy is false %}<span class="pill bad">&#10007; not healthy</span>{% else %}<span class="pill">health unknown</span>{% endif %}</header>
     <dl class="facts">
       <dt>Running</dt><dd>{{ runtime.running_version or 'unknown' }}</dd>
       <dt>Bundled</dt><dd>{{ runtime.bundled_version }}{% if runtime.running_version %} {% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003;</span>{% endif %}{% endif %}</dd>
@@ -29,23 +29,23 @@
   </article>
 
   <article class="card">
-    <h3>Changes</h3>
+    <header><h3>Changes</h3></header>
     <dl class="facts">
       <dt>Draft</dt><dd>{% if draft %}{{ change_count }} unapplied change{{ '' if change_count == 1 else 's' }} <a href="/review">Review</a>{% else %}none{% endif %}</dd>
       <dt>Last apply</dt><dd>{% if last_job and last_job.done %}{{ last_job.finished|utc }} <span class="result-badge {{ last_job.result }}">{{ last_job.result }}</span>{% else %}none yet{% endif %}</dd>
     </dl>
-    <p><a href="/history">History</a></p>
+    <footer><a href="/history">History</a></footer>
   </article>
 
   <article class="card">
-    <h3>Configuration</h3>
+    <header><h3>Configuration</h3></header>
     <dl class="facts">
       {% for label, value in data.counts.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
     </dl>
   </article>
 
   <article class="card">
-    <h3>Authelia log</h3>
+    <header><h3>Authelia log</h3></header>
     {% if not log_configured %}
     <p>No log file is configured. Set <code>log.file_path</code> in Authelia and <code>AUTHELIA_LOG_FILE</code> here to read it on the <a href="/logs">Logs</a> page.</p>
     {% elif data.log_counts is none %}
@@ -55,7 +55,7 @@
       <dt>Errors, 24 h</dt><dd>{% if data.log_counts.error %}<span class="err-text">{{ data.log_counts.error }}</span>{% else %}0{% endif %}</dd>
       <dt>Warnings, 24 h</dt><dd>{{ data.log_counts.warn }}</dd>
     </dl>
-    <p><a href="/logs?level=error&amp;window=24h">Errors</a> &middot; <a href="/logs">All problems</a></p>
+    <footer><a href="/logs?level=error&amp;window=24h">Errors</a> &middot; <a href="/logs">All problems</a></footer>
     {% endif %}
   </article>
 </div>

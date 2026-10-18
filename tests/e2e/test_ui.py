@@ -455,34 +455,38 @@ def test_columns_can_be_resized_kept_and_reset(admin: Page) -> None:
 def test_view_settings_change_the_page_and_are_remembered(admin: Page) -> None:
     open_rules(admin)
     root = "(name) => document.documentElement.getAttribute(name)"
-    assert admin.evaluate(root, "data-theme") is None  # default: follow the system
+    # defaults: system theme, every table style on, compact
+    assert admin.evaluate(root, "data-theme") is None
+    assert (
+        admin.evaluate(root, "data-tbl-rows") == "on"
+        and admin.evaluate(root, "data-tbl-head") == "on"
+    )
+    assert admin.evaluate(root, "data-density") is None
+    head = admin.locator("#rules-table thead th").first
+    assert head.evaluate("e => getComputedStyle(e).backgroundColor") not in (
+        "rgba(0, 0, 0, 0)", "transparent")  # fmt: skip
     menu = admin.locator("[data-view-menu]")
     menu.locator("summary").click()
     menu.get_by_label("Dark").check()
-    menu.get_by_label("Shaded header").check()
-    menu.get_by_label("Striped rows").check()
+    menu.get_by_label("Striped rows").uncheck()
     menu.get_by_label("Comfortable").check()
     assert admin.evaluate(root, "data-theme") == "dark"
-    head = admin.locator("#rules-table thead th").first
-    assert head.evaluate("e => getComputedStyle(e).backgroundColor") not in (
-        "rgba(0, 0, 0, 0)",
-        "transparent",
-    )
+    assert admin.evaluate(root, "data-tbl-rows") is None
     admin.mouse.click(5, 400)  # a click outside closes the menu
     expect(menu.locator("[data-view-panel]")).to_be_hidden()
     admin.reload(wait_until="networkidle")
     # applied by theme.js before the first paint, and shown in the menu
     assert admin.evaluate(root, "data-theme") == "dark"
-    assert admin.evaluate(root, "data-tbl-rows") == "on"
+    assert admin.evaluate(root, "data-tbl-rows") is None
     assert admin.evaluate(root, "data-density") == "comfortable"
-    admin.locator("[data-view-menu] summary").click()
-    expect(admin.locator("[data-view-menu]").get_by_label("Striped rows")).to_be_checked()
     menu = admin.locator("[data-view-menu]")
+    menu.locator("summary").click()
+    expect(menu.get_by_label("Striped rows")).not_to_be_checked()
+    expect(menu.get_by_label("Shaded header")).to_be_checked()
     menu.get_by_label("System").check()
-    menu.get_by_label("Shaded header").uncheck()
-    menu.get_by_label("Striped rows").uncheck()
+    menu.get_by_label("Striped rows").check()
     menu.get_by_label("Compact").check()
-    assert admin.evaluate("() => localStorage.getItem('view')") == "{}"
+    assert admin.evaluate("() => localStorage.getItem('view')") == "{}"  # back to the defaults
 
 
 def test_a_rules_paths_open_under_its_domain(admin: Page) -> None:
