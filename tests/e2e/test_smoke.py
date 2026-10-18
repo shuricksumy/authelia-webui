@@ -14,8 +14,10 @@ pytestmark = pytest.mark.e2e
 def test_authelia_portal_serves_login_page(stack: dict[str, str], page: Page) -> None:
     response = goto(page, PORTAL_URL, wait_until="networkidle")
     assert response is not None and response.ok
-    expect(page).to_have_title("Login - Authelia")
-    expect(page.get_by_role("textbox", name="Username")).to_be_visible()
+    # Authelia's page is a SPA: the title is set after "networkidle", and this test runs right after
+    # the apply tests restarted Authelia. Wait for the form first, then for the title.
+    expect(page.get_by_role("textbox", name="Username")).to_be_visible(timeout=20_000)
+    expect(page).to_have_title("Login - Authelia", timeout=20_000)
     expect(page.get_by_role("textbox", name="Password")).to_be_visible()
 
 

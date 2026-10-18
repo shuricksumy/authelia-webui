@@ -79,7 +79,7 @@ wheels = [
 
 [[package]]
 name = "authelia-configurator"
-version = "0.3.0"
+version = "0.3.1"
 source = { virtual = "." }
 dependencies = [
     { name = "cryptography" },
