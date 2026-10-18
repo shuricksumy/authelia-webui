@@ -3,7 +3,8 @@
 A complete stack: **Traefik** (HTTPS with Let's Encrypt, plus a VPN-only entrypoint) in front of
 **Authelia** (sessions in **Redis**, signing keys as files), the **Authelia Configurator** with its
 **socket proxy**, and a demo app (`whoami`).
-Replace `example.com` everywhere with your domain. Migrating an existing Authelia instead? Follow
+Replace `example.com` everywhere with your domain. The whole path, add-ons included, step by step
+with a check after each phase: [`docs/deployment.md`](../../docs/deployment.md). Migrating an existing Authelia instead? Follow
 [`docs/migration.md`](../../docs/migration.md) and borrow from these files.
 
 ```
@@ -15,7 +16,10 @@ authelia/configuration.example.yml        -> authelia/configuration.yml (your se
 authelia/managed/*.example.yml            -> authelia/managed/*.yml (starting rules, client, user,
                                              signing-key list; the key itself goes in managed/secrets/)
 logrotate/authelia          host-side rotation of Authelia's log
+logrotate/traefik-access    host-side rotation of Traefik's access log (CrowdSec add-on)
 compose.traefik-manager.yml optional add-on: a web UI for traefik/dynamic/dynamic.yml
+compose.crowdsec.yml        optional add-on: CrowdSec bans (docs/hardening.md)
+compose.traefik-manager.crowdsec.yml   both add-ons together: Traefik Manager's CrowdSec tab
 traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 
@@ -105,3 +109,6 @@ and the rotated copies (`.1`, `.2.gz`, ...).
 - **Traefik routes from a browser** (optional): `compose.traefik-manager.yml` adds
   [Traefik Manager](https://github.com/chr0nzz/traefik-manager), VPN-only and behind Authelia like
   the configurator, with no Docker socket. Setup and caveats: [`docs/traefik-manager.md`](../../docs/traefik-manager.md).
+- **Automatic bans and a CDN in front** (optional): `compose.crowdsec.yml` adds CrowdSec and its
+  Traefik bouncer; behind a CDN read section 1 of [`docs/hardening.md`](../../docs/hardening.md)
+  first (Authelia and `X-Forwarded-For`).

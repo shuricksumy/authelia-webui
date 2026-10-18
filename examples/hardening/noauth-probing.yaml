@@ -1,0 +1,31 @@
+# CrowdSec scenario: stricter watch on routers that have NO Authelia in front (docs/hardening.md).
+# Place at crowdsec/config/scenarios/ (= /etc/crowdsec/scenarios/ inside) and list YOUR routers
+# below as Traefik names them (<router>@file / <router>@docker). Start in simulation mode:
+#   cscli simulation enable local/noauth-probing
+# Real clients (sync apps, mobile apps) produce some 404s too; check `cscli alerts list` first.
+#
+# The default http-probing bans after more than 10 different failing paths per host; this one
+# after 6 on the listed routers, draining one every 20 s, for 10 minutes.
+type: leaky
+name: local/noauth-probing
+description: "Probing of routes without Authelia (failed requests to many different paths)"
+filter: >-
+  evt.Meta.service == 'http' &&
+  evt.Meta.http_status in ['400', '401', '403', '404', '405'] &&
+  evt.Parsed.static_ressource == 'false' &&
+  evt.Unmarshaled.traefik != nil &&
+  evt.Unmarshaled.traefik.RouterName in ['nextcloud@file', 'homeassistant@file']
+groupby: "evt.Meta.source_ip"
+distinct: "evt.Meta.http_path"
+capacity: 5
+leakspeed: "20s"
+blackhole: 10m
+labels:
+  service: http
+  remediation: true
+  behavior: "http:scan"
+  label: "Probing of unauthenticated routes"
+  classification:
+    - attack.T1595
+  confidence: 3
+  spoofable: 0

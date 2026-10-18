@@ -1,0 +1,9 @@
+# Only when BOTH add-ons run (compose.traefik-manager.yml and compose.crowdsec.yml): lets Traefik
+# Manager's CrowdSec tab reach CrowdSec's API. docs/hardening.md section 7.
+#
+#   docker compose -f compose.yml -f compose.traefik-manager.yml -f compose.crowdsec.yml \
+#     -f compose.traefik-manager.crowdsec.yml up -d
+services:
+  traefik-manager:
+    networks:
+      crowdsec: {} # added to the fixed edge address, which stays as it is

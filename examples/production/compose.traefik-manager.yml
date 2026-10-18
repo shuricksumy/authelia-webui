@@ -22,7 +22,9 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      TRAEFIK_API_URL: http://traefik:8081 # the tmapi entrypoint (traefik-manager.yml allow-lists us)
+      # Traefik's fixed edge address, not the name: with a second shared network (crowdsec) the name
+      # can resolve there, the request then comes from another address and the allow-list says 403.
+      TRAEFIK_API_URL: http://172.30.0.2:8081 # the tmapi entrypoint (traefik-manager.yml allow-lists us)
       # One file, not CONFIG_DIR: it may edit your routes, never the add-on's own router and
       # allow-list next to it (those show as read-only under "File (external)").
       CONFIG_PATH: /app/dynamic/dynamic.yml

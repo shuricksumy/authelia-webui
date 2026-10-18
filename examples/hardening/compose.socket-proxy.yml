@@ -1,0 +1,39 @@
+# For setups where Traefik reads Docker labels: the Docker provider through a read-only
+# allow-list instead of the raw socket (docs/hardening.md). Not needed for the production
+# example, whose Traefik has no Docker provider. Merge into your compose file.
+#
+# Traefik static config:  providers.docker.endpoint: tcp://traefik-socket-proxy:2375
+# Traefik service:        remove the /var/run/docker.sock mount, join the traefik_proxy network.
+networks:
+  traefik_proxy:
+    internal: true # Traefik and its socket proxy only; no route out
+
+services:
+  traefik-socket-proxy:
+    image: wollomatic/socket-proxy:1.13.1
+    restart: unless-stopped
+    user: "65534:${DOCKER_GID:?set DOCKER_GID to the group id of /var/run/docker.sock}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64M
+    command:
+      - -loglevel=info
+      - -listenip=0.0.0.0
+      - -allowfrom=traefik # the Traefik service/container name
+      # Exactly what Traefik v3.7's Docker provider calls (non-swarm): API version negotiation
+      # on /_ping, then /version, /events, /containers/json, /containers/<id>/json. The proxy
+      # anchors every rule (^...$). Nothing else: no logs, no archive/export (container files),
+      # no exec, no POST.
+      - -allowHEAD=/_ping
+      - -allowGET=(/v1\.[0-9]{1,2})?/(_ping|version|events|containers/json|containers/[a-zA-Z0-9_.-]+/json)
+      - -allowhealthcheck
+      - -shutdowngracetime=5
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # the only container that sees the socket
+    healthcheck:
+      test: ["CMD", "./healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [traefik_proxy]
