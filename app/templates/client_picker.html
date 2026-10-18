@@ -7,7 +7,7 @@
 <div class="cards">
   {% for c in cards %}{% set t = c.t %}
   <article class="card">
-    <h3>{{ t.name }}</h3>
+    <header><h3>{{ t.name }}</h3></header>
     <p>{{ t.description }}</p>
     {% if c.missing %}<p class="err-text"><small>Needs {{ c.missing|join(', ') }} in your main configuration first.</small></p>{% endif %}
     <form method="get" action="/clients/new">

@@ -160,4 +160,129 @@
   }
   document.addEventListener("DOMContentLoaded", initSortable);
   document.addEventListener("htmx:afterSettle", initSortable);
+
+  // Resizable columns on every table.data[data-colkey]: drag the edge of a header cell, double-click
+  // it to go back to the default. Widths are a per-browser convenience (localStorage), shared by
+  // tables with the same key (all rules tables); the card layout on narrow screens ignores them.
+  // The column without a width class stays flexible and absorbs the difference.
+  var MIN_COL_PX = 40;
+  function widthKey(table) {
+    return "cols:" + table.dataset.colkey + ":" + table.querySelectorAll("colgroup col").length;
+  }
+  function savedWidths(table) {
+    try { return JSON.parse(localStorage.getItem(widthKey(table)) || "null") || []; } catch (e) { return []; }
+  }
+  function applyWidths(table) {
+    var widths = savedWidths(table);
+    table.querySelectorAll("colgroup col").forEach(function (col, i) {
+      col.style.width = widths[i] ? widths[i] + "px" : "";  // CSSOM: allowed by the CSP
+    });
+  }
+  function initResize() {
+    document.querySelectorAll("table.data[data-colkey]").forEach(function (table) {
+      applyWidths(table);
+      if (table.dataset.resizable) { return; }
+      table.dataset.resizable = "1";
+      var cells = table.querySelectorAll("thead tr:first-child th");
+      cells.forEach(function (th, i) {
+        if (i === cells.length - 1) { return; }
+        var grip = document.createElement("span");
+        grip.className = "col-grip";
+        grip.title = "Drag to resize, double-click to reset";
+        grip.dataset.col = String(i);
+        th.appendChild(grip);
+      });
+    });
+  }
+  function isFlexible(col) { return !/\bw-/.test(col.className); }
+  document.addEventListener("pointerdown", function (event) {
+    var grip = event.target.closest && event.target.closest(".col-grip");
+    if (!grip || event.button !== 0) { return; }
+    event.preventDefault();
+    var table = grip.closest("table");
+    var cols = table.querySelectorAll("colgroup col");
+    var cells = table.querySelectorAll("thead tr:first-child th");
+    var edge = Number(grip.dataset.col);
+    // The edge between i and i+1 sizes column i; when i is the flexible one, it sizes i+1 instead.
+    var target = isFlexible(cols[edge]) && cols[edge + 1] ? edge + 1 : edge;
+    var sign = target === edge ? 1 : -1;
+    var start = event.clientX;
+    var startWidth = cells[target].getBoundingClientRect().width;
+    grip.setPointerCapture(event.pointerId);
+    grip.classList.add("active");
+    document.body.classList.add("col-resizing");
+    function move(e) {
+      var width = Math.max(MIN_COL_PX, Math.round(startWidth + sign * (e.clientX - start)));
+      cols[target].style.width = width + "px";
+    }
+    function end() {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      grip.classList.remove("active");
+      document.body.classList.remove("col-resizing");
+      var widths = Array.prototype.map.call(cols, function (col) {
+        return col.style.width ? parseInt(col.style.width, 10) : null;
+      });
+      try { localStorage.setItem(widthKey(table), JSON.stringify(widths)); } catch (e) { /* private mode */ }
+      document.querySelectorAll('table.data[data-colkey="' + table.dataset.colkey + '"]').forEach(applyWidths);
+    }
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  });
+  document.addEventListener("dblclick", function (event) {
+    var grip = event.target.closest && event.target.closest(".col-grip");
+    if (!grip) { return; }
+    var table = grip.closest("table");
+    try { localStorage.removeItem(widthKey(table)); } catch (e) { /* private mode */ }
+    document.querySelectorAll('table.data[data-colkey="' + table.dataset.colkey + '"]').forEach(applyWidths);
+  });
+  document.addEventListener("DOMContentLoaded", initResize);
+  document.addEventListener("htmx:afterSettle", initResize);
+
+  // View menu: theme, table style and density. theme.js (window.appView) holds the defaults and
+  // applies the stored values before the first paint; here they are changed, saved and shown.
+  // Other open tabs of the same site follow through the storage event.
+  function showView(view) {
+    window.appView.apply(view);
+    var panel = document.querySelector("[data-view-panel]");
+    if (!panel) { return; }
+    panel.querySelectorAll('input[type="radio"]').forEach(function (input) {
+      input.checked = view[input.name.replace(/^view-/, "")] === input.value;
+    });
+    window.appView.flags.forEach(function (key) {
+      var box = panel.querySelector('input[name="view-' + key + '"]');
+      if (box) { box.checked = view[key] === true; }
+    });
+  }
+  document.addEventListener("change", function (event) {
+    var input = event.target;
+    if (!input.closest || !input.closest("[data-view-panel]") || !window.appView) { return; }
+    var view = window.appView.read();
+    view[input.name.replace(/^view-/, "")] = input.type === "checkbox" ? input.checked : input.value;
+    window.appView.save(view);
+    showView(view);
+  });
+  document.addEventListener("click", function (event) {
+    if (event.target.closest && event.target.closest("[data-reset-widths]")) {
+      try {
+        Object.keys(localStorage).forEach(function (k) { if (k.indexOf("cols:") === 0) { localStorage.removeItem(k); } });
+      } catch (e) { /* private mode */ }
+      document.querySelectorAll("table.data[data-colkey]").forEach(applyWidths);
+      return;
+    }
+    var menu = document.querySelector("[data-view-menu][open]");
+    if (menu && !menu.contains(event.target)) { menu.removeAttribute("open"); }  // click outside closes
+  });
+  document.addEventListener("keydown", function (event) {
+    var menu = document.querySelector("[data-view-menu][open]");
+    if (event.key === "Escape" && menu) { menu.removeAttribute("open"); }
+  });
+  window.addEventListener("storage", function (event) {
+    if (event.key === "view" && window.appView) { showView(window.appView.read()); }
+  });
+  document.addEventListener("DOMContentLoaded", function () {
+    if (window.appView) { showView(window.appView.read()); }
+  });
 })();

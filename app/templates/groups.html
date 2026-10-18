@@ -12,15 +12,18 @@
 <div class="cards groups">
   {% for g in groups %}
   <article class="card">
-    <h3>{{ g.name }}{% if g.admin %} <small class="chip edit">admins of this tool</small>{% endif %}</h3>
+    <header><h3>{{ g.name }}{% if g.admin %} <small class="chip edit">admins of this tool</small>{% endif %}</h3>
+      <small class="count">{{ g.members|length }} member{{ '' if g.members|length == 1 else 's' }}</small></header>
     {% if g.rules and not g.members %}<p class="err-text"><small>No members, but rule{{ 's' if g.rules|length > 1 else '' }} {{ g.rules|join(', ') }} name{{ '' if g.rules|length > 1 else 's' }} this group.</small></p>{% endif %}
-    <p class="muted"><small>Used by rule{{ 's' if g.rules|length != 1 else '' }}: {{ g.rules|join(', ') if g.rules else 'none' }}</small></p>
+    <p class="used-by"><small class="muted">Used by rule{{ 's' if g.rules|length != 1 else '' }}:</small>
+      {% for n in g.rules %}<span class="chip">#{{ n }}</span>{% else %}<small class="muted">none</small>{% endfor %}</p>
     <ul class="members">
-      {% for m in g.members %}<li><span>{{ m }}</span>
+      {% for m in g.members %}<li><span class="member"><span class="avatar" aria-hidden="true">{{ m[:1]|upper }}</span>{{ m }}</span>
         {% if writable %}<button type="button" class="outline secondary small" hx-post="/groups/{{ g.name|urlencode }}/members" hx-vals="{{ {'user': m, 'action': 'remove', 'users_rev': users_rev}|tojson|forceescape }}" aria-label="Remove {{ m }} from {{ g.name }}">Remove</button>{% endif %}</li>
       {% else %}<li class="muted">no members</li>{% endfor %}
     </ul>
     {% if writable %}
+    <footer>
     {% if g.addable %}
     <form hx-post="/groups/{{ g.name|urlencode }}/members" hx-swap="none" class="inline-form">
       <input type="hidden" name="action" value="add"><input type="hidden" name="users_rev" value="{{ users_rev }}">
@@ -38,6 +41,7 @@
       </form>
       {% if g.rules %}<p class="err-text"><small>Rules {{ g.rules|join(', ') }} name this group and are <strong>not</strong> changed: edit them afterwards.</small></p>{% endif %}
     </details>
+    </footer>
     {% endif %}
   </article>
   {% endfor %}

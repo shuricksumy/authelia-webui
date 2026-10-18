@@ -16,7 +16,7 @@
 <article class="empty"><p>No tests yet. Add one here, or use <strong>Add as test</strong> in the URL tester on the Rules page.</p></article>
 {% else %}
 <div class="table-scroll">
-  <table class="data tests">
+  <table class="data tests" data-colkey="tests">
     <colgroup><col><col class="w-l"><col class="w-s"><col class="w-m">{% if has_draft %}<col class="w-l">{% endif %}<col class="w-l"></colgroup>
     <thead><tr><th>Request</th><th>Who</th><th>Expected</th><th>Live</th>{% if has_draft %}<th>Draft</th>{% endif %}<th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>

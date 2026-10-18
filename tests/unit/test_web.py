@@ -167,7 +167,13 @@ def test_templates_have_no_inline_script_style_or_event_handlers() -> None:
 
 
 def test_static_assets_are_served_and_cacheable(ui: UI) -> None:
-    for name in ("vendor/pico.min.css", "vendor/htmx.min.js", "vendor/Sortable.min.js", "app.js"):
+    for name in (
+        "vendor/pico.min.css",
+        "vendor/htmx.min.js",
+        "vendor/Sortable.min.js",
+        "app.js",
+        "theme.js",
+    ):
         r = ui.get(f"/static/{name}")
         assert r.status_code == 200 and "max-age" in r.headers["cache-control"]
     assert ui.get("/rules").headers["cache-control"] == "no-store"

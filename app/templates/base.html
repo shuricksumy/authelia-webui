@@ -9,6 +9,7 @@
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true,"historyCacheSize":0}'>
   <link rel="stylesheet" href="/static/vendor/pico.min.css">
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/theme.js"></script>
   <script src="/static/vendor/htmx.min.js" defer></script>
   <script src="/static/vendor/Sortable.min.js" defer></script>
   <script src="/static/app.js" defer></script>
@@ -29,6 +30,28 @@
         <a href="/logs" {% if active|default('rules') == 'logs' %}aria-current="page"{% endif %}>Logs</a>
       </nav>
       <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>
+      <details class="view-menu" data-view-menu>
+        <summary>View</summary>
+        <div class="view-panel" data-view-panel>
+          <fieldset><legend>Theme</legend>
+            <label><input type="radio" name="view-theme" value="system" checked> System</label>
+            <label><input type="radio" name="view-theme" value="light"> Light</label>
+            <label><input type="radio" name="view-theme" value="dark"> Dark</label>
+          </fieldset>
+          <fieldset><legend>Tables</legend>
+            <label><input type="checkbox" name="view-head" checked> Shaded header</label>
+            <label><input type="checkbox" name="view-rows" checked> Striped rows</label>
+            <label><input type="checkbox" name="view-hover" checked> Highlight row on hover</label>
+            <label><input type="checkbox" name="view-lines" checked> Column lines</label>
+          </fieldset>
+          <fieldset><legend>Density</legend>
+            <label><input type="radio" name="view-density" value="compact" checked> Compact</label>
+            <label><input type="radio" name="view-density" value="comfortable"> Comfortable</label>
+          </fieldset>
+          <button type="button" class="outline secondary small" data-reset-widths>Reset column widths</button>
+          <small class="muted">Saved in this browser, for this address only.</small>
+        </div>
+      </details>
     </div>
   </header>
 
