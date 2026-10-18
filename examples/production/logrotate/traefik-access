@@ -1,0 +1,19 @@
+# Host-side rotation for Traefik's access log (CrowdSec add-on, docs/deployment.md).
+#
+# Install:   sudo cp logrotate/traefik-access /etc/logrotate.d/traefik-access
+#            then edit the path below to match your setup.
+# Test:      sudo logrotate --debug /etc/logrotate.d/traefik-access
+#
+# copytruncate: Traefik keeps writing to the same file, no signal or container name needed.
+# CrowdSec and `tail -F` readers follow the truncation. logrotate allows comments only on their
+# own line: a comment after a directive makes it skip the whole block.
+/opt/authelia-stack/logs/traefik/access.log {
+    daily
+    maxsize 50M
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+}

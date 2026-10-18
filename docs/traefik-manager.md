@@ -13,7 +13,7 @@ in front, its own login on top, no Docker socket.
 
 ```
 browser -> Traefik (internal :8443, Authelia) -> traefik-manager:5000
-traefik-manager --GET--> traefik:8081/api      (tmapi entrypoint, IP allow-listed, read-only)
+traefik-manager --GET--> 172.30.0.2:8081/api   (tmapi entrypoint, IP allow-listed, read-only)
 traefik-manager --write--> traefik/dynamic/dynamic.yml   (Traefik watches the folder)
 ```
 
@@ -54,7 +54,7 @@ like `authcfg`):
 ```
 
 Open `https://tm.example.com:8443`. In the setup wizard the Traefik API URL is
-`http://traefik:8081`. **Skip the "Self route" step**: the route already exists in
+`http://172.30.0.2:8081` (Traefik's fixed address; see the CrowdSec note below for why not the name). **Skip the "Self route" step**: the route already exists in
 `traefik-manager.yml`, and the wizard writes a second router whose rule includes the scheme
 (``Host(`https://tm.example.com`)``), which never matches. If that were "fixed" by hand it would
 be a second router for the same host **without Authelia**, with equal priority.
@@ -84,7 +84,7 @@ labels:
 
 # traefik-manager: hardened like compose.traefik-manager.yml, plus
 environment:
-  TRAEFIK_API_URL: http://traefik:8081
+  TRAEFIK_API_URL: http://${IP_TRAEFIK}:8081   # Traefik's fixed address, not its name
   CONFIG_DIR: /app/dynamic        # or CONFIG_PATH for one file (see "File (external)" below)
   CERT_RESOLVER: none             # when certificates come from files, not ACME
   TRUSTED_PROXIES: ${IP_TRAEFIK}/32
@@ -129,6 +129,19 @@ not writable" banner (its write check covers every path it knows; settings and b
 Do **not** mount it read-write when Traefik has the Docker socket: plugins in
 `experimental.plugins` are code Traefik downloads and runs, so write access to the static config
 plus a restart is the host. Leaving `STATIC_CONFIG_PATH` unset is the simplest choice.
+
+**CrowdSec** (with [docs/hardening.md](hardening.md)): step by step in
+[Connecting Traefik, Traefik Manager and CrowdSec](hardening.md#7-connecting-traefik-traefik-manager-and-crowdsec).
+In short: Traefik Manager gets its **own** bouncer key (`cscli bouncers add traefik-manager`),
+LAPI URL `http://crowdsec:8080`, and the `crowdsec` network (`compose.traefik-manager.crowdsec.yml`). A bouncer key shows the bans in force. Alerts (scenario, path, user agent)
+need a machine login, which can also create and delete bans; if you want it, print the
+credentials with `cscli machines add traefik-manager --auto -f -`. Without `-f -` the command
+targets CrowdSec's own credentials file (and `--force` would overwrite its agent login).
+
+Once Traefik Manager shares two networks with Traefik (e.g. `edge` and `crowdsec`), the name
+`traefik` may resolve to either address and the API allow-list rejects it at random ("No object
+list for: middlewares"). Use Traefik's fixed address in the API URL, and change it in Settings
+too: `TRAEFIK_API_URL` only seeds the setting on the first start.
 
 ## Embedding in a dashboard
 

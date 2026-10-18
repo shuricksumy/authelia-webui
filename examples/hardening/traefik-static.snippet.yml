@@ -1,0 +1,29 @@
+# Lines to MERGE into your Traefik static config (traefik.yml); not a complete file.
+# Static config is read at start only: restart Traefik after editing (docs/hardening.md).
+
+experimental:
+  plugins:
+    bouncer:
+      moduleName: github.com/maxlerebourg/crowdsec-bouncer-traefik-plugin
+      version: v1.8.1
+    # Rewrites X-Forwarded-For to the real client (see security.yml); keep it with or without a CDN
+    realip:
+      moduleName: github.com/xethlyx/traefik-real-ip
+      version: v1.0.4
+
+entryPoints:
+  websecure:
+    # Only behind a CDN/proxy, and ONLY together with realip@file below. Same ranges as
+    # security.yml. Without a CDN, delete these two lines (Traefik then trusts nobody).
+    forwardedHeaders:
+      trustedIPs: ["192.0.2.0/24"] # PLACEHOLDER: your CDN's ranges
+    http:
+      middlewares: # before every router on this entry point, so before Authelia
+        - realip@file # first, always
+        - crowdsec@file
+      aliasHeadersStrategy: delete # drop look-alike headers (Remote_User) that backends may alias
+
+# CrowdSec reads a file, and the JSON format carries host, router and service.
+accessLog:
+  filePath: /var/log/traefik/access.log
+  format: json

@@ -187,6 +187,8 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 
 ## Production setup
 
+- **Step by step, everything:** [`docs/deployment.md`](docs/deployment.md) goes from an empty server
+  to the full stack (base, Traefik Manager, CrowdSec, Cloudflare), with a check after each phase.
 - **Fresh install:** [`examples/production/`](examples/production/) is a complete, production-like
   stack (Traefik with HTTPS and a VPN-only entrypoint, Authelia, the configurator, the socket
   proxy, a demo app). Its README walks through secrets, networks and the first login; CI validates
@@ -196,6 +198,9 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 - **Traefik routes from a browser (optional):** [`docs/traefik-manager.md`](docs/traefik-manager.md)
   runs [Traefik Manager](https://github.com/chr0nzz/traefik-manager) next to the configurator with
   the same trust model (VPN-only, Authelia, no Docker socket); `examples/production/` has the add-on.
+- **Hardening the edge (optional):** [`docs/hardening.md`](docs/hardening.md): the real client
+  address behind a CDN (and why Authelia needs it), CrowdSec bans, Cloudflare in front, and
+  Traefik without the Docker socket; files in [`examples/hardening/`](examples/hardening/).
 
 ## Reachable from anywhere (optional, not the default)
 

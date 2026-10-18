@@ -1,0 +1,53 @@
+# Optional add-on: CrowdSec (bans IPs that probe or brute-force) with Traefik's bouncer plugin.
+# Guide: docs/hardening.md. Use it together with the static-config lines the guide lists.
+#
+#   KEY=$(openssl rand -hex 32); echo "CROWDSEC_BOUNCER_KEY=$KEY" >> .env
+#   printf '%s' "$KEY" | sudo tee traefik/crowdsec-bouncer.key >/dev/null
+#   sudo chown root:root traefik/crowdsec-bouncer.key && sudo chmod 600 traefik/crowdsec-bouncer.key
+#   sudo mkdir -p crowdsec/config crowdsec/data logs/traefik   # root without caps writes only its own
+#   cp ../hardening/acquis.yaml crowdsec/acquis.yaml
+#   cp ../hardening/security.yml traefik/dynamic/security.yml
+#   docker compose -f compose.yml -f compose.crowdsec.yml up -d
+#
+# Fails open: if CrowdSec is down, Traefik lets traffic through (updateMaxFailure: -1).
+networks:
+  crowdsec: {} # Traefik -> CrowdSec; not internal: CrowdSec fetches the hub and the blocklist
+
+services:
+  crowdsec:
+    image: crowdsecurity/crowdsec:v1.8.1
+    restart: unless-stopped
+    cap_drop: [ALL]
+    # Read logs owned by other users (Authelia writes its log as AUTHELIA_UID, mode 600).
+    # Nothing else: no write capabilities, the log mounts are read-only.
+    cap_add: [DAC_READ_SEARCH]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TZ: ${TZ:-UTC}
+      COLLECTIONS: >-
+        crowdsecurity/traefik crowdsecurity/http-cve crowdsecurity/base-http-scenarios
+        LePresidente/authelia crowdsecurity/whitelist-good-actors
+      # Never ban private ranges (VPN, LAN, Docker networks); good-actors covers CDNs.
+      PARSERS: crowdsecurity/whitelists crowdsecurity/geoip-enrich
+      # Path, method, status and user agent in each alert (cscli alerts inspect)
+      CONTEXTS: crowdsecurity/http_base
+      # Registers the Traefik bouncer with this key (same value as traefik/crowdsec-bouncer.key)
+      BOUNCER_KEY_traefik: ${CROWDSEC_BOUNCER_KEY:?set CROWDSEC_BOUNCER_KEY (openssl rand -hex 32)}
+    volumes:
+      - ./crowdsec/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      - ./crowdsec/config:/etc/crowdsec
+      - ./crowdsec/data:/var/lib/crowdsec/data
+      - ./logs/traefik:/var/log/traefik:ro # folders, not files: they survive logrotate
+      - ./authelia/logs:/var/log/authelia:ro
+    networks: [crowdsec]
+    # no ports: only Traefik talks to it
+
+  traefik:
+    # Plugins are downloaded into ./plugins-storage under Traefik's working directory (/);
+    # the production example runs Traefik read-only, so it needs a writable spot there.
+    tmpfs: [/plugins-storage]
+    volumes:
+      - ./logs/traefik:/var/log/traefik # accessLog.filePath (see docs/hardening.md)
+      # traefik/crowdsec-bouncer.key is already inside the ./traefik:/etc/traefik:ro mount
+    networks: [crowdsec]
+    depends_on: [crowdsec]

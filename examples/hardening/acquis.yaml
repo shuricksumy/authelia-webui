@@ -1,0 +1,10 @@
+# CrowdSec log sources (mounted at /etc/crowdsec/acquis.yaml). Paths are inside the container.
+filenames:
+  - /var/log/traefik/access.log
+labels:
+  type: traefik
+---
+filenames:
+  - /var/log/authelia/authelia.log
+labels:
+  type: authelia

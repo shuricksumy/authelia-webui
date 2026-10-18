@@ -1,0 +1,39 @@
+# Traefik dynamic config: entry-point middlewares (docs/hardening.md). Copy into the folder your
+# file provider loads (production example: traefik/dynamic/security.yml).
+#
+# crowdsec: needs the `bouncer` plugin in the static config and `crowdsec@file` in the
+#   entry point's http.middlewares.
+# realip: keep it, FIRST in http.middlewares. From a trusted CDN it reduces X-Forwarded-For to the
+#   one real client; from anyone else it replaces the header with the TCP address. Authelia reads
+#   the leftmost X-Forwarded-For, so trusting a CDN (static forwardedHeaders.trustedIPs) WITHOUT
+#   realip lets a visitor send "X-Forwarded-For: <your VPN address>" and meet `networks:` rules
+#   from the internet. Without a CDN, leave the placeholder: realip then only sanitizes.
+#
+# Replace the placeholder with your CDN's ranges, e.g. for Cloudflare:
+#   curl -fsS https://www.cloudflare.com/ips-v4 | sed 's/^/            - /'
+# 192.0.2.0/24 is a documentation range (RFC 5737): trusting it does nothing, so a forgotten
+# placeholder fails safe (real IPs are simply not restored).
+
+http:
+  middlewares:
+    realip:
+      plugin:
+        realip:
+          trustedIPs: &cdn
+            - 192.0.2.0/24 # PLACEHOLDER: your CDN's ranges
+
+    crowdsec:
+      plugin:
+        bouncer:
+          enabled: true
+          logLevel: INFO
+          crowdsecMode: stream # banned IPs cached locally, refreshed every 60 s
+          crowdsecLapiScheme: http
+          crowdsecLapiHost: crowdsec:8080
+          crowdsecLapiKeyFile: /etc/traefik/crowdsec-bouncer.key # Traefik only, mode 600
+          updateMaxFailure: -1 # CrowdSec down: let traffic through instead of blocking everyone
+          forwardedHeadersTrustedIPs: *cdn
+          clientTrustedIPs: # never blocked: VPN, LAN, Docker networks (edit to yours)
+            - 127.0.0.1/32
+            - 10.8.0.0/24
+            - 172.30.0.0/24
