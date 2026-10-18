@@ -5,7 +5,7 @@
 #   docker compose config -q && docker compose up -d
 #
 # Layout (next to this file):
-#   traefik/traefik.yml, traefik/dynamic.yml   Traefik static + file-provider config
+#   traefik/traefik.yml, traefik/dynamic/      Traefik static + file-provider config (a folder)
 #   authelia/configuration.yml                 Authelia main config (hand-edited, read-only to the configurator)
 #   authelia/managed/                          written by the configurator only (rules, OIDC clients,
 #                                              users, signing keys; private keys in managed/secrets/)
@@ -50,7 +50,7 @@ services:
     networks:
       edge:
         ipv4_address: 172.30.0.2
-    # No Docker socket: routes come from traefik/dynamic.yml (file provider).
+    # No Docker socket: routes come from traefik/dynamic/*.yml (file provider).
 
   authelia:
     image: authelia/authelia:${AUTHELIA_VERSION:?set AUTHELIA_VERSION, e.g. 4.39.28}

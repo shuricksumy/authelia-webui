@@ -9,6 +9,13 @@ entryPoints:
     address: ":443"
   internal: # the configurator only; published on the VPN address in compose.yml
     address: ":8443"
+  tmapi: # optional Traefik Manager add-on only (docs/traefik-manager.md); never published.
+    address: ":8081" # Without traefik/dynamic/traefik-manager.yml no router listens here.
+
+# The API is used by the optional Traefik Manager add-on only: routers expose it, there is no
+# insecure mode and no dashboard. Nothing serves api@internal unless that add-on's file is present.
+api:
+  dashboard: false
 
 certificatesResolvers:
   le:
@@ -24,7 +31,9 @@ certificatesResolvers:
 
 providers:
   file:
-    filename: /etc/traefik/dynamic.yml
+    # A folder: every .yml in it is loaded. Lets add-ons (docs/traefik-manager.md) ship their own
+    # routers, and a web editor write atomically (temp file + rename) next to the file it edits.
+    directory: /etc/traefik/dynamic
     watch: true
 
 log:

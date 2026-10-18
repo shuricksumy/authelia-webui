@@ -9,12 +9,14 @@ Replace `example.com` everywhere with your domain. Migrating an existing Autheli
 ```
 compose.yml                 services, networks, hardening
 production.env.example      -> .env (domain, versions, VPN, secrets for the configurator)
-traefik/traefik.yml         static config: entrypoints web / websecure / internal, ACME
-traefik/dynamic.yml         routers: auth (public), authcfg (VPN only), whoami (demo)
+traefik/traefik.yml         static config: entrypoints web / websecure / internal (+ tmapi), ACME
+traefik/dynamic/dynamic.yml routers: auth (public), authcfg (VPN only), whoami (demo)
 authelia/configuration.example.yml        -> authelia/configuration.yml (your secrets)
 authelia/managed/*.example.yml            -> authelia/managed/*.yml (starting rules, client, user,
                                              signing-key list; the key itself goes in managed/secrets/)
 logrotate/authelia          host-side rotation of Authelia's log
+compose.traefik-manager.yml optional add-on: a web UI for traefik/dynamic/dynamic.yml
+traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 
 ## 1. Files and secrets
@@ -100,3 +102,6 @@ and the rotated copies (`.1`, `.2.gz`, ...).
   change" on the next page load. Edit as the containers' user, not root.
 - Upgrading Authelia: change `AUTHELIA_VERSION` once; both images follow it. The configurator
   refuses to apply while the running and bundled versions differ.
+- **Traefik routes from a browser** (optional): `compose.traefik-manager.yml` adds
+  [Traefik Manager](https://github.com/chr0nzz/traefik-manager), VPN-only and behind Authelia like
+  the configurator, with no Docker socket. Setup and caveats: [`docs/traefik-manager.md`](../../docs/traefik-manager.md).
