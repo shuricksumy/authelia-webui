@@ -193,6 +193,9 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
   it with the real Authelia.
 - **Existing Authelia:** [`docs/migration.md`](docs/migration.md) and the snippets in
   [`examples/`](examples/) (compose with the socket proxy, Traefik configuration, protected rules).
+- **Traefik routes from a browser (optional):** [`docs/traefik-manager.md`](docs/traefik-manager.md)
+  runs [Traefik Manager](https://github.com/chr0nzz/traefik-manager) next to the configurator with
+  the same trust model (VPN-only, Authelia, no Docker socket); `examples/production/` has the add-on.
 
 ## Reachable from anywhere (optional, not the default)
 

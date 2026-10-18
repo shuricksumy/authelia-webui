@@ -5,6 +5,9 @@ users.yml
 # the contents of any managed/ folder (real deployment data), except the synthetic examples
 **/managed/*
 !examples/production/authelia/managed/*.example.yml
+# Traefik Manager add-on runtime data (password hash, encryption keys, backups)
+examples/production/traefik-manager/config/
+examples/production/traefik-manager/backups/
 .env
 .env.*
 !.env.example

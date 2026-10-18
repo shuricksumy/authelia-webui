@@ -109,3 +109,65 @@ def test_production_example_files_are_in_git() -> None:
     ).stdout.split()  # fmt: skip
     for name in ("access_control", "oidc_clients", "users", "oidc_jwks"):
         assert f"examples/production/authelia/managed/{name}.example.yml" in tracked
+
+
+# The optional Traefik Manager add-on (docs/traefik-manager.md).
+TM_COMPOSE = PRODUCTION / "compose.traefik-manager.yml"
+TM_DYNAMIC = PRODUCTION / "traefik-manager" / "traefik-manager.yml"
+
+
+def test_production_traefik_loads_a_folder_and_keeps_the_api_unpublished() -> None:
+    static = YAML(typ="safe").load((PRODUCTION / "traefik" / "traefik.yml").read_text())
+    assert static["providers"]["file"]["directory"] == "/etc/traefik/dynamic"
+    assert "filename" not in static["providers"]["file"]
+    assert static["api"] == {"dashboard": False}  # no insecure mode, no dashboard
+    port = static["entryPoints"]["tmapi"]["address"].lstrip(":")
+    compose = YAML(typ="safe").load((PRODUCTION / "compose.yml").read_text())
+    assert not any(port in str(p).split(":")[-1] for p in compose["services"]["traefik"]["ports"])
+    assert (PRODUCTION / "traefik" / "dynamic" / "dynamic.yml").is_file()
+    assert not (PRODUCTION / "traefik" / "dynamic" / "traefik-manager.yml").exists()  # opt-in
+
+
+def test_traefik_manager_addon_is_hardened_and_never_sees_the_socket() -> None:
+    tm = YAML(typ="safe").load(TM_COMPOSE.read_text())["services"]["traefik-manager"]
+    assert ":" in tm["image"] and not tm["image"].endswith(":latest")
+    assert tm["read_only"] is True and tm["cap_drop"] == ["ALL"]
+    assert "no-new-privileges:true" in tm["security_opt"]
+    assert not any("docker.sock" in str(v) for v in tm["volumes"])
+    env = tm["environment"]
+    for unset in ("STATIC_CONFIG_PATH", "RESTART_METHOD", "DOCKER_HOST", "AUTH_ENABLED"):
+        assert unset not in env, unset
+    assert env["CONFIG_PATH"] == "/app/dynamic/dynamic.yml" and "CONFIG_DIR" not in env
+    assert env["TRUSTED_PROXIES"] == "172.30.0.2/32"  # Traefik's fixed address
+    assert "./traefik/dynamic:/app/dynamic" in tm["volumes"]  # the folder: atomic saves
+    assert "ports" not in tm
+
+
+def test_traefik_manager_addon_routes_vpn_only_and_allows_only_its_own_address() -> None:
+    tm = YAML(typ="safe").load(TM_COMPOSE.read_text())["services"]["traefik-manager"]
+    address = tm["networks"]["edge"]["ipv4_address"]
+    http = YAML(typ="safe").load(TM_DYNAMIC.read_text())["http"]
+    ui = http["routers"]["traefik-manager"]
+    assert ui["entryPoints"] == ["internal"] and "authelia" in ui["middlewares"]
+    api = http["routers"]["traefik-manager-api"]
+    assert api["entryPoints"] == ["tmapi"] and api["service"] == "api@internal"
+    allow = http["middlewares"][api["middlewares"][0]]["ipAllowList"]["sourceRange"]
+    assert allow == [f"{address}/32"]
+    for router in http["routers"].values():  # without entryPoints a router joins every entrypoint
+        assert router.get("entryPoints"), router
+
+
+@pytest.mark.skipif(shutil.which("docker") is None, reason="docker is not installed")
+def test_production_compose_with_traefik_manager_resolves() -> None:
+    env = {"AUTHELIA_VERSION": "4.39.28", "DOCKER_GID": "999", "APP_SECRET_KEY": "x" * 40,
+           "DOMAIN": "example.com", "VPN_ADDRESS": "10.8.0.1", "VPN_CIDR": "10.8.0.0/24",
+           "REDIS_PASSWORD": "y" * 32,
+           "PATH": "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"}  # fmt: skip
+    proc = subprocess.run(
+        ["docker", "compose", "-f", str(PRODUCTION / "compose.yml"), "-f", str(TM_COMPOSE),
+         "config", "-q"],
+        capture_output=True, text=True, env=env, check=False, timeout=60,
+    )  # fmt: skip
+    if "Cannot connect to the Docker daemon" in proc.stderr:
+        pytest.skip("docker daemon is not running")
+    assert proc.returncode == 0, proc.stderr[-800:]

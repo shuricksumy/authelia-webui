@@ -1,0 +1,25 @@
+# Traefik Manager add-on: copy to traefik/dynamic/ (docs/traefik-manager.md). Replace example.com.
+# Kept out of dynamic.yml on purpose: Traefik Manager edits dynamic.yml only, so it cannot remove
+# its own Authelia protection or widen its API access. Edit this file by hand.
+http:
+  routers:
+    traefik-manager: # VPN-only entrypoint and Authelia, like the configurator
+      rule: Host(`tm.example.com`)
+      entryPoints: [internal]
+      service: traefik-manager
+      middlewares: [authelia]
+      tls: {certResolver: le}
+
+    traefik-manager-api: # Traefik's API, for Traefik Manager's own address only
+      rule: PathPrefix(`/api`)
+      entryPoints: [tmapi] # unpublished: only containers on the edge network reach it
+      service: api@internal
+      middlewares: [traefik-manager-only]
+
+  middlewares:
+    traefik-manager-only:
+      ipAllowList:
+        sourceRange: ["172.30.0.20/32"] # traefik-manager's ipv4_address in the compose add-on
+
+  services:
+    traefik-manager: {loadBalancer: {servers: [{url: "http://traefik-manager:5000"}]}}

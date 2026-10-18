@@ -1,0 +1,43 @@
+# Optional add-on: Traefik Manager (github.com/chr0nzz/traefik-manager), a web UI for the routes,
+# middlewares and services in traefik/dynamic/dynamic.yml. Guide: docs/traefik-manager.md.
+#
+#   cp traefik-manager/traefik-manager.yml traefik/dynamic/
+#   mkdir -p traefik-manager/config traefik-manager/backups
+#   sudo chown -R 1000:1000 traefik/dynamic traefik-manager
+#   docker compose -f compose.yml -f compose.traefik-manager.yml up -d
+#
+# What it can and cannot do:
+#   - writes traefik/dynamic/dynamic.yml (Traefik hot-reloads it); nothing else of Traefik's
+#   - reads Traefik's API on the unpublished tmapi entrypoint, allowed for its fixed address only
+#   - no Docker socket, no static config, so it can never restart or reconfigure Traefik itself
+#   - served only on the VPN-only `internal` entrypoint, behind Authelia (traefik-manager.yml)
+services:
+  traefik-manager:
+    # Pin a release; the tag has no "v". The guide's notes were checked against this version.
+    image: ghcr.io/chr0nzz/traefik-manager:1.15.2
+    restart: unless-stopped
+    user: "${TM_UID:-1000}:${TM_GID:-1000}" # owns traefik/dynamic and traefik-manager/
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      TRAEFIK_API_URL: http://traefik:8081 # the tmapi entrypoint (traefik-manager.yml allow-lists us)
+      # One file, not CONFIG_DIR: it may edit your routes, never the add-on's own router and
+      # allow-list next to it (those show as read-only under "File (external)").
+      CONFIG_PATH: /app/dynamic/dynamic.yml
+      DOMAINS: ${DOMAIN:?set DOMAIN, e.g. example.com}
+      CERT_RESOLVER: le # the resolver in traefik/traefik.yml, offered in the route form
+      COOKIE_SECURE: "true"
+      TRUSTED_PROXIES: 172.30.0.2/32 # only Traefik may set X-Forwarded-For
+      TZ: ${TZ:-UTC}
+      # Not set on purpose (see the guide): STATIC_CONFIG_PATH, RESTART_METHOD, DOCKER_HOST.
+    volumes:
+      # The folder, not the file: it saves through a temp file + rename next to the file.
+      - ./traefik/dynamic:/app/dynamic
+      - ./traefik-manager/config:/app/config # its settings, password hash and encryption keys
+      - ./traefik-manager/backups:/app/backups # a copy before every change
+    networks:
+      edge:
+        ipv4_address: 172.30.0.20 # fixed: traefik-manager.yml allows exactly this address
+    depends_on: [traefik]
