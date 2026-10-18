@@ -240,4 +240,63 @@
   });
   document.addEventListener("DOMContentLoaded", initResize);
   document.addEventListener("htmx:afterSettle", initResize);
+
+  // View menu: theme, table style and density. theme.js applies the stored values before the
+  // first paint; here they are changed, saved and shown. Other open tabs of the same site follow.
+  var VIEW_FLAGS = ["head", "rows", "hover", "lines"];
+  function storedView() {
+    try { return JSON.parse(localStorage.getItem("view") || "{}") || {}; } catch (e) { return {}; }
+  }
+  function applyView(view) {
+    var root = document.documentElement;
+    if (view.theme === "light" || view.theme === "dark") { root.setAttribute("data-theme", view.theme); }
+    else { root.removeAttribute("data-theme"); }
+    VIEW_FLAGS.forEach(function (key) {
+      if (view[key] === true) { root.setAttribute("data-tbl-" + key, "on"); }
+      else { root.removeAttribute("data-tbl-" + key); }
+    });
+    if (view.density === "comfortable") { root.setAttribute("data-density", "comfortable"); }
+    else { root.removeAttribute("data-density"); }
+    var panel = document.querySelector("[data-view-panel]");
+    if (!panel) { return; }
+    panel.querySelectorAll('input[name="view-theme"]').forEach(function (input) {
+      input.checked = input.value === (view.theme || "system");
+    });
+    panel.querySelectorAll('input[name="view-density"]').forEach(function (input) {
+      input.checked = input.value === (view.density || "compact");
+    });
+    VIEW_FLAGS.forEach(function (key) {
+      var box = panel.querySelector('input[name="view-' + key + '"]');
+      if (box) { box.checked = view[key] === true; }
+    });
+  }
+  document.addEventListener("change", function (event) {
+    var input = event.target;
+    if (!input.closest || !input.closest("[data-view-panel]")) { return; }
+    var view = storedView();
+    var key = input.name.replace(/^view-/, "");
+    view[key] = input.type === "checkbox" ? input.checked : input.value;
+    if (view[key] === "system" || view[key] === "compact" || view[key] === false) { delete view[key]; }
+    try { localStorage.setItem("view", JSON.stringify(view)); } catch (e) { /* private mode: this page only */ }
+    applyView(view);
+  });
+  document.addEventListener("click", function (event) {
+    if (event.target.closest && event.target.closest("[data-reset-widths]")) {
+      try {
+        Object.keys(localStorage).forEach(function (k) { if (k.indexOf("cols:") === 0) { localStorage.removeItem(k); } });
+      } catch (e) { /* private mode */ }
+      document.querySelectorAll("table.data[data-colkey]").forEach(applyWidths);
+      return;
+    }
+    var menu = document.querySelector("[data-view-menu][open]");
+    if (menu && !menu.contains(event.target)) { menu.removeAttribute("open"); }  // click outside closes
+  });
+  document.addEventListener("keydown", function (event) {
+    var menu = document.querySelector("[data-view-menu][open]");
+    if (event.key === "Escape" && menu) { menu.removeAttribute("open"); }
+  });
+  window.addEventListener("storage", function (event) {
+    if (event.key === "view") { applyView(storedView()); }
+  });
+  document.addEventListener("DOMContentLoaded", function () { applyView(storedView()); });
 })();

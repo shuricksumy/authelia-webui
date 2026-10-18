@@ -16,6 +16,7 @@
   --app-draft-bg: #fff3d1;  --app-draft-fg: #5c3b00;
   --app-border: #d8dde5;
   --app-err-fg: var(--app-deny-fg);
+  --app-head-bg: #eef1f6;   --app-stripe-bg: #f6f8fb; --app-hover-bg: #e8eef7;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,6 +30,7 @@
     --app-bar-bg: #0f151c;    --app-bar-fg: #e6ebf2;
     --app-draft-bg: #4a3600;  --app-draft-fg: #ffe3a1;
     --app-border: #323b49;
+    --app-head-bg: #232b38;   --app-stripe-bg: #19202a; --app-hover-bg: #26303e;
   }
 }
 :root[data-theme="dark"] {
@@ -42,6 +44,7 @@
   --app-bar-bg: #0f151c;    --app-bar-fg: #e6ebf2;
   --app-draft-bg: #4a3600;  --app-draft-fg: #ffe3a1;
   --app-border: #323b49;
+  --app-head-bg: #232b38;   --app-stripe-bg: #19202a; --app-hover-bg: #26303e;
 }
 
 /* ================================================================== 2. base type and spacing
@@ -84,6 +87,18 @@ code { font-size: 0.9em; }
 .topbar nav a[aria-current="page"] { border-bottom: 2px solid currentColor; padding-bottom: 2px; }
 .topbar .soon { opacity: 0.45; cursor: not-allowed; }
 .who-am-i small { opacity: 0.7; }
+/* View menu (app.js): theme, table style, density; a plain <details>, so it opens without JS */
+.view-menu { position: relative; margin: 0; }
+.view-menu > summary { list-style: none; cursor: pointer; padding: 0.1rem 0.55rem; font-size: 0.85rem; border: 1px solid currentColor; border-radius: var(--pico-border-radius); opacity: 0.85; color: inherit; line-height: 1.5; }
+.view-menu > summary::-webkit-details-marker { display: none; }
+.view-menu > summary::after { display: none; }
+.view-menu[open] > summary, .view-menu > summary:hover { opacity: 1; }
+.view-panel { position: absolute; right: 0; top: calc(100% + 0.4rem); z-index: 30; width: 17rem; padding: 0.8rem 0.9rem; display: grid; gap: 0.6rem; background: var(--pico-card-background-color); color: var(--pico-color); border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); box-shadow: var(--pico-card-box-shadow); font-size: 0.9rem; }
+.view-panel fieldset { margin: 0; padding: 0; border: 0; }
+.view-panel legend { font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--pico-muted-color); margin-bottom: 0.2rem; }
+.view-panel label { display: flex; align-items: center; gap: 0.45rem; margin: 0.15rem 0; color: var(--pico-color); }
+.view-panel input { margin: 0; }
+.view-panel button { justify-self: start; }
 .draftbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.4rem 1rem; background: var(--app-draft-bg); color: var(--app-draft-fg); border-bottom: 1px solid var(--app-border); }
 .draftbar > * { max-width: 100rem; }
 .draftbar-actions { display: flex; gap: 0.5rem; }
@@ -157,6 +172,12 @@ table.data thead th { position: relative; }
 .col-grip::after { content: ""; position: absolute; top: 20%; bottom: 20%; left: calc(50% - 1px); width: 2px; border-radius: 1px; background: var(--app-border); }
 .col-grip:hover::after, .col-grip.active::after { top: 0; bottom: 0; background: var(--pico-primary); }
 body.col-resizing { cursor: col-resize; user-select: none; }
+/* table styles from the View menu (data-* on <html>, set by theme.js) */
+:root[data-tbl-head="on"] table.data thead th { background: var(--app-head-bg); color: var(--pico-color); }
+:root[data-tbl-rows="on"] table.data tbody tr:nth-child(even) > td { background: var(--app-stripe-bg); }
+:root[data-tbl-hover="on"] table.data tbody tr:hover > td { background: var(--app-hover-bg); }
+:root[data-tbl-lines="on"] table.data th + th, :root[data-tbl-lines="on"] table.data td + td { border-left: 1px solid var(--app-border); }
+:root[data-density="comfortable"] { --app-table-pad-y: 0.75rem; --app-table-pad-x: 0.85rem; }
 col.w-2xs { width: 2rem; } col.w-xs { width: 3.5rem; } col.w-s { width: 5.5rem; } col.w-m { width: 8rem; }
 col.w-l { width: 10.5rem; } col.w-xl { width: 14rem; } col.w-act { width: 16rem; } col.w-2xl { width: 18rem; }
 .trunc { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -329,6 +350,7 @@ table.keys form.inline-form { display: inline-flex; margin: 0 0.3rem 0 0; }
   .topbar-inner { gap: 0.35rem 1rem; padding: 0.5rem 0.9rem; }
   .brand { order: 1; flex: 1; }
   .who-am-i { order: 2; }
+  .view-menu { order: 2; }
   .topbar nav { order: 3; flex: 1 0 100%; gap: 0.35rem 1rem; }
   main { padding-inline: 0.9rem; }
   .toolbar h1, .toolbar-actions { flex: 1 0 100%; }
