@@ -489,6 +489,24 @@ def test_view_settings_change_the_page_and_are_remembered(admin: Page) -> None:
     assert admin.evaluate("() => localStorage.getItem('view')") == "{}"  # back to the defaults
 
 
+def test_copy_works_without_the_clipboard_api(admin: Page) -> None:
+    """navigator.clipboard is missing on plain HTTP and in some iframes: the button must still copy
+    (execCommand fallback) or say what to do, never do nothing."""
+    admin.goto(f"{BASE}/clients", wait_until="networkidle")
+    button = admin.locator("[data-copy]").first
+    wanted = button.get_attribute("data-copy")
+    # take the API away after the page loaded, keep a reader of the real clipboard for the check
+    admin.context.grant_permissions(["clipboard-read", "clipboard-write"])
+    admin.evaluate(
+        "() => { const c = navigator.clipboard; window.__readClip = () => c.readText(); }"
+    )
+    admin.evaluate("() => Object.defineProperty(navigator, 'clipboard', {value: undefined})")
+    button.click()
+    expect(button).to_have_text("Copied")
+    assert wanted and wanted in admin.evaluate("() => window.__readClip()")
+    expect(button).to_have_text("Copy", timeout=5000)  # the label comes back
+
+
 def test_a_rules_paths_open_under_its_domain(admin: Page) -> None:
     admin.set_viewport_size({"width": 1600, "height": 900})
     open_rules(admin)
