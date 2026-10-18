@@ -45,15 +45,56 @@
     if (target) { target.disabled = !box.checked; }
   });
 
+  // The Clipboard API exists only on HTTPS / localhost, and an iframe needs permission for it
+  // (the emergency door over plain HTTP, a dashboard embed). Fall back to execCommand("copy"); if
+  // that fails too, select the text so Ctrl/Cmd+C works, and say so on the button.
+  function copyText(text, input, button) {
+    var label = button.dataset.label || button.textContent;
+    button.dataset.label = label;
+    function done(message) {
+      button.textContent = message;
+      clearTimeout(button._reset);
+      button._reset = setTimeout(function () { button.textContent = label; }, 2500);
+    }
+    function legacy() {
+      var field = input;
+      var temporary = null;
+      if (!field) {  // inside a modal dialog only its own children can take focus
+        temporary = document.createElement("textarea");
+        temporary.value = text;
+        temporary.setAttribute("readonly", "");
+        temporary.className = "visually-hidden";
+        (button.closest("dialog") || document.body).appendChild(temporary);
+        field = temporary;
+      }
+      var hidden = field.type === "password";
+      if (hidden) { field.type = "text"; }  // a masked field cannot be selected for copying
+      field.focus();
+      field.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      if (hidden) { field.type = "password"; }
+      if (temporary) { temporary.remove(); }
+      if (ok) { done("Copied"); }
+      else {
+        if (input) { input.type = "text"; input.focus(); input.select(); }
+        done("Press Ctrl/Cmd+C");
+      }
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { done("Copied"); }, legacy);
+    } else {
+      legacy();
+    }
+  }
+
   // Copy buttons: data-copy="text" or data-copy-from="input id". Reveal: data-reveal="input id".
   document.addEventListener("click", function (event) {
     var copy = event.target.closest("[data-copy], [data-copy-from]");
     if (copy) {
       var source = copy.getAttribute("data-copy-from");
       var text = source ? document.getElementById(source).value : copy.getAttribute("data-copy");
-      if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).then(function () { copy.textContent = "Copied"; });
-      }
+      copyText(text, source ? document.getElementById(source) : null, copy);
       return;
     }
     var reveal = event.target.closest("[data-reveal]");
