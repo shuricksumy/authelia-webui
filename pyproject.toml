@@ -1,6 +1,6 @@
 [project]
 name = "authelia-configurator"
-version = "0.2.0"
+version = "0.3.0"
 description = "Internal-only web UI for managing Authelia access control rules and OIDC clients"
 license = "Apache-2.0"
 requires-python = ">=3.13,<3.14"
