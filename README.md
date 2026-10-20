@@ -204,6 +204,8 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 - **Apps on a home machine, edge in the cloud (optional):**
   [`examples/remote-agent/`](examples/remote-agent/): a CrowdSec agent next to the apps reports to
   the edge through the tunnel, so Home Assistant and Nextcloud logins are banned on every site.
+- **Bans in the host firewall (optional):** [`docs/firewall-bouncer.md`](docs/firewall-bouncer.md):
+  CrowdSec's firewall bouncer as a pinned local image, so SSH and a VPN server are covered too.
 
 ## Reachable from anywhere (optional, not the default)
 
