@@ -1,3 +1,9 @@
+{%- from "partials/icons.html" import icon %}
+{% set here = active|default('rules') %}
+{% set counts = nav_counts|default({}) %}
+{% macro nav_link(key, href, label, glyph, count=none) -%}
+<a href="{{ href }}" title="{{ label }}" {% if here == key %}aria-current="page"{% endif %}>{{ icon(glyph) }}<span class="nav-label">{{ label }}</span>{% if count is not none %}<span class="nav-count">{{ count }}</span>{% endif %}</a>
+{%- endmacro %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -16,69 +22,86 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="topbar-inner">
-      <a class="brand" href="/">Authelia Configurator</a>
-      <nav aria-label="Main">
-        <a href="/" {% if active|default('rules') == 'overview' %}aria-current="page"{% endif %}>Overview</a>
-        <a href="/rules" {% if active|default('rules') == 'rules' %}aria-current="page"{% endif %}>Rules</a>
-        <a href="/tests" {% if active|default('rules') == 'tests' %}aria-current="page"{% endif %}>Access tests</a>
-        <a href="/clients" {% if active|default('rules') == 'clients' %}aria-current="page"{% endif %}>OIDC Clients</a>
-        <a href="/users" {% if active|default('rules') == 'users' %}aria-current="page"{% endif %}>Users</a>
-        <a href="/groups" {% if active|default('rules') == 'groups' %}aria-current="page"{% endif %}>Groups</a>
-        <a href="/keys" {% if active|default('rules') == 'keys' %}aria-current="page"{% endif %}>Keys</a>
-        <a href="/history" {% if active|default('rules') == 'history' %}aria-current="page"{% endif %}>History</a>
-        <a href="/logs" {% if active|default('rules') == 'logs' %}aria-current="page"{% endif %}>Logs</a>
-      </nav>
-      <span class="who-am-i">{{ identity.username }} <small>(admin)</small></span>
-      <details class="view-menu" data-view-menu>
-        <summary>View</summary>
-        <div class="view-panel" data-view-panel>
-          <fieldset><legend>Theme</legend>
-            <label><input type="radio" name="view-theme" value="system" checked> System</label>
-            <label><input type="radio" name="view-theme" value="light"> Light</label>
-            <label><input type="radio" name="view-theme" value="dark"> Dark</label>
-          </fieldset>
-          <fieldset><legend>Tables</legend>
-            <label><input type="checkbox" name="view-head" checked> Shaded header</label>
-            <label><input type="checkbox" name="view-rows" checked> Striped rows</label>
-            <label><input type="checkbox" name="view-hover" checked> Highlight row on hover</label>
-            <label><input type="checkbox" name="view-lines" checked> Column lines</label>
-          </fieldset>
-          <fieldset><legend>Density</legend>
-            <label><input type="radio" name="view-density" value="compact" checked> Compact</label>
-            <label><input type="radio" name="view-density" value="comfortable"> Comfortable</label>
-          </fieldset>
-          <button type="button" class="outline secondary small" data-reset-widths>Reset column widths</button>
-          <small class="muted">Saved in this browser, for this address only.</small>
-        </div>
-      </details>
-    </div>
+    <button type="button" class="topbar-btn nav-toggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Menu">{{ icon("list") }}</button>
+    <a class="brand" href="/">{{ icon("shield-check", "brand-mark") }}<span>Authelia <b>Configurator</b></span></a>
+    <div id="draftbar">{% include "partials/draftbar.html" %}</div>
+    <span class="topbar-chip {{ 'ok' if runtime.healthy else ('bad' if runtime.healthy is false else '') }}"
+          title="Authelia {{ runtime.running_version or 'version unknown' }}: {{ 'healthy' if runtime.healthy else ('not healthy' if runtime.healthy is false else 'health unknown') }}">
+      <span class="dot" aria-hidden="true"></span><span class="mono">{{ runtime.running_version or '?' }}</span>
+    </span>
+    <details class="view-menu" data-view-menu>
+      <summary class="topbar-btn" aria-label="View settings">{{ icon("sliders-horizontal") }}<span class="view-label">View</span></summary>
+      <div class="view-panel" data-view-panel>
+        <fieldset><legend>Theme</legend>
+          <label><input type="radio" name="view-theme" value="system" checked> System</label>
+          <label><input type="radio" name="view-theme" value="light"> Light</label>
+          <label><input type="radio" name="view-theme" value="dark"> Dark</label>
+        </fieldset>
+        <fieldset><legend>Tables</legend>
+          <label><input type="checkbox" name="view-head" checked> Shaded header</label>
+          <label><input type="checkbox" name="view-rows" checked> Striped rows</label>
+          <label><input type="checkbox" name="view-hover" checked> Highlight row on hover</label>
+          <label><input type="checkbox" name="view-lines" checked> Column lines</label>
+        </fieldset>
+        <fieldset><legend>Density</legend>
+          <label><input type="radio" name="view-density" value="compact" checked> Compact</label>
+          <label><input type="radio" name="view-density" value="comfortable"> Comfortable</label>
+        </fieldset>
+        <button type="button" class="outline secondary small" data-reset-widths>Reset column widths</button>
+        <small class="muted">Saved in this browser, for this address only.</small>
+      </div>
+    </details>
+    <span class="who-am-i" title="{{ identity.username }} (admin)"><span class="avatar" aria-hidden="true">{{ identity.username[:2]|upper }}</span><span class="who-name">{{ identity.username }} <small>(admin)</small></span></span>
   </header>
 
-  <div id="draftbar">{% include "partials/draftbar.html" %}</div>
-  {% include "partials/banners.html" %}
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <nav aria-label="Main">
+        {{ nav_link('overview', '/', 'Overview', 'squares-four') }}
+        <p class="nav-group">Access</p>
+        {{ nav_link('rules', '/rules', 'Rules', 'shield-check', counts.get('rules')) }}
+        {{ nav_link('tests', '/tests', 'Access tests', 'flask', counts.get('tests')) }}
+        <p class="nav-group">Identity</p>
+        {{ nav_link('users', '/users', 'Users', 'user', counts.get('users')) }}
+        {{ nav_link('groups', '/groups', 'Groups', 'users-three', counts.get('groups')) }}
+        {{ nav_link('clients', '/clients', 'OIDC Clients', 'plugs-connected', counts.get('clients')) }}
+        <p class="nav-group">Security</p>
+        {{ nav_link('keys', '/keys', 'Keys', 'key') }}
+        {{ nav_link('backup', '/backup', 'Backup', 'archive') }}
+        <p class="nav-group">Activity</p>
+        {{ nav_link('history', '/history', 'History', 'clock-counter-clockwise') }}
+        {{ nav_link('logs', '/logs', 'Logs', 'scroll') }}
+      </nav>
+      <button type="button" class="nav-collapse" data-nav-collapse aria-label="Collapse the menu" title="Collapse the menu">{{ icon("caret-double-left") }}<span class="nav-label">Collapse</span></button>
+    </aside>
+    <div class="nav-backdrop" data-nav-close hidden></div>
 
-  <main class="container-fluid">
-    <div id="flash" class="flash" role="status" aria-live="polite"></div>
-    <p id="restart-note" class="flash info" role="status" hidden>
-      Authelia is restarting and will sign you out. You will be asked to sign in again; the result
-      of the apply is shown right after. If the change has to be rolled back, Authelia restarts a
-      second time and you may be asked to sign in once more.
-    </p>
-    {% block content %}{% endblock %}
-  </main>
+    <div class="content">
+      {% include "partials/banners.html" %}
+
+      <main class="container-fluid">
+        <div id="flash" class="flash" role="status" aria-live="polite"></div>
+        <p id="restart-note" class="flash info" role="status" hidden>
+          Authelia is restarting and will sign you out. You will be asked to sign in again; the result
+          of the apply is shown right after. If the change has to be rolled back, Authelia restarts a
+          second time and you may be asked to sign in once more.
+        </p>
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer class="statusbar{% if runtime.bad %} bad{% endif %}">
+        <span>Authelia running: <strong>{{ runtime.running_version or 'unknown' }}</strong>
+          {% if runtime.healthy %}<span class="ok-text">&#10003; healthy</span>
+          {% elif runtime.healthy is false %}<span class="err-text">&#10007; not healthy</span>
+          {% else %}<small>(cannot be determined)</small>{% endif %}</span>
+        <span>bundled <strong>{{ bundled_version }}</strong>
+          {% if runtime.running_version %}{% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003; matches</span>{% endif %}{% endif %}</span>
+        <span title="The address the configurator sees for you (checked against ALLOWED_CLIENT_CIDRS)">you: <strong>{{ identity.client_ip }}</strong></span>
+        <span>last apply: {% if last_job and last_job.done %}<strong>{{ last_job.finished|utc }}</strong> ({{ last_job.result }}){% else %}<strong>none</strong>{% endif %}</span>
+      </footer>
+    </div>
+  </div>
 
   <div id="modal"></div>
-
-  <footer class="statusbar{% if runtime.bad %} bad{% endif %}">
-    <span>Authelia running: <strong>{{ runtime.running_version or 'unknown' }}</strong>
-      {% if runtime.healthy %}<span class="ok-text">&#10003; healthy</span>
-      {% elif runtime.healthy is false %}<span class="err-text">&#10007; not healthy</span>
-      {% else %}<small>(cannot be determined)</small>{% endif %}</span>
-    <span>bundled <strong>{{ bundled_version }}</strong>
-      {% if runtime.running_version %}{% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003; matches</span>{% endif %}{% endif %}</span>
-    <span title="The address the configurator sees for you (checked against ALLOWED_CLIENT_CIDRS)">you: <strong>{{ identity.client_ip }}</strong></span>
-    <span>last apply: {% if last_job and last_job.done %}<strong>{{ last_job.finished|utc }}</strong> ({{ last_job.result }}){% else %}<strong>none</strong>{% endif %}</span>
-  </footer>
 </body>
 </html>

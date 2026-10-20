@@ -25,6 +25,19 @@ ASSETS = {
     "pico": ("@picocss/pico", "2.1.1", "css/pico.min.css", "pico.min.css"),
     "htmx": ("htmx.org", "2.0.11", "dist/htmx.min.js", "htmx.min.js"),
     "sortable": ("sortablejs", "1.15.7", "Sortable.min.js", "Sortable.min.js"),
+    # Fonts (SIL Open Font License), Latin subset, variable weight: one file each.
+    "inter": (
+        "@fontsource-variable/inter",
+        "5.2.8",
+        "files/inter-latin-wght-normal.woff2",
+        "inter.woff2",
+    ),
+    "jetbrains-mono": (
+        "@fontsource-variable/jetbrains-mono",
+        "5.2.8",
+        "files/jetbrains-mono-latin-wght-normal.woff2",
+        "jetbrains-mono.woff2",
+    ),
 }
 
 

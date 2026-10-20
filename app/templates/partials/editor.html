@@ -1,6 +1,10 @@
+{% from "partials/icons.html" import icon %}
 {% macro rows(text, minimum=2) %}{{ [minimum, [text.splitlines()|length + 1, 8]|min]|max }}{% endmacro %}
 <div class="editor" id="editor">
-  <h2>{% if index is none %}New rule{% else %}{{ 'Rule' if locked else 'Edit rule' }} #{{ index + 1 }}{% endif %}</h2>
+  <div class="panel-head">
+    <h2>{% if index is none %}New rule{% else %}{{ 'Rule' if locked else 'Edit rule' }} #{{ index + 1 }}{% endif %}</h2>
+    <a role="button" class="act" href="/rules" aria-label="Close the editor" title="Close">{{ icon("x") }}</a>
+  </div>
 
   {% if locked %}
   <article class="notice info">

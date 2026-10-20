@@ -5,6 +5,18 @@
     "package": "htmx.org",
     "version": "2.0.11"
   },
+  "inter": {
+    "file": "inter.woff2",
+    "integrity": "sha384-l0ql7Q1zqvX5klAVRwYjcMVCkCxg5dMTdghsIlC3pYkX6wwEHerh2bP/4yAao3Im",
+    "package": "@fontsource-variable/inter",
+    "version": "5.2.8"
+  },
+  "jetbrains-mono": {
+    "file": "jetbrains-mono.woff2",
+    "integrity": "sha384-g2p3DONsRgB71ryU0/Vwr5KWy0Mcp8CSPjzC+3EhRMPKkz5MLtwxpE6GK3i2I9E2",
+    "package": "@fontsource-variable/jetbrains-mono",
+    "version": "5.2.8"
+  },
   "pico": {
     "file": "pico.min.css",
     "integrity": "sha384-L1dWfspMTHU/ApYnFiMz2QID/PlP1xCW9visvBdbEkOLkSSWsP6ZJWhPw6apiXxU",

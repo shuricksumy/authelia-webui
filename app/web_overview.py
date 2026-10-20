@@ -46,6 +46,7 @@ class Attention:
 class Overview:
     items: list[Attention] = field(default_factory=list)
     counts: dict[str, str] = field(default_factory=dict)
+    stats: dict[str, int] = field(default_factory=dict)  # the number cards; a missing key = unknown
     up_since: str = ""
     log_counts: dict[str, int] | None = None
 
@@ -86,6 +87,9 @@ def collect(v: View) -> Overview:
         warnings = [i for i in issues if i.severity == "warning"]
         out.counts["Rules"] = str(len(v.live.blocks))
         out.counts["Disabled rules"] = str(len(v.disabled.entries))
+        out.stats.update(rules=len(v.live.blocks), disabled=len(v.disabled.entries),
+                         rule_problems=len(errors) + len(report.violations),
+                         rule_warnings=len(warnings))  # fmt: skip
         if report.violations:
             out.items.append(
                 Attention("error", f"Protected rule problem: {report.violations[0]}", "/rules")
@@ -109,6 +113,7 @@ def collect(v: View) -> Overview:
         cases = access_tests.load(v.settings.CONFIG_MANAGED_DIR)
         out.counts["Access tests"] = str(len(cases))
         failing = [r for r in services.engine.test_results() if r.live.policy != r.case.expect]
+        out.stats.update(tests=len(cases), failing=len(failing))
         if failing:
             out.items.append(
                 Attention(
@@ -128,6 +133,8 @@ def collect(v: View) -> Overview:
         errors = [i for i in issues if i.severity == "error"]
         plain = [i for i in issues if i.code == "plaintext-secret"]
         other = [i for i in issues if i.severity == "warning" and i.code != "plaintext-secret"]
+        out.stats.update(clients=len(found), client_problems=len(errors),
+                         client_warnings=len(plain) + len(other))  # fmt: skip
         if errors:
             out.items.append(
                 Attention(
@@ -169,6 +176,8 @@ def collect(v: View) -> Overview:
         )
         groups = {g for u in data.values() for g in (u.get("groups") or [])}
         out.counts["Groups"] = str(len(groups))
+        out.stats.update(users=len(enabled), users_disabled=len(data) - len(enabled),
+                         groups=len(groups), admins=len(admins))  # fmt: skip
         if len(admins) < 2:
             out.items.append(
                 Attention(

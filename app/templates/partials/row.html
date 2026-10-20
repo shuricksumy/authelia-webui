@@ -1,4 +1,4 @@
-{% from "partials/icons.html" import grip, lock, warn %}
+{% from "partials/icons.html" import grip, icon, lock, warn %}
 <tr data-index="{{ r.index }}"{% if r.status %} class="status-{{ r.status }}"{% endif %}>
   <td class="col-handle">{% if sortable and view != 'domain' %}<span class="drag-handle" title="Drag to reorder">{{ grip() }}</span>{% endif %}</td>
   <td class="col-num">{{ r.number }}{% if r.status %}<small class="marker {{ r.status }}">{{ {'moved': 'moved', 'edited': 'edited', 'new': 'new'}[r.status] }}</small>{% endif %}</td>
@@ -24,13 +24,13 @@
   </td>
   <td class="col-actions">
     {% if view != 'domain' %}
-    <button type="button" class="outline secondary small icon-btn" title="Move up" aria-label="Move rule {{ r.number }} up"
-            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"up"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == 0 or not sortable %}disabled{% endif %}>&uarr;</button>
-    <button type="button" class="outline secondary small icon-btn" title="Move down" aria-label="Move rule {{ r.number }} down"
-            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"down"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == all_count - 1 or not sortable %}disabled{% endif %}>&darr;</button>
+    <button type="button" class="act" title="Move up" aria-label="Move rule {{ r.number }} up"
+            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"up"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == 0 or not sortable %}disabled{% endif %}>{{ icon("arrow-up") }}</button>
+    <button type="button" class="act" title="Move down" aria-label="Move rule {{ r.number }} down"
+            hx-post="/rules/{{ r.index }}/move" hx-vals='{"dir":"down"}' hx-target="#rules-section" hx-swap="outerHTML" {% if r.index == all_count - 1 or not sortable %}disabled{% endif %}>{{ icon("arrow-down") }}</button>
     {% endif %}
-    {% if not r.locked %}<button type="button" class="outline secondary small" title="Switch this rule off without deleting it"
-            hx-post="/rules/{{ r.index }}/disable" hx-target="#rules-section" hx-swap="outerHTML">Disable</button>{% else %}<button type="button" class="outline secondary small" disabled title="This rule is protected: it cannot be disabled">Disable</button>{% endif %}
-    <a role="button" class="outline small" href="/rules?edit={{ r.index }}" hx-get="/rules/{{ r.index }}/edit" hx-target="#panel" hx-push-url="/rules?edit={{ r.index }}">{{ 'View' if r.locked else 'Edit' }}</a>
+    {% if not r.locked %}<button type="button" class="act toggle" aria-label="Disable" title="Active: click to switch this rule off without deleting it"
+            hx-post="/rules/{{ r.index }}/disable" hx-target="#rules-section" hx-swap="outerHTML"><span class="switch on"></span></button>{% else %}<button type="button" class="act toggle" aria-label="Disable" disabled title="This rule is protected: it cannot be disabled"><span class="switch on"></span></button>{% endif %}
+    <a role="button" class="act accent edit" aria-label="{{ 'View' if r.locked else 'Edit' }}" title="{{ 'View' if r.locked else 'Edit' }} rule {{ r.number }}" href="/rules?edit={{ r.index }}" hx-get="/rules/{{ r.index }}/edit" hx-target="#panel" hx-push-url="/rules?edit={{ r.index }}">{{ icon("eye" if r.locked else "pencil-simple") }}</a>
   </td>
 </tr>

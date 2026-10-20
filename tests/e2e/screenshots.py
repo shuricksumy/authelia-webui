@@ -9,6 +9,7 @@ portal (password + TOTP), and writes docs/screenshots/<screen>-<width>-<light|da
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import time
@@ -29,13 +30,16 @@ from tests.e2e.conftest import rule_number
 from tests.fixtures.stack import STACK
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "docs" / "screenshots"
+# SCREENSHOTS_DIR: capture somewhere else while iterating, without touching the docs copies
+OUT = Path(os.environ.get("SCREENSHOTS_DIR") or ROOT / "docs" / "screenshots")
 VIEWPORTS = {
     "1920": {"width": 1920, "height": 1080},
     "1280": {"width": 1280, "height": 900},
     "390": {"width": 390, "height": 844},
 }
 SCHEMES = ("light", "dark")
+# SCREENSHOT_WIDTHS=1280,390: only these widths (quicker while iterating)
+WIDTHS = [w for w in os.environ.get("SCREENSHOT_WIDTHS", "").split(",") if w]
 
 
 MANAGED = STACK / "managed"
@@ -411,11 +415,6 @@ def shoot(context: BrowserContext, name: str, width: str, scheme: str) -> None:
     try:
         SCREENS[name](page)
         settle(page)
-        # The panel scrolls inside the viewport; show all of it for review (CSSOM: CSP allows it).
-        page.evaluate(
-            "() => { const p = document.getElementById('panel'); "
-            "if (p) { p.style.maxHeight = 'none'; p.style.position = 'static'; } }"
-        )
         page.screenshot(path=str(OUT / f"{name}-{width}-{scheme}.png"), full_page=True)
     finally:
         page.close()
@@ -434,6 +433,8 @@ def main(only: list[str] | None = None) -> int:
         state = login(browser)
         for scheme in SCHEMES:
             for width, viewport in VIEWPORTS.items():
+                if WIDTHS and width not in WIDTHS:
+                    continue
                 context = browser.new_context(
                     ignore_https_errors=True,
                     storage_state=state,
