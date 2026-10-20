@@ -1,55 +1,46 @@
-{% if emergency %}
-<div class="banner error" role="alert">
-  <span><strong>Emergency access.</strong> Authelia is not protecting this session: you signed in with the emergency password.
-    Fix what is broken, then sign out.</span>
-  <button type="button" class="outline secondary small" hx-post="/emergency/logout">Sign out</button>
-</div>
-{% endif %}
+{#- Notices for the bell menu in the top bar (base.html counts the data-note items). Emergency
+    access and a running apply are not here: they are chips in the top bar, always in sight. -#}
 {% if any_network and not emergency %}
-<div class="banner warn" role="status">
+<li class="banner warn" data-note="warn">
   <span><strong>Reachable from any network.</strong> Only Authelia protects this tool (group
     <code>{{ admin_group }}</code>, two-factor). <code>ALLOW_ANY_CLIENT_NETWORK</code> is on.</span>
-</div>
+</li>
 {% endif %}
 {% if runtime.bad or runtime.mismatch_warns %}
-<div class="banner {{ 'error' if runtime.bad else 'warn' }}" role="alert">{{ runtime.explanation }}</div>
+<li class="banner {{ 'error' if runtime.bad else 'warn' }}" data-note="{{ 'error' if runtime.bad else 'warn' }}"><span>{{ runtime.explanation }}</span></li>
 {% endif %}
 {% if cert_warnings %}
-<div class="banner warn" role="status">
+<li class="banner warn" data-note="warn">
   <span><strong>{{ 'A certificate has expired.' if cert_warnings[0].days_left() < 0 else 'A certificate expires soon.' }}</strong>
     {{ cert_warnings[0].source }}{% if cert_warnings[0].subject %} ({{ cert_warnings[0].subject }}){% endif %}: {{ cert_warnings[0]|cert_days }}.
     {% if cert_warnings|length > 1 %}{{ cert_warnings|length - 1 }} more. {% endif %}<a href="/keys">Keys and certificates</a></span>
-</div>
+</li>
 {% endif %}
-{% if last_job %}
-  {% if not last_job.done %}
-  <div class="banner info" role="status">An apply is running. <a href="/apply/result">Show progress</a></div>
-  {% else %}
-  <div class="banner job {{ last_job.result }}" role="status" data-job-id="{{ last_job.id }}" data-dismissable>
-    <span>
-      {% if last_job.result == 'applied' %}<strong>Applied</strong> by {{ last_job.user }} at {{ last_job.finished|utc }}{% if last_job.commit %} (commit <code>{{ last_job.commit[:7] }}</code>){% endif %}. Authelia is healthy.
-      {% elif last_job.result == 'rolled-back' %}<strong>Rolled back.</strong> {{ last_job.message }}
-      {% elif last_job.result == 'failed' %}<strong>Needs your attention.</strong> {{ last_job.message }}
-      {% else %}<strong>Not applied.</strong> {{ last_job.message }}{% endif %}
-      <a href="/apply/result">Details</a> &middot; <a href="/history">History</a>
-    </span>
-    <button type="button" class="outline secondary small" data-dismiss aria-label="Dismiss this message">Dismiss</button>
-  </div>
-  {% endif %}
+{% if last_job and last_job.done %}
+<li class="banner job {{ last_job.result }}" data-note="{{ 'info' if last_job.result == 'applied' else ('error' if last_job.result == 'failed' else 'warn') }}" data-job-id="{{ last_job.id }}" data-dismissable>
+  <span>
+    {% if last_job.result == 'applied' %}<strong>Applied</strong> by {{ last_job.user }} at {{ last_job.finished|utc }}{% if last_job.commit %} (commit <code>{{ last_job.commit[:7] }}</code>){% endif %}. Authelia is healthy.
+    {% elif last_job.result == 'rolled-back' %}<strong>Rolled back.</strong> {{ last_job.message }}
+    {% elif last_job.result == 'failed' %}<strong>Needs your attention.</strong> {{ last_job.message }}
+    {% else %}<strong>Not applied.</strong> {{ last_job.message }}{% endif %}
+    <a href="/apply/result">Details</a> &middot; <a href="/history">History</a>
+  </span>
+  <button type="button" class="outline secondary small" data-dismiss aria-label="Dismiss this message">Dismiss</button>
+</li>
 {% endif %}
 {% if notices.external %}
-<div class="banner warn" role="status" id="notice-external">
+<li class="banner warn" data-note="warn" id="notice-external">
   <span><strong>Files were edited outside the configurator.</strong> The changes were recorded as
     commit <code>{{ notices.external.commit[:7] }}</code>. <a href="/history">See History</a>. A draft started before this may be out of date.</span>
   <button type="button" class="outline secondary small" hx-post="/notices/external/seen" hx-target="#notice-external" hx-swap="outerHTML">Mark as seen</button>
-</div>
+</li>
 {% endif %}
 {% if notices.main_changed %}
-<div class="banner warn" role="status" id="notice-main">
+<li class="banner warn" data-note="warn" id="notice-main">
   <span><strong>The main Authelia configuration changed since the last apply.</strong> Check that the rules still validate with it.</span>
   <span class="banner-actions">
     <button type="button" class="outline small" hx-post="/notices/main/revalidate" hx-target="#notice-main" hx-swap="outerHTML">Re-validate</button>
     <button type="button" class="outline secondary small" hx-post="/notices/main/seen" hx-target="#notice-main" hx-swap="outerHTML">Mark as seen</button>
   </span>
-</div>
+</li>
 {% endif %}

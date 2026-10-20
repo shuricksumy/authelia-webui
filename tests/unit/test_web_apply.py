@@ -161,6 +161,9 @@ def test_version_mismatch_banner_and_footer(env: dict[str, Path]) -> None:  # no
     page = ui.get("/rules").text
     assert 'class="banner error"' in page and "Deploy the image tagged authelia-4.40.1" in page
     assert 'class="statusbar bad"' in page and "&#10007; differs" in page
+    # the notice sits behind the bell; the bell counts it and turns red
+    assert 'class="bell-count error" data-bell-count>1<' in page
+    assert 'aria-label="Notifications (1)"' in page
     assert ui.get("/version").json() == {
         "bundled": "4.39.28", "running": "4.40.1", "healthy": True, "match": False,
     }  # fmt: skip
@@ -178,6 +181,7 @@ def test_warn_policy_shows_a_banner_without_blocking_styling(env: dict[str, Path
     ui.settings.VERSION_MISMATCH = "warn"  # type: ignore[assignment]
     page = ui.get("/rules").text
     assert "banner warn" in page and 'class="statusbar bad"' not in page
+    assert 'class="bell-count warn"' in page
 
 
 def test_unreachable_proxy_is_shown_not_hidden(env: dict[str, Path]) -> None:  # noqa: F811
@@ -189,7 +193,9 @@ def test_unreachable_proxy_is_shown_not_hidden(env: dict[str, Path]) -> None:  #
 
 def test_no_job_means_no_result_banner(env: dict[str, Path]) -> None:  # noqa: F811
     ui, _, _ = build(env, [True])
-    assert "banner job" not in ui.get("/rules").text
+    page = ui.get("/rules").text
+    assert "banner job" not in page
+    assert "data-bell-count hidden>0<" in page  # nothing to report: no badge
     assert "No apply has run yet" in ui.get("/apply/result").text
 
 

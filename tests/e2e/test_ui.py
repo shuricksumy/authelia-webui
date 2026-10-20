@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Browser, Page, expect
 
@@ -213,10 +215,12 @@ def test_a_hand_edit_is_recorded_and_announced(admin: Page) -> None:
     try:
         live.write_text(original + "# edited over ssh (e2e)\n")
         open_rules(admin)
+        admin.locator("[data-bell-menu] > summary").click()  # notices live behind the bell
         expect(admin.get_by_text("Files were edited outside the configurator")).to_be_visible()
         admin.goto(f"{BASE}/history", wait_until="networkidle")
         expect(admin.locator("table.history:not(.audit)")).to_contain_text("edited outside")
         admin.goto(f"{BASE}/rules", wait_until="networkidle")
+        admin.locator("[data-bell-menu] > summary").click()
         admin.get_by_role("button", name="Mark as seen").click()
         expect(admin.get_by_text("Files were edited outside")).to_have_count(0)
     finally:
@@ -502,9 +506,9 @@ def test_copy_works_without_the_clipboard_api(admin: Page) -> None:
     )
     admin.evaluate("() => Object.defineProperty(navigator, 'clipboard', {value: undefined})")
     button.click()
-    expect(button).to_have_text("Copied")
+    expect(button).to_have_attribute("data-tip", "Copied")  # an icon button: a tip says so
     assert wanted and wanted in admin.evaluate("() => window.__readClip()")
-    expect(button).to_have_text("Copy", timeout=5000)  # the label comes back
+    expect(button).not_to_have_attribute("data-tip", "Copied", timeout=5000)  # and goes away
 
 
 def test_a_rules_paths_open_under_its_domain(admin: Page) -> None:
@@ -587,7 +591,9 @@ def test_emergency_door_signs_in_shows_the_banner_and_downloads_a_backup(
 
         page.get_by_label("Emergency password").fill(EMERGENCY_PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page.get_by_text("Authelia is not protecting this session")).to_be_visible()
+        chip = page.locator(".emergency-chip")  # always in sight in the top bar
+        expect(chip).to_contain_text("Emergency access")
+        expect(chip).to_have_attribute("title", re.compile("Authelia is not protecting"))
         expect(page.get_by_role("heading", name="Overview")).to_be_visible()
         page.goto(f"{door}/rules", wait_until="networkidle")
         expect(page.locator("#rules-body tr").first).to_be_visible()  # the whole UI works

@@ -26,6 +26,7 @@ from app.web import (
     Conflict,
     View,
     conflict_response,
+    is_htmx,
     load_view,
     render,
     services_of,
@@ -50,16 +51,29 @@ def form_context(
     }  # fmt: skip
 
 
+def list_context(v: View) -> dict[str, Any]:
+    """The tests table; the form opens as a drawer over it."""
+    engine = services_of(v.request).engine
+    try:
+        results = engine.test_results()
+    except DocumentError as exc:
+        return {"results": [], "broken": str(exc), "active": "tests", "labels": POLICY_LABEL,
+                "tests_rev": ""}  # fmt: skip
+    return {"results": results, "broken": "", "active": "tests", "labels": POLICY_LABEL,
+            "tests_rev": engine.tests_rev()}  # fmt: skip
+
+
+def form_response(v: View, form: dict[str, Any], status: int = 200) -> Response:
+    """The form alone for the drawer (htmx), or the whole page with the drawer open (a link)."""
+    if is_htmx(v.request):
+        return render(v, "partials/test_form.html", status=status, **form)
+    return render(v, "tests.html", status=status, **{**list_context(v), **form, "panel": True})
+
+
 @router.get("/tests", response_class=HTMLResponse)
 def tests_page(request: Request) -> Response:
     v = load_view(request)
-    try:
-        results = services_of(request).engine.test_results()
-    except DocumentError as exc:
-        return render(v, "tests.html", results=[], broken=str(exc), active="tests",
-                      labels=POLICY_LABEL, tests_rev="")  # fmt: skip
-    return render(v, "tests.html", results=results, broken="", active="tests", labels=POLICY_LABEL,
-                  tests_rev=services_of(request).engine.tests_rev())  # fmt: skip
+    return render(v, "tests.html", **list_context(v))
 
 
 @router.get("/tests/new", response_class=HTMLResponse)
@@ -71,7 +85,7 @@ def new_test(request: Request, url: str = "", method: str = "GET", user: str = "
         groups=tuple(g.strip() for g in groups.split(",") if g.strip()),
         expect=expect if expect in POLICIES else "one_factor",
     )  # fmt: skip
-    return render(v, "partials/test_form.html", **form_context(v, case, None, []))
+    return form_response(v, form_context(v, case, None, []))
 
 
 @router.get("/tests/{index}/edit", response_class=HTMLResponse)
@@ -80,7 +94,7 @@ def edit_test(request: Request, index: int) -> Response:
     cases = access_tests.load(v.settings.CONFIG_MANAGED_DIR)
     if not 0 <= index < len(cases):
         return conflict_response(Conflict("That test no longer exists. Reload the page.", 404))
-    return render(v, "partials/test_form.html", **form_context(v, cases[index], index, []))
+    return form_response(v, form_context(v, cases[index], index, []))
 
 
 Change = Callable[[list[AccessCase]], tuple[list[AccessCase], str]]
@@ -114,8 +128,7 @@ async def save_test(request: Request) -> Response:
             raise DocumentError("unknown HTTP method")
     except DocumentError as exc:
         draft = AccessCase(url=values["url"][:2048], expect="one_factor", name=values["name"][:200])
-        return render(v, "partials/test_form.html", status=422,
-                      **form_context(v, draft, index, [str(exc)]))  # fmt: skip
+        return form_response(v, form_context(v, draft, index, [str(exc)]), 422)
 
     def change(cases: list[AccessCase]) -> tuple[list[AccessCase], str]:
         if index is None:
@@ -126,8 +139,7 @@ async def save_test(request: Request) -> Response:
 
     problem = await run_in_threadpool(_commit, request, change, str(data.get("tests_rev", "")))
     if problem:
-        return render(v, "partials/test_form.html", status=422,
-                      **form_context(v, case, index, [problem]))  # fmt: skip
+        return form_response(v, form_context(v, case, index, [problem]), 422)
     return Response(status_code=204, headers={"HX-Redirect": "/tests"})
 
 

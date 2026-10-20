@@ -1,8 +1,12 @@
-{% extends "base.html" %}
+{% extends "users.html" %}
+{% from "partials/icons.html" import icon %}
 {% block title %}{{ 'New user' if uname is none else 'Edit user' }}{% endblock %}
-{% block content %}
+{% block panel -%}
 <div class="client-editor" id="editor">
-  <div class="toolbar"><h1>{% if uname is none %}New user{% else %}Edit user <code>{{ uname }}</code>{% endif %}</h1></div>
+  <div class="panel-head">
+    <h2>{% if uname is none %}New user{% else %}Edit user <code>{{ uname }}</code>{% endif %}</h2>
+    <a role="button" class="act" href="/users" aria-label="Close the editor" title="Close" data-panel-close>{{ icon("x") }}</a>
+  </div>
   {% if not writable %}<article class="notice info">The users file is read-only here (outside the managed folder).</article>{% endif %}
   {% if errors %}<article class="notice error" role="alert"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></article>{% endif %}
 
@@ -59,4 +63,4 @@
     <p class="muted"><small>Saved at once. Authelia reloads the users file by itself: nobody is signed out.</small></p>
   </form>
 </div>
-{% endblock %}
+{%- endblock %}

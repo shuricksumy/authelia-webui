@@ -234,16 +234,42 @@ main { flex: 1; width: 100%; max-width: 110rem; margin: 0; padding: 1.15rem 1.5r
 .statusbar strong { font-family: var(--pico-font-family-monospace); font-weight: 500; color: var(--pico-color); }
 .statusbar.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); }
 .statusbar.bad .err-text, .statusbar.bad .ok-text, .statusbar.bad strong { color: inherit; }
-.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.5rem 1.5rem; border-bottom: 1px solid var(--app-border); }
-.banner > span { flex: 1 1 20rem; }
+/* Notifications: a bell in the top bar with a count coloured by the worst notice, and a panel.
+   Each notice keeps the class "banner <kind>"; [hidden] hides a dismissed one. */
+.bell-menu { position: relative; margin: 0; }
+.topbar .bell-menu > summary.topbar-btn { list-style: none; color: var(--pico-color); position: relative; padding-inline: 0.55rem; }
+.bell-menu > summary::-webkit-details-marker { display: none; }
+.bell-menu > summary::after { display: none; }
+.bell-count { position: absolute; top: -0.4rem; right: -0.45rem; min-width: 1.1rem; height: 1.1rem; padding: 0 0.3rem; border-radius: 1rem; display: inline-grid; place-items: center; font-size: 0.66rem; font-weight: 700; line-height: 1; color: #fff; background: var(--app-accent); border: 2px solid var(--app-chrome-bg); }
+.bell-count.warn { background: #d97706; }
+.bell-count.error { background: var(--app-bad-dot); }
+.bell-count[hidden] { display: none; }
+.bell-panel { position: absolute; right: 0; top: calc(100% + 0.45rem); z-index: 50; width: min(30rem, calc(100vw - 1.5rem)); max-height: calc(100vh - 5rem); overflow: auto; padding: 0.7rem 0.75rem 0.75rem; background: var(--app-surface); color: var(--pico-color); border: 1px solid var(--app-border); border-radius: var(--app-radius-lg); box-shadow: var(--app-card-shadow-hover); }
+.bell-title { margin: 0 0.15rem 0.5rem; color: var(--pico-muted-color); }
+ul.notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+ul.notes > li { list-style: none; margin: 0; }
+.notes-empty { display: none; margin: 0.2rem 0.15rem; font-size: 0.88rem; }
+ul.notes:not(:has(> li:not([hidden]))) + .notes-empty { display: block; }
+.banner { position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.45rem 0.75rem; padding: 0.55rem 0.75rem 0.55rem 0.95rem; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); background: var(--app-surface-2); font-size: 0.86rem; line-height: 1.45; }
+.banner::before { content: ""; position: absolute; left: 0; top: 0.4rem; bottom: 0.4rem; width: 3px; border-radius: 0 3px 3px 0; background: var(--app-accent); }
+.banner > span { flex: 1 1 16rem; }
 .banner button { margin: 0; width: auto; }
-.banner-actions { display: inline-flex; gap: 0.5rem; }
-.banner.error, .banner.job.failed { background: var(--app-deny-bg); color: var(--app-deny-fg); }
-.banner.warn, .banner.job.rolled-back, .banner.job.refused { background: var(--app-warn-bg); color: var(--app-warn-fg); }
-.banner.job.applied { background: var(--app-2fa-bg); color: var(--app-2fa-fg); }
-.banner.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); }
+.banner-actions { display: inline-flex; gap: 0.4rem; }
+.banner.error::before, .banner.job.failed::before { background: var(--app-bad-dot); }
+.banner.warn::before, .banner.job.rolled-back::before, .banner.job.refused::before { background: #d97706; }
+.banner.job.applied::before { background: var(--app-ok-dot); }
+.banner.error strong, .banner.job.failed strong { color: var(--app-deny-fg); }
 .banner a { color: inherit; text-decoration: underline; }
 .banner[hidden], .flash[hidden] { display: none; }
+/* chips in the top bar that must stay in sight: emergency access, a running apply */
+.topbar-chip.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); border-color: color-mix(in srgb, var(--app-deny-fg) 35%, transparent); }
+.topbar-chip.info { background: var(--app-1fa-bg); color: var(--app-1fa-fg); border-color: color-mix(in srgb, var(--app-1fa-fg) 30%, transparent); text-decoration: none; }
+.emergency-chip { padding-right: 0.2rem; }
+.chip-more { font-weight: 400; }
+:is(button).chip-btn { margin: 0 0 0 0.2rem; padding: 0.15rem 0.55rem; width: auto; font-size: 0.78rem; border-radius: 0.3rem; --pico-background-color: var(--app-surface); --pico-border-color: color-mix(in srgb, var(--app-deny-fg) 35%, transparent); --pico-color: var(--app-deny-fg); box-shadow: none; }
+.spin { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
 
 /* ================================================================== 4. layout */
 .layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
@@ -253,6 +279,8 @@ main { flex: 1; width: 100%; max-width: 110rem; margin: 0; padding: 1.15rem 1.5r
 .panel { position: fixed; top: var(--app-topbar-h); right: 0; bottom: 0; z-index: 35; width: min(34rem, 100vw); padding: 1.1rem 1.3rem 1rem; overflow: auto; background: var(--app-surface); border-left: 1px solid var(--app-border); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18); animation: panel-in 160ms ease-out; }
 @keyframes panel-in { from { transform: translateX(1.5rem); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .panel { animation: none; } }
+.panel.wide { width: min(42rem, 100vw); }
+.panel .client-editor { max-width: none; }
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.1rem; margin-bottom: 1rem; }
 .toolbar h1 { margin-right: auto; }
 .toolbar-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
@@ -261,6 +289,7 @@ main { flex: 1; width: 100%; max-width: 110rem; margin: 0; padding: 1.15rem 1.5r
 .filters input[type="search"] { margin: 0; flex: 1 1 16rem; max-width: 34rem; height: 2.3rem; padding-block: 0.35rem; border-radius: var(--pico-border-radius); }
 .grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; }
 .tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.grid-2.even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .summary dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1.25rem; align-items: baseline; }
 .summary dt { color: var(--pico-muted-color); } .summary dd { margin: 0; }
 .group-title { margin: 1.2rem 0 0.45rem; font-size: 0.92rem; }
@@ -297,6 +326,12 @@ label.inline-check input { margin: 0; }
 :is(button, [role="button"]).act.danger-act:is(:hover, :focus-visible) { --pico-color: var(--app-deny-fg); }
 :is(button, [role="button"]).act:disabled { opacity: 0.3; }
 .act .icon { width: 1.08rem; height: 1.08rem; }
+/* a value with its copy icon at the right edge of the cell; "Copied" shows as a tip (app.js) */
+.copy-cell { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; min-width: 0; }
+.copy-cell > code { min-width: 0; }
+:is(button).act.copy { position: relative; flex: none; }
+:is(button).act[data-tip] { --pico-color: var(--app-ok-fg); }
+.act[data-tip]::after { content: attr(data-tip); position: absolute; right: 0; bottom: calc(100% + 0.3rem); z-index: 5; padding: 0.15rem 0.45rem; border-radius: 0.3rem; background: var(--app-fg); color: var(--app-bg); font-size: 0.72rem; font-weight: 600; white-space: nowrap; pointer-events: none; }
 /* on/off switch drawn inside an .act button (on = the rule is active) */
 :is(button).act.toggle { width: 2.6rem; }
 .switch { position: relative; display: inline-block; width: 1.95rem; height: 1.1rem; border-radius: 1rem; background: var(--app-border-strong); transition: background 120ms; }
@@ -461,7 +496,7 @@ pre.snippet { max-height: 26rem; overflow: auto; margin-top: 0.5rem; }
 .editor-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; align-items: center; margin-top: 1rem; }
 .editor-actions > button, .editor-actions > [role="button"] { margin: 0; width: auto; } /* beats Pico's full-width submit */
 /* only inside the editor panel; never on the review page, where Apply must come after the diff */
-.editor .editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--app-surface); border-top: 1px solid var(--app-border); }
+.editor .editor-actions, .panel .editor-actions { position: sticky; bottom: -1rem; padding: 0.75rem 0 0.25rem; background: var(--app-surface); border-top: 1px solid var(--app-border); }
 .client-editor { max-width: 52rem; }
 .client-editor details { border-bottom: 1px solid var(--app-border); padding: 0.4rem 0 0.6rem; margin-bottom: 0.4rem; }
 .client-editor details > summary { padding: 0.5rem 0; }
@@ -485,18 +520,14 @@ ol.steps li.running { font-weight: 600; }
 ol.steps li.skipped, ol.steps li.pending { color: var(--pico-muted-color); }
 .result-message { font-size: 1rem; }
 
-/* Overview: one issues panel, then number cards */
-.attention { list-style: none; margin: 0 0 1.2rem; padding: 0; border: 1px solid var(--app-border); border-radius: var(--app-radius-lg); background: var(--app-surface); overflow: hidden; }
-.attention li { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 0.8rem; margin: 0; padding: 0.55rem 0.9rem 0.55rem 1.1rem; border-bottom: 1px solid var(--app-border); list-style: none; }
-.attention li:last-child { border-bottom: 0; }
-.attention li::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--app-muted); }
-.attention li.error::before { background: var(--app-bad-dot); }
-.attention li.warning::before { background: var(--app-warn-fg); }
-.attention li > span:nth-child(2) { flex: 1 1 18rem; }
-.attention a { white-space: nowrap; }
-.badge-sev { min-width: 4.5rem; color: var(--pico-muted-color); }
-.attention li.error .badge-sev { color: var(--app-deny-fg); }
-.attention li.warning .badge-sev { color: var(--app-warn-fg); }
+/* Overview: cards in groups. "Needs attention" uses the same card, with the severity in its edge */
+.attn { gap: 0.3rem; }
+.attn .stat-head { margin-bottom: 0.15rem; }
+.attn-text { margin: 0; font-size: 0.88rem; line-height: 1.45; color: var(--pico-color); }
+.attn.warning { box-shadow: inset 3px 0 0 #d97706, var(--app-card-shadow); }
+.badge-sev { color: var(--pico-muted-color); }
+.attn.error .badge-sev { color: var(--app-deny-fg); }
+.attn.warning .badge-sev { color: var(--app-warn-fg); }
 .notice.ok { background: var(--app-2fa-bg); color: var(--app-2fa-fg); border-color: color-mix(in srgb, var(--app-2fa-fg) 25%, transparent); }
 .cards.overview { margin-bottom: 1rem; }
 .cards.stats { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); margin-bottom: 0.9rem; }
@@ -560,15 +591,17 @@ table.keys form.inline-form { display: inline-flex; margin: 0 0.3rem 0 0; }
 }
 @media (max-width: 720px) {
   main { padding-inline: 0.9rem; }
-  .banner, .statusbar { padding-inline: 0.9rem; }
+  .statusbar { padding-inline: 0.9rem; }
   .toolbar h1, .toolbar-actions { flex: 1 0 100%; }
   .filters input[type="search"] { flex: 1 0 100%; max-width: none; }
   .setup-list, .secret-dialog .setup-info dl { grid-template-columns: 1fr; }
   .brand span { display: none; }
+  .chip-more, .topbar-chip.info .chip-label { display: none; }
+  .topbar-chip:not(.bad):not(.info) { display: none; } /* the status line at the bottom has it */
   .draftbar-text > span { display: none; }
 }
 @media (max-width: 640px) {
-  .grid-2, .tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .grid-2, .grid-2.even, .tester .grid-2:nth-of-type(2) { grid-template-columns: minmax(0, 1fr); gap: 0; }
 }
 
 /* A table row becomes a card when there is no room for its fixed columns (about 66rem): on a narrow

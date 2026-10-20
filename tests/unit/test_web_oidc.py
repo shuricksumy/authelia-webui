@@ -72,6 +72,14 @@ def test_list_page_shows_clients_without_hashes(oidc: UI) -> None:
     assert 'aria-current="page"' in page.split("OIDC Clients")[0][-200:] or "/clients" in page
 
 
+def test_editor_opens_as_a_drawer_over_the_list(oidc: UI) -> None:
+    page = oidc.get("/clients/0/edit").text
+    table, panel = page.split('<aside id="panel"')
+    assert 'class="data clients"' in table and "garage.example.com" in table  # the list stays
+    assert 'id="client-form"' in panel and "data-panel-close" in panel  # the editor is the drawer
+    assert 'id="client-form"' not in oidc.get("/clients").text
+
+
 def test_editor_never_holds_the_hash_and_offers_names_only(oidc: UI) -> None:
     page = oidc.get("/clients/0/edit").text
     assert "dummy-hash" not in page and "pbkdf2 hash" in page  # kind shown, value never

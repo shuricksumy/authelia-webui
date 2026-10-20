@@ -16,12 +16,16 @@
 <section aria-labelledby="attention-h">
   <h2 id="attention-h" class="group-title">Needs attention {% if data.items %}<small>({{ data.items|length }})</small>{% endif %}</h2>
   {% if data.items %}
-  <ul class="attention">
+  <div class="cards stats attention">
     {% for item in data.items %}
-    <li class="{{ item.severity }}"><span class="badge-sev">{{ 'Problem' if item.severity == 'error' else ('Warning' if item.severity == 'warning' else 'Note') }}</span>
-      <span>{{ item.text }}</span>{% if item.href %} <a href="{{ item.href }}">Open</a>{% endif %}</li>
+    {% set sev = 'Problem' if item.severity == 'error' else ('Warning' if item.severity == 'warning' else 'Note') %}
+    <article class="stat attn {{ item.severity }}{% if item.severity == 'error' %} alert{% endif %}">
+      {{ head(item.title or sev, 'warning-circle' if item.severity == 'error' else ('warning' if item.severity == 'warning' else 'info'), item.href, 'red' if item.severity == 'error' else ('amber' if item.severity == 'warning' else '')) }}
+      <span class="badge-sev">{{ sev }}</span>
+      <p class="attn-text">{{ item.text }}</p>
+    </article>
     {% endfor %}
-  </ul>
+  </div>
   {% else %}
   <article class="notice ok"><strong>Nothing needs attention.</strong> Rules, access tests, OIDC clients and users all check out.</article>
   {% endif %}
