@@ -424,13 +424,20 @@ def shoot(context: BrowserContext, name: str, width: str, scheme: str) -> None:
     try:
         SCREENS[name](page)
         settle(page)
-        # The editor drawer scrolls inside the window; unpin it so the full-page picture shows all
-        # of it (CSSOM: allowed by the CSP).
-        page.evaluate(
+        # The editor drawer scrolls inside the window: make the window as tall as the drawer's
+        # content or the page behind it (the taller one), so the whole form is in the picture
+        # with the sidebar and footer around it.
+        height = page.evaluate(
             "() => { const p = document.getElementById('panel'); "
-            "if (p && p.firstElementChild && getComputedStyle(p).position === 'fixed') "
-            "{ p.style.position = 'absolute'; p.style.bottom = 'auto'; } }"
+            "if (!p || !p.firstElementChild || getComputedStyle(p).position !== 'fixed') return 0; "
+            "const bar = document.querySelector('.topbar'); "
+            "const own = p.scrollHeight + (bar ? bar.offsetHeight : 0); "
+            "return Math.ceil(Math.max(own, document.documentElement.scrollHeight)); }"
         )
+        size = page.viewport_size
+        if size and height > size["height"]:
+            page.set_viewport_size({"width": size["width"], "height": height})
+            page.wait_for_timeout(150)
         page.screenshot(path=str(OUT / f"{name}-{width}-{scheme}.png"), full_page=True)
     finally:
         page.close()
