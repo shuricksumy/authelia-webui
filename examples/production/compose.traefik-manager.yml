@@ -2,7 +2,11 @@
 # middlewares and services in traefik/dynamic/dynamic.yml. Guide: docs/traefik-manager.md.
 #
 #   cp traefik-manager/traefik-manager.yml traefik/dynamic/
-#   mkdir -p traefik-manager/config traefik-manager/backups
+#   mkdir -p traefik-manager/config traefik-manager/backups traefik-manager/vendor
+#   for f in dagre.min.js qrcode.min.js; do   # upstream ships them root-only, see the guide
+#     docker run --rm --entrypoint cat ghcr.io/chr0nzz/traefik-manager:1.15.2 \
+#       /app/static/vendor/$f > traefik-manager/vendor/$f; done
+#   chmod 644 traefik-manager/vendor/*.js
 #   sudo chown -R 1000:1000 traefik/dynamic traefik-manager
 #   docker compose -f compose.yml -f compose.traefik-manager.yml up -d
 #
@@ -39,6 +43,10 @@ services:
       - ./traefik/dynamic:/app/dynamic
       - ./traefik-manager/config:/app/config # its settings, password hash and encryption keys
       - ./traefik-manager/backups:/app/backups # a copy before every change
+      # The image ships these two as root:root 0600 (unreadable as uid 1000: empty Route Map, no
+      # 2FA QR code). Readable copies taken from the same image tag; see docs/traefik-manager.md.
+      - ./traefik-manager/vendor/dagre.min.js:/app/static/vendor/dagre.min.js:ro
+      - ./traefik-manager/vendor/qrcode.min.js:/app/static/vendor/qrcode.min.js:ro
     networks:
       edge:
         ipv4_address: 172.30.0.20 # fixed: traefik-manager.yml allows exactly this address

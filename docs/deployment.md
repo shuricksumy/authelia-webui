@@ -94,7 +94,12 @@ A web UI for `traefik/dynamic/dynamic.yml`, VPN-only, behind Authelia, no Docker
 
 ```sh
 cp traefik-manager/traefik-manager.yml traefik/dynamic/    # then replace example.com in it
-mkdir -p traefik-manager/config traefik-manager/backups
+mkdir -p traefik-manager/config traefik-manager/backups traefik-manager/vendor
+# the image ships these two root-only (empty Route Map, no 2FA QR code as uid 1000): readable copies
+for f in dagre.min.js qrcode.min.js; do
+  docker run --rm --entrypoint cat ghcr.io/chr0nzz/traefik-manager:1.15.2 /app/static/vendor/$f > traefik-manager/vendor/$f
+done
+chmod 644 traefik-manager/vendor/*.js
 sudo chown -R 1000:1000 traefik/dynamic traefik-manager
 sed -i 's/^COMPOSE_FILE=.*/COMPOSE_FILE=compose.yml:compose.traefik-manager.yml/' .env
 docker compose config -q && docker compose up -d
@@ -110,7 +115,12 @@ Open `https://tm.example.com:8443`; in the wizard the Traefik API URL is `http:/
 
 ```sh
 docker compose exec traefik-manager wget -qO- http://172.30.0.2:8081/api/version   # JSON
+docker compose exec traefik-manager sh -c 'cat /app/static/vendor/dagre.min.js >/dev/null && echo readable'
 ```
+
+When adding routes in the UI, pick the **authelia** chip (the file middleware) first. Never
+reference Authelia only through Docker labels in routes Traefik Manager edits: saving such a route
+drops it ([`traefik-manager.md`](traefik-manager.md#existing-setup-with-docker-labels)).
 
 ## 5. CrowdSec (optional)
 
