@@ -34,7 +34,11 @@ entrypoint and the API without a dashboard. Nothing listens there until you add 
 ```sh
 cd examples/production            # or your copy of it
 cp traefik-manager/traefik-manager.yml traefik/dynamic/   # then replace example.com in it
-mkdir -p traefik-manager/config traefik-manager/backups
+mkdir -p traefik-manager/config traefik-manager/backups traefik-manager/vendor
+for f in dagre.min.js qrcode.min.js; do   # readable copies, see "Running as a non-root user"
+  docker run --rm --entrypoint cat ghcr.io/chr0nzz/traefik-manager:1.15.2 /app/static/vendor/$f > traefik-manager/vendor/$f
+done
+chmod 644 traefik-manager/vendor/*.js
 sudo chown -R 1000:1000 traefik/dynamic traefik-manager   # TM_UID/TM_GID in .env if not 1000
 docker compose -f compose.yml -f compose.traefik-manager.yml config -q
 docker compose -f compose.yml -f compose.traefik-manager.yml up -d
@@ -92,12 +96,52 @@ networks:
   proxy: {ipv4_address: "${IP_TM}"}
 labels:
   - traefik.http.routers.tm.rule=Host(`tm.example.com`)
-  - traefik.http.routers.tm.middlewares=authelia@docker
+  - traefik.http.routers.tm.middlewares=authelia@file
   - traefik.http.services.tm.loadbalancer.server.port=5000
 ```
 
-Routes you add in the UI that need Authelia must reference `authelia@docker`: the middleware is
-defined by labels, not in the file.
+**Define Authelia's middleware in a file, not only in Authelia's labels.** Traefik Manager 1.15.2
+offers only `@file` middlewares in the route form (`static/js/routes.js`: every name with an
+`@` other than `@file` is dropped), and when it opens an existing route it keeps only middlewares
+it offers. Saving a route that uses `authelia@docker` therefore **removes Authelia from it** and
+the app becomes public. Put the same definition in the folder Traefik Manager edits:
+
+```yaml
+http:
+  middlewares:
+    authelia:
+      forwardAuth:
+        address: http://authelia:9091/api/authz/forward-auth
+        trustForwardHeader: true
+        authResponseHeaders: [Remote-User, Remote-Groups, Remote-Name, Remote-Email]
+```
+
+Then use `authelia` in file routes and `authelia@file` in labels
+(`grep -rn 'authelia@docker' --include='*.yml' .` finds them). A file middleware also stays put
+while Authelia restarts: middlewares from labels vanish with their container, and every route
+using them errors ("middleware does not exist") until it is back. Check which routes are covered:
+`GET /api/http/middlewares/authelia@file` lists them in `usedBy`. The production example already
+defines `authelia` in `traefik/dynamic/dynamic.yml`.
+
+## Running as a non-root user: unreadable vendor files
+
+The 1.15.2 image downloads `dagre.min.js` (the Route Map's layout library) and `qrcode.min.js`
+(2FA QR codes) through its asset fetch script, which saves to a `mktemp` file and `cp`s it into
+place, so they end up `root:root 0600`. Upstream runs the container as root and never notices; as
+`user: 1000:1000` they answer `500`, the Route Map stays empty (`dagre is not defined` in the
+browser console) and the QR code does not show. Mount readable copies, taken from the image once
+(it runs as root, so `cat` can read them):
+
+```sh
+mkdir -p traefik-manager/vendor
+for f in dagre.min.js qrcode.min.js; do
+  docker run --rm --entrypoint cat ghcr.io/chr0nzz/traefik-manager:1.15.2 /app/static/vendor/$f > traefik-manager/vendor/$f
+done
+chmod 644 traefik-manager/vendor/*.js
+```
+
+`compose.traefik-manager.yml` mounts them read-only. Repeat after changing the image tag. Create
+them **before** starting the container: Docker turns a missing bind-mount source into a directory.
 
 ## Optional tabs
 

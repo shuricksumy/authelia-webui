@@ -167,3 +167,21 @@ def test_logrotate_files_have_no_comment_after_a_directive(path: Path) -> None:
             inside = False
         elif inside and code and not code.startswith("#"):
             assert "#" not in code, f"{path.name}:{n}: comment after a directive"
+
+
+def test_traefik_manager_vendor_copies_are_read_only_and_match_the_image_tag() -> None:
+    """The image ships dagre/qrcode as root 0600; the overlay mounts readable copies."""
+    text = (PRODUCTION / "compose.traefik-manager.yml").read_text()
+    tm = _load(PRODUCTION / "compose.traefik-manager.yml")["services"]["traefik-manager"]  # type: ignore[index]
+    vendor = [str(v) for v in tm["volumes"] if "/app/static/vendor/" in str(v)]
+    assert {v.rsplit("/", 1)[-1] for v in vendor} == {"dagre.min.js:ro", "qrcode.min.js:ro"}
+    tag = tm["image"].rsplit(":", 1)[1]
+    assert text.count(f"traefik-manager:{tag}") >= 2  # the copy command names the same tag
+
+
+def test_production_example_defines_authelia_as_a_file_middleware() -> None:
+    """Traefik Manager offers and keeps only @file middlewares (docs/traefik-manager.md)."""
+    dyn = _load(PRODUCTION / "traefik" / "dynamic" / "dynamic.yml")["http"]  # type: ignore[index]
+    assert "forwardAuth" in dyn["middlewares"]["authelia"]
+    for name, router in dyn["routers"].items():
+        assert not any("@docker" in m for m in router.get("middlewares", [])), name
