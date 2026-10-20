@@ -1,0 +1,24 @@
+# CrowdSec firewall bouncer (compose.firewall-bouncer.yml, docs/firewall-bouncer.md).
+# No secret in this file: the bouncer expands ${...} from its environment when it reads it, and
+# compose passes CROWDSEC_FIREWALL_BOUNCER_KEY from .env (the same value CrowdSec registers).
+mode: iptables
+update_frequency: 10s
+log_mode: stdout
+log_level: info
+
+# CrowdSec's API, published on the host's loopback only (compose.firewall-bouncer.yml)
+api_url: http://127.0.0.1:8080/
+api_key: ${CROWDSEC_FIREWALL_BOUNCER_KEY}
+
+disable_ipv6: false
+deny_action: DROP # silent; REJECT would answer the attacker
+deny_log: false
+supported_decisions_types: [ban]
+
+# A jump to CROWDSEC_CHAIN is inserted at the TOP of each chain:
+iptables_chains:
+  - INPUT # the host's own services (SSH, a VPN server in host networking)
+  - DOCKER-USER # ports published by Docker (they never pass INPUT)
+blacklists_ipv4: crowdsec-blacklists
+blacklists_ipv6: crowdsec6-blacklists
+ipset_type: nethash

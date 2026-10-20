@@ -1,0 +1,39 @@
+# Optional add-on, on top of compose.crowdsec.yml: CrowdSec's bans in the HOST firewall too, for
+# everything that does not pass Traefik (SSH, a VPN server, hits on the server's address).
+# Guide: docs/firewall-bouncer.md.
+#
+#   firewall-bouncer/build.bash            # once per version: local/crowdsec-firewall-bouncer
+#   echo "CROWDSEC_FIREWALL_BOUNCER_KEY=$(openssl rand -hex 32)" >> .env
+#   docker compose -f compose.yml -f compose.crowdsec.yml -f compose.firewall-bouncer.yml up -d
+#
+# Stopping the bouncer removes its rules; the ban list stays in CrowdSec.
+services:
+  crowdsec:
+    environment:
+      # Registers the firewall bouncer with this key (the bouncer reads the same variable)
+      BOUNCER_KEY_firewall: ${CROWDSEC_FIREWALL_BOUNCER_KEY:?set CROWDSEC_FIREWALL_BOUNCER_KEY (openssl rand -hex 32)}
+    ports:
+      # The API for the host-network bouncer: loopback only, never 0.0.0.0. Do not bind a VPN
+      # address here: if it is missing at start (the tunnel ends in a container, or is not up yet),
+      # Docker cannot bind it and CrowdSec starts without any network.
+      - "127.0.0.1:8080:8080"
+    # Logs of services that bypass Traefik (acquis.non-http.yaml), read-only. Uncomment yours:
+    # volumes:
+    #   - /var/log:/var/log/host:ro                                       # SSH: auth.log (folder)
+    #   - /srv/openvpn/conf/openvpn.log:/var/log/openvpn/openvpn.log:ro   # OpenVPN: the file only
+
+  crowdsec-firewall-bouncer:
+    image: local/crowdsec-firewall-bouncer:v0.0.38 # built by firewall-bouncer/build.bash
+    pull_policy: never # a local image: never look for it in a registry
+    restart: unless-stopped
+    network_mode: host # it changes the HOST's firewall; reaches CrowdSec at 127.0.0.1:8080
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, NET_RAW] # firewall rules and IP sets; not privileged
+    security_opt: ["no-new-privileges:true"]
+    read_only: true
+    tmpfs: [/run, /tmp] # iptables' lock file
+    environment:
+      CROWDSEC_FIREWALL_BOUNCER_KEY: ${CROWDSEC_FIREWALL_BOUNCER_KEY:?set CROWDSEC_FIREWALL_BOUNCER_KEY}
+    volumes:
+      - ./crowdsec/firewall-bouncer.yaml:/etc/crowdsec-firewall-bouncer.yaml:ro
+    depends_on: [crowdsec]

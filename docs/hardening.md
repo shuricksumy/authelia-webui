@@ -252,6 +252,15 @@ Setup, per-app real client address, the tunnel route and the pitfalls (Home Assi
 proxy settings and coloured journal output, Nextcloud's unlogged WebDAV failures):
 [`examples/remote-agent/`](../examples/remote-agent/).
 
+## 9. Bans in the host firewall too (optional)
+
+The Traefik bouncer only stops web requests. SSH, a VPN server or anything else that does not pass
+Traefik needs CrowdSec's bans in the host firewall: the firewall bouncer, built as a small local
+image from the official binary and run in the same compose project
+([`firewall-bouncer.md`](firewall-bouncer.md), files in
+[`examples/firewall-bouncer/`](../examples/firewall-bouncer/) and
+`examples/production/compose.firewall-bouncer.yml`). The same page adds SSH's and OpenVPN's logs.
+
 ## Pitfalls met on a real deployment
 
 - **Static config is read at start only.** After editing `traefik.yml`, recreate Traefik, then

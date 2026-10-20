@@ -1,0 +1,3 @@
+# The build needs the Dockerfile only; nothing else of this folder goes into the build context.
+*
+!Dockerfile

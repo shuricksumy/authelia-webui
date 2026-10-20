@@ -1,0 +1,20 @@
+# Log sources for services that do NOT pass Traefik (docs/firewall-bouncer.md, step 4).
+# APPEND to crowdsec/acquis.yaml; that file must end with a newline first, or this "---" sticks to
+# its last line (`type: authelia---`) and CrowdSec stops at start:
+#   tail -c1 crowdsec/acquis.yaml | od -c     # shows \n
+#   cat ../firewall-bouncer/acquis.non-http.yaml >> crowdsec/acquis.yaml
+# Keep only the sections you use, and mount each log read-only (compose.firewall-bouncer.yml).
+---
+# SSH (Debian/Ubuntu with rsyslog). Parsed by crowdsecurity/linux, which the image installs.
+# Mount the host's /var/log FOLDER: logrotate replaces auth.log, a file mount would go stale.
+filenames:
+  - /var/log/host/auth.log
+labels:
+  type: syslog
+---
+# OpenVPN server: the file its `log` directive names. Mount only that FILE, never its folder:
+# the server's keys live next to it. Collection: pserranoa/openvpn (community).
+filenames:
+  - /var/log/openvpn/openvpn.log
+labels:
+  type: openvpn

@@ -20,6 +20,9 @@ logrotate/traefik-access    host-side rotation of Traefik's access log (CrowdSec
 compose.traefik-manager.yml optional add-on: a web UI for traefik/dynamic/dynamic.yml
 compose.crowdsec.yml        optional add-on: CrowdSec bans (docs/hardening.md)
 compose.traefik-manager.crowdsec.yml   both add-ons together: Traefik Manager's CrowdSec tab
+compose.firewall-bouncer.yml  optional, with compose.crowdsec.yml: bans in the host firewall too
+                            (docs/firewall-bouncer.md; image from ../firewall-bouncer/build.bash)
+crowdsec/firewall-bouncer.yaml  its config (the key comes from .env)
 traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 
