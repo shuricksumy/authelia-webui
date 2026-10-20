@@ -28,7 +28,7 @@ def jwks(env: dict[str, Path], *kids: str) -> None:  # noqa: F811
 def test_keys_page_explains_the_one_time_move(env: dict[str, Path]) -> None:  # noqa: F811
     page = UI(env).get("/keys").text
     assert "Key rotation is not set up yet" in page and "migrate_jwks" in page
-    assert 'aria-current="page">Keys<' in page
+    assert 'title="Keys" aria-current="page"' in page
 
 
 def test_keys_page_lists_roles_and_offers_the_right_steps(env: dict[str, Path]) -> None:  # noqa: F811

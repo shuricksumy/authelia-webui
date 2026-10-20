@@ -1,4 +1,4 @@
-{% from "partials/icons.html" import warn %}
+{% from "partials/icons.html" import icon, warn %}
 <section id="rules-section" data-rev="{{ rev }}">
   {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
 
@@ -11,8 +11,8 @@
       </select>
     </form>
     <div class="toolbar-actions">
-      <a role="button" href="/rules/new" hx-get="/rules/new" hx-target="#panel" hx-push-url="/rules?new=1">+ Add rule</a>
       <button type="button" class="secondary" hx-get="/tester" hx-target="#modal">Test a URL</button>
+      <a role="button" href="/rules/new" hx-get="/rules/new" hx-target="#panel" hx-push-url="/rules?new=1">+ Add rule</a>
     </div>
   </div>
 
@@ -72,8 +72,8 @@
       <td class="col-who" data-label="Who">{{ d.who }}</td>
       <td class="col-policy" data-label="Policy"><span class="badge {{ d.policy }}">{{ d.policy_label }}</span></td>
       <td class="col-actions">
-        <button type="button" class="outline small" hx-post="/disabled/{{ d.index }}/enable" hx-target="#rules-section" hx-swap="outerHTML">Enable</button>
-        <button type="button" class="outline secondary small" hx-get="/disabled/{{ d.index }}/delete" hx-target="#modal">Delete permanently</button>
+        <button type="button" class="act toggle" aria-label="Enable" title="Off: click to switch this rule back on" hx-post="/disabled/{{ d.index }}/enable" hx-target="#rules-section" hx-swap="outerHTML"><span class="switch"></span></button>
+        <button type="button" class="act danger-act" aria-label="Delete permanently" title="Delete permanently" hx-get="/disabled/{{ d.index }}/delete" hx-target="#modal">{{ icon("trash") }}</button>
       </td>
     </tr>
     {% endfor %}

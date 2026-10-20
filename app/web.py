@@ -23,6 +23,7 @@ from ruamel.yaml.error import YAMLError
 from app.apply.services import ApplyServices
 from app.apply.validate import validate_candidate
 from app.authelia_cli import ValidationResult
+from app.navcounts import nav_counts
 from app.rules.disabled import DisabledRules
 from app.rules.document import DocumentError, RulesDocument
 from app.rules.form import FormError, RuleForm, apply_form
@@ -153,6 +154,7 @@ def shell_context(request: Request) -> dict[str, Any]:
         "emergency": bool(getattr(request.state, "emergency", False)),
         "any_network": request.app.state.settings.ALLOW_ANY_CLIENT_NETWORK,
         "admin_group": request.app.state.settings.ADMIN_GROUP,
+        "nav_counts": nav_counts(request.app.state.settings),
     }
 
 

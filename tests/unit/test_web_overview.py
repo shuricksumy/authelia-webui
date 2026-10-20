@@ -43,7 +43,7 @@ def test_overview_is_the_home_page_and_shows_the_basics(env: dict[str, Path]) ->
     ui = UI(env)
     r = ui.get("/")
     assert r.status_code == 200 and "<h1>Overview</h1>" in r.text
-    assert 'aria-current="page">Overview<' in r.text
+    assert 'title="Overview" aria-current="page"' in r.text
     for word in ("Needs attention", "Authelia", "Changes", "Configuration", "Rules"):
         assert word in r.text
     assert "No log file is configured" in r.text

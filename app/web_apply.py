@@ -197,7 +197,7 @@ def history(request: Request) -> Response:
 @router.get("/backup", response_class=HTMLResponse)
 def backup_page(request: Request) -> Response:
     v = load_view(request)
-    return render(v, "backup.html", active="history",
+    return render(v, "backup.html", active="backup",
                   has_keys=(v.settings.CONFIG_MANAGED_DIR / "secrets").is_dir())  # fmt: skip
 
 

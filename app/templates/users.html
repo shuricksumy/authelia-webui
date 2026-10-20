@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
 {% from "partials/icons.html" import warn %}
 {% block title %}Users{% endblock %}
 {% block content %}
@@ -33,7 +34,7 @@
         <td data-label="Email"><span class="trunc" title="{{ r.email }}">{{ r.email or '—' }}</span></td>
         <td data-label="Groups">{% for g in r.groups %}<span class="chip{% if g == admin_group %} edit{% endif %}">{{ g }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
         <td data-label="Status">{% if r.disabled %}<span class="badge deny">disabled</span>{% else %}<span class="ok-text">active</span>{% endif %}</td>
-        <td class="col-actions">{% if writable %}<a role="button" class="outline small" href="/users/{{ r.name|urlencode }}/edit">Edit</a>{% endif %}</td>
+        <td class="col-actions">{% if writable %}<a role="button" class="act accent" aria-label="Edit" title="Edit {{ r.name }}" href="/users/{{ r.name|urlencode }}/edit">{{ icon("pencil-simple") }}</a>{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

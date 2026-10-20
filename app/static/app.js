@@ -287,6 +287,12 @@
   // Other open tabs of the same site follow through the storage event.
   function showView(view) {
     window.appView.apply(view);
+    var collapse = document.querySelector("[data-nav-collapse]");
+    if (collapse) {
+      var label = view.nav === "collapsed" ? "Expand the menu" : "Collapse the menu";
+      collapse.setAttribute("aria-label", label);
+      collapse.title = label;
+    }
     var panel = document.querySelector("[data-view-panel]");
     if (!panel) { return; }
     panel.querySelectorAll('input[type="radio"]').forEach(function (input) {
@@ -322,6 +328,32 @@
   });
   window.addEventListener("storage", function (event) {
     if (event.key === "view" && window.appView) { showView(window.appView.read()); }
+  });
+
+  // Sidebar: on a wide screen "Collapse" keeps only the icons (saved with the View settings); on a
+  // narrow one the menu button opens it as a drawer over the page (backdrop or Esc closes it).
+  function setDrawer(open) {
+    var toggle = document.querySelector("[data-nav-toggle]");
+    var backdrop = document.querySelector("[data-nav-close]");
+    document.documentElement.toggleAttribute("data-nav-open", open);
+    if (toggle) { toggle.setAttribute("aria-expanded", open ? "true" : "false"); }
+    if (backdrop) { backdrop.hidden = !open; }
+  }
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest) { return; }
+    if (event.target.closest("[data-nav-toggle]")) {
+      setDrawer(!document.documentElement.hasAttribute("data-nav-open"));
+    } else if (event.target.closest("[data-nav-close]")) {
+      setDrawer(false);
+    } else if (event.target.closest("[data-nav-collapse]") && window.appView) {
+      var view = window.appView.read();
+      view.nav = view.nav === "collapsed" ? "expanded" : "collapsed";
+      window.appView.save(view);
+      showView(view);
+    }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && document.documentElement.hasAttribute("data-nav-open")) { setDrawer(false); }
   });
   document.addEventListener("DOMContentLoaded", function () {
     if (window.appView) { showView(window.appView.read()); }

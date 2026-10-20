@@ -1,10 +1,10 @@
-/* View settings (theme, table style, density), applied before the first paint: loaded without
+/* View settings (theme, table style, density, collapsed sidebar), applied before the first paint: loaded without
    defer in <head>, no inline script under the CSP. Only differences from DEFAULTS are stored, per
    browser and per site address (localStorage "view"). The settings menu is in app.js, which uses
    window.appView from here. */
 (function () {
   "use strict";
-  var DEFAULTS = { theme: "system", head: true, rows: true, hover: true, lines: true, density: "compact" };
+  var DEFAULTS = { theme: "system", head: true, rows: true, hover: true, lines: true, density: "compact", nav: "expanded" };
   var FLAGS = ["head", "rows", "hover", "lines"];
 
   function read() {
@@ -35,6 +35,8 @@
     });
     if (view.density === "comfortable") { root.setAttribute("data-density", "comfortable"); }
     else { root.removeAttribute("data-density"); }
+    if (view.nav === "collapsed") { root.setAttribute("data-nav", "collapsed"); }
+    else { root.removeAttribute("data-nav"); }
   }
 
   window.appView = { flags: FLAGS, read: read, save: save, apply: apply };

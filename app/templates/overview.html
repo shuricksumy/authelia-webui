@@ -1,10 +1,20 @@
 {% extends "base.html" %}
+{% from "partials/icons.html" import icon %}
 {% block title %}Overview{% endblock %}
+{% macro plural(n, word) %}{{ n }} {{ word }}{{ '' if n == 1 else 's' }}{% endmacro %}
+{% macro head(title, glyph, href, tone='') -%}
+<div class="stat-head"><span class="tile {{ tone }}">{{ icon(glyph) }}</span><h2>{{ title }}</h2>
+  {% if href %}<a href="{{ href }}" aria-label="Open {{ title }}">Open {{ icon("arrow-right") }}</a>{% endif %}</div>
+{%- endmacro %}
+{% macro state(kind, text) -%}
+<span class="stat-state {{ kind }}">{% if kind %}<span class="dot" aria-hidden="true"></span>{% endif %}{{ text }}</span>
+{%- endmacro %}
+{% set s = data.stats %}
 {% block content %}
 <div class="toolbar"><h1>Overview</h1></div>
 
 <section aria-labelledby="attention-h">
-  <h2 id="attention-h">Needs attention</h2>
+  <h2 id="attention-h" class="group-title">Needs attention {% if data.items %}<small>({{ data.items|length }})</small>{% endif %}</h2>
   {% if data.items %}
   <ul class="attention">
     {% for item in data.items %}
@@ -17,45 +27,66 @@
   {% endif %}
 </section>
 
-<div class="cards overview">
-  <article class="card">
-    <header><h3>Authelia</h3>
-      {% if runtime.healthy %}<span class="pill ok">&#10003; healthy</span>{% elif runtime.healthy is false %}<span class="pill bad">&#10007; not healthy</span>{% else %}<span class="pill">health unknown</span>{% endif %}</header>
-    <dl class="facts">
-      <dt>Running</dt><dd>{{ runtime.running_version or 'unknown' }}</dd>
-      <dt>Bundled</dt><dd>{{ runtime.bundled_version }}{% if runtime.running_version %} {% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003;</span>{% endif %}{% endif %}</dd>
-      <dt>Up since</dt><dd>{{ data.up_since or 'unknown' }}</dd>
-    </dl>
+<h2 class="group-title">Configuration</h2>
+<div class="cards stats">
+  <article class="stat{% if s.rule_problems %} alert{% endif %}">
+    {{ head('Rules', 'shield-check', '/rules') }}
+    <div class="stat-row"><span class="stat-num">{{ s.rules if s.rules is defined else '?' }}</span>
+      {% if s.rule_problems %}{{ state('bad', plural(s.rule_problems, 'problem')) }}{% elif s.rule_warnings %}{{ state('', plural(s.rule_warnings, 'warning')) }}{% elif s.rules is defined %}{{ state('ok', 'valid') }}{% endif %}</div>
+    <span class="stat-sub">{{ s.rules|default(0) }} active &middot; {{ s.disabled|default(0) }} disabled</span>
   </article>
 
-  <article class="card">
-    <header><h3>Changes</h3></header>
-    <dl class="facts">
-      <dt>Draft</dt><dd>{% if draft %}{{ change_count }} unapplied change{{ '' if change_count == 1 else 's' }} <a href="/review">Review</a>{% else %}none{% endif %}</dd>
-      <dt>Last apply</dt><dd>{% if last_job and last_job.done %}{{ last_job.finished|utc }} <span class="result-badge {{ last_job.result }}">{{ last_job.result }}</span>{% else %}none yet{% endif %}</dd>
-    </dl>
-    <footer><a href="/history">History</a></footer>
+  <article class="stat{% if s.failing %} alert{% endif %}">
+    {{ head('Access tests', 'flask', '/tests', 'green') }}
+    <div class="stat-row"><span class="stat-num">{{ s.tests if s.tests is defined else '?' }}</span>
+      {% if s.failing %}{{ state('bad', s.failing ~ ' failing') }}{% elif s.tests %}{{ state('ok', 'all pass') }}{% endif %}</div>
+    <span class="stat-sub">checked against the live rules</span>
   </article>
 
-  <article class="card">
-    <header><h3>Configuration</h3></header>
-    <dl class="facts">
-      {% for label, value in data.counts.items() %}<dt>{{ label }}</dt><dd>{{ value }}</dd>{% endfor %}
-    </dl>
+  <article class="stat{% if s.client_problems %} alert{% endif %}">
+    {{ head('OIDC clients', 'plugs-connected', '/clients', 'amber') }}
+    <div class="stat-row"><span class="stat-num">{{ s.clients if s.clients is defined else '–' }}</span>
+      {% if s.client_problems %}{{ state('bad', plural(s.client_problems, 'problem')) }}{% elif s.client_warnings %}{{ state('', plural(s.client_warnings, 'warning')) }}{% elif s.clients %}{{ state('ok', 'valid') }}{% endif %}</div>
+    <span class="stat-sub">{% if s.clients is defined %}secrets stored as hashes{% else %}no clients file{% endif %}</span>
   </article>
 
-  <article class="card">
-    <header><h3>Authelia log</h3></header>
+  <article class="stat">
+    {{ head('Users', 'user', '/users') }}
+    <div class="stat-row"><span class="stat-num">{{ s.users if s.users is defined else '?' }}</span>
+      {% if s.admins is defined %}{{ state('ok' if s.admins >= 2 else '', plural(s.admins, 'admin')) }}{% endif %}</div>
+    <span class="stat-sub">{{ s.users_disabled|default(0) }} disabled &middot; <a href="/groups">{{ plural(s.groups|default(0), 'group') }}</a></span>
+  </article>
+</div>
+
+<h2 class="group-title">Authelia</h2>
+<div class="cards stats">
+  <article class="stat{% if runtime.healthy is false %} alert{% endif %}">
+    {{ head('Authelia', 'shield-check', '', 'green' if runtime.healthy else ('red' if runtime.healthy is false else '')) }}
+    <div class="stat-row"><span class="stat-num mono">{{ runtime.running_version or 'unknown' }}</span>
+      {% if runtime.healthy %}{{ state('ok', 'healthy') }}{% elif runtime.healthy is false %}{{ state('bad', 'not healthy') }}{% else %}{{ state('', 'health unknown') }}{% endif %}</div>
+    <span class="stat-sub">bundled {{ runtime.bundled_version }}{% if runtime.running_version %} {% if runtime.mismatch %}<span class="err-text">&#10007; differs</span>{% else %}<span class="ok-text">&#10003;</span>{% endif %}{% endif %}</span>
+    <span class="stat-sub">up since {{ data.up_since or 'unknown' }}</span>
+  </article>
+
+  <article class="stat">
+    {{ head('Changes', 'clock-counter-clockwise', '/history') }}
+    <div class="stat-row"><span class="stat-num">{{ change_count if draft else 0 }}</span>
+      {% if draft %}<a role="button" class="small" href="/review">Review &amp; apply</a>{% else %}{{ state('', 'nothing to apply') }}{% endif %}</div>
+    <span class="stat-sub">unapplied in the draft</span>
+    <span class="stat-sub">last apply: {% if last_job and last_job.done %}{{ last_job.finished|utc }} <span class="result-badge {{ last_job.result }}">{{ last_job.result }}</span>{% else %}none yet{% endif %}</span>
+  </article>
+
+  <article class="stat{% if data.log_counts and data.log_counts.error %} alert{% endif %}">
+    {{ head('Authelia log', 'scroll', '/logs', 'red' if data.log_counts and data.log_counts.error else '') }}
     {% if not log_configured %}
-    <p>No log file is configured. Set <code>log.file_path</code> in Authelia and <code>AUTHELIA_LOG_FILE</code> here to read it on the <a href="/logs">Logs</a> page.</p>
+    <p class="stat-sub">No log file is configured. Set <code>log.file_path</code> in Authelia and <code>AUTHELIA_LOG_FILE</code> here to read it on the <a href="/logs">Logs</a> page.</p>
     {% elif data.log_counts is none %}
-    <p>The log file could not be read yet. <a href="/logs">Logs</a></p>
+    <p class="stat-sub">The log file could not be read yet. <a href="/logs">Logs</a></p>
     {% else %}
-    <dl class="facts">
-      <dt>Errors, 24 h</dt><dd>{% if data.log_counts.error %}<span class="err-text">{{ data.log_counts.error }}</span>{% else %}0{% endif %}</dd>
-      <dt>Warnings, 24 h</dt><dd>{{ data.log_counts.warn }}</dd>
-    </dl>
-    <footer><a href="/logs?level=error&amp;window=24h">Errors</a> &middot; <a href="/logs">All problems</a></footer>
+    <div class="stat-row"><span class="stat-num{% if data.log_counts.error %} err-text{% endif %}">{{ data.log_counts.error }}</span>
+      {{ state('bad' if data.log_counts.error else 'ok', 'errors, 24 h') }}</div>
+    <span class="stat-sub">{{ plural(data.log_counts.warn, 'warning') }}, 24 h</span>
+    <div class="stat-foot"><a href="/logs?level=error&amp;window=24h">Errors</a><a href="/logs">All problems</a></div>
     {% endif %}
   </article>
 </div>
