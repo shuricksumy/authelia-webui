@@ -2,10 +2,11 @@
 {% from "partials/icons.html" import icon %}
 {% block title %}Access tests{% endblock %}
 {% block content %}
+<div class="layout"><div class="main-col">
 <div class="toolbar">
   <h1>Access tests</h1>
   <div class="toolbar-actions">
-    <button type="button" hx-get="/tests/new" hx-target="#modal">+ Add test</button>
+    <button type="button" hx-get="/tests/new" hx-target="#panel" hx-push-url="true">+ Add test</button>
   </div>
 </div>
 <p class="muted">A test is a request and the policy it must get. They run against the live rules and against your draft, and
@@ -30,7 +31,7 @@
         <td data-label="Live"><span class="badge {{ r.live.policy }}">{{ labels[r.live.policy] }}</span>{% if r.live.policy != c.expect %} <span class="err-text">&#10007;</span>{% else %} <span class="ok-text">&#10003;</span>{% endif %}</td>
         {% if has_draft %}<td data-label="Draft"><span class="badge {{ r.draft.policy }}">{{ labels[r.draft.policy] }}</span>{% if r.fails %} <span class="err-text">&#10007; would fail</span>{% elif r.changed %} <small>changed</small>{% else %} <span class="ok-text">&#10003;</span>{% endif %}</td>{% endif %}
         <td class="col-actions">
-          <button type="button" class="act accent" aria-label="Edit" title="Edit this test" hx-get="/tests/{{ loop.index0 }}/edit" hx-target="#modal">{{ icon("pencil-simple") }}</button>
+          <button type="button" class="act accent" aria-label="Edit" title="Edit this test" hx-get="/tests/{{ loop.index0 }}/edit" hx-target="#panel" hx-push-url="true">{{ icon("pencil-simple") }}</button>
           <button type="button" class="act danger-act" hx-post="/tests/{{ loop.index0 }}/delete" hx-vals='{"tests_rev": "{{ tests_rev }}"}' hx-confirm="Delete this test?" aria-label="Delete" title="Delete this test">{{ icon("trash") }}</button>
         </td>
       </tr>
@@ -39,4 +40,6 @@
   </table>
 </div>
 {% endif %}
+</div>
+<aside id="panel" class="panel" aria-label="Test editor">{% if panel %}{% include "partials/test_form.html" %}{% endif %}</aside></div>
 {% endblock %}

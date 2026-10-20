@@ -24,11 +24,31 @@
   <header class="topbar">
     <button type="button" class="topbar-btn nav-toggle" data-nav-toggle aria-controls="sidebar" aria-expanded="false" aria-label="Menu">{{ icon("list") }}</button>
     <a class="brand" href="/">{{ icon("shield-check", "brand-mark") }}<span>Authelia <b>Configurator</b></span></a>
+    {% if emergency %}
+    <span class="topbar-chip bad emergency-chip" role="alert" title="Authelia is not protecting this session: you signed in with the emergency password. Fix what is broken, then sign out.">
+      <span class="dot" aria-hidden="true"></span><span class="chip-label"><strong>Emergency access.</strong> <span class="chip-more">Not protected by Authelia</span></span>
+      <button type="button" class="chip-btn" hx-post="/emergency/logout">Sign out</button>
+    </span>
+    {% endif %}
+    {% if last_job and not last_job.done %}
+    <a class="topbar-chip info" href="/apply/result" title="An apply is running. Show progress">{{ icon("spinner-gap", "spin") }}<span class="chip-label">Applying&hellip;</span><span class="visually-hidden">An apply is running.</span></a>
+    {% endif %}
     <div id="draftbar">{% include "partials/draftbar.html" %}</div>
     <span class="topbar-chip {{ 'ok' if runtime.healthy else ('bad' if runtime.healthy is false else '') }}"
           title="Authelia {{ runtime.running_version or 'version unknown' }}: {{ 'healthy' if runtime.healthy else ('not healthy' if runtime.healthy is false else 'health unknown') }}">
       <span class="dot" aria-hidden="true"></span><span class="mono">{{ runtime.running_version or '?' }}</span>
     </span>
+    {% set notes %}{% include "partials/banners.html" %}{% endset %}
+    {% set note_count = notes.count('data-note=') %}
+    {% set note_sev = 'error' if 'data-note="error"' in notes else ('warn' if 'data-note="warn"' in notes else 'info') %}
+    <details class="bell-menu" data-bell-menu>
+      <summary class="topbar-btn" aria-label="Notifications ({{ note_count }})">{{ icon("bell") }}<span class="bell-count {{ note_sev }}" data-bell-count{% if not note_count %} hidden{% endif %}>{{ note_count }}</span></summary>
+      <div class="bell-panel">
+        <p class="bell-title eyebrow">Notifications</p>
+        <ul class="notes" data-notes>{{ notes }}</ul>
+        <p class="notes-empty muted">Nothing new.</p>
+      </div>
+    </details>
     <details class="view-menu" data-view-menu>
       <summary class="topbar-btn" aria-label="View settings">{{ icon("sliders-horizontal") }}<span class="view-label">View</span></summary>
       <div class="view-panel" data-view-panel>
@@ -77,8 +97,6 @@
     <div class="nav-backdrop" data-nav-close hidden></div>
 
     <div class="content">
-      {% include "partials/banners.html" %}
-
       <main class="container-fluid">
         <div id="flash" class="flash" role="status" aria-live="polite"></div>
         <p id="restart-note" class="flash info" role="status" hidden>

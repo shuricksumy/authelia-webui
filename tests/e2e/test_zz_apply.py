@@ -170,11 +170,13 @@ def test_unhealthy_apply_is_rolled_back_and_the_user_is_told(
         assert httpx.get("http://127.0.0.1:19091/api/health", timeout=10).status_code == 200
         assert forward_auth_status("broken.example.test") in (302, 401)  # rule is not live
 
+        page.locator("[data-bell-menu] > summary").click()  # notices live behind the bell
         banner = page.locator(".banner.job.rolled-back")
         expect(banner).to_contain_text("Rolled back")
         banner.get_by_role("button", name="Dismiss").click()
         expect(banner).to_be_hidden()
         page.goto(f"{BASE}/rules", wait_until="networkidle")
+        page.locator("[data-bell-menu] > summary").click()
         expect(page.locator(".banner.job")).to_be_hidden()  # dismissal is remembered
 
         # the failed change waits in the draft so it can be fixed

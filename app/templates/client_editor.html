@@ -1,4 +1,5 @@
-{% extends "base.html" %}
+{% extends "oidc_clients.html" %}
+{% from "partials/icons.html" import icon %}
 {% block title %}{{ 'New client' if index is none else 'Edit client' }}{% endblock %}
 {% macro opt(value, current, label=None) %}<option value="{{ value }}" {% if value == current %}selected{% endif %}>{{ label or value }}</option>{% endmacro %}
 {% macro scalar_select(key, choices, label, help='') %}
@@ -22,10 +23,11 @@
     {% for c in current or [] %}{% if c not in choices %}<label><input type="checkbox" name="l_{{ key }}" value="{{ c }}" checked> {{ c }}</label>{% endif %}{% endfor %}
   </fieldset>
 {% endmacro %}
-{% block content %}
+{% block panel -%}
 <div class="client-editor" id="editor">
-  <div class="toolbar">
-    <h1>{% if index is none %}New client{% else %}Edit client <code>{{ form.client_id|truncate(40, true, '…') }}</code>{% endif %}</h1>
+  <div class="panel-head">
+    <h2>{% if index is none %}New client{% else %}Edit client <code>{{ form.client_id|truncate(40, true, '…') }}</code>{% endif %}</h2>
+    <a role="button" class="act" href="/clients" aria-label="Close the editor" title="Close" data-panel-close>{{ icon("x") }}</a>
   </div>
   {% if preset %}
   <article class="notice info">
@@ -109,4 +111,4 @@
     </div>
   </form>
 </div>
-{% endblock %}
+{%- endblock %}

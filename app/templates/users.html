@@ -3,6 +3,7 @@
 {% from "partials/icons.html" import warn %}
 {% block title %}Users{% endblock %}
 {% block content %}
+<div class="layout"><div class="main-col">
 {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
 <div class="toolbar">
   <h1>Users</h1>
@@ -42,4 +43,6 @@
 </div>
 {% endif %}
 {% endif %}
+</div>
+<aside id="panel" class="panel wide" aria-label="User editor">{% block panel %}{% endblock %}</aside></div>
 {% endblock %}

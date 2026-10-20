@@ -1,28 +1,31 @@
-<dialog open aria-labelledby="dlg-title">
-  <article class="tester">
-    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">{{ 'Edit test' if index is not none else 'Add test' }}</h3></header>
-    {% for e in errors %}<p class="notice error" role="alert">{{ e }}</p>{% endfor %}
-    <form hx-post="/tests/save" hx-target="#modal" hx-swap="innerHTML">
-      <input type="hidden" name="tests_rev" value="{{ tests_rev }}">
-      {% if index is not none %}<input type="hidden" name="index" value="{{ index }}">{% endif %}
-      <label for="t-name">Name <small>optional</small> <input id="t-name" name="name" value="{{ case.name }}" placeholder="Photos app: API stays open"></label>
-      <div class="grid-2">
-        <label for="t-url">URL <input id="t-url" name="url" value="{{ case.url }}" placeholder="https://photos.example.com/api/ping" required></label>
-        <label for="t-method">Method
-          <select id="t-method" name="method">{% for m in methods %}<option {% if m == case.method %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
-      </div>
-      <div class="grid-2">
-        <label for="t-user">User
-          <select id="t-user" name="user"><option value="">(anonymous)</option>
-            {% for name in usernames %}<option value="{{ name }}" {% if name == case.user %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
-        <label for="t-groups">Groups <small>comma separated</small> <input id="t-groups" name="groups" value="{{ groups_text }}"></label>
-      </div>
-      <div class="grid-2">
-        <label for="t-ip">Client IP <small>optional</small> <input id="t-ip" name="ip" value="{{ case.ip }}" placeholder="192.0.2.10"></label>
-        <label for="t-expect">Must get
-          <select id="t-expect" name="expect">{% for p in policies %}<option value="{{ p }}" {% if p == case.expect %}selected{% endif %}>{{ policy_labels[p] }}</option>{% endfor %}</select></label>
-      </div>
-      <footer><button type="button" class="secondary" data-close>Cancel</button><button type="submit">Save test</button></footer>
-    </form>
-  </article>
-</dialog>
+{% from "partials/icons.html" import icon %}
+<div class="editor" id="test-editor">
+  <div class="panel-head">
+    <h2>{{ 'Edit test' if index is not none else 'Add test' }}</h2>
+    <a role="button" class="act" href="/tests" aria-label="Close the editor" title="Close" data-panel-close>{{ icon("x") }}</a>
+  </div>
+  {% for e in errors %}<p class="notice error" role="alert">{{ e }}</p>{% endfor %}
+  <form id="test-form" hx-post="/tests/save" hx-target="#panel" hx-swap="innerHTML">
+    <input type="hidden" name="tests_rev" value="{{ tests_rev }}">
+    {% if index is not none %}<input type="hidden" name="index" value="{{ index }}">{% endif %}
+    <label for="t-name">Name <small>optional</small> <input id="t-name" name="name" value="{{ case.name }}" placeholder="Photos app: API stays open"></label>
+    <label for="t-url">URL <input id="t-url" name="url" value="{{ case.url }}" placeholder="https://photos.example.com/api/ping" required></label>
+    <div class="grid-2 even">
+      <label for="t-method">Method
+        <select id="t-method" name="method">{% for m in methods %}<option {% if m == case.method %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
+      <label for="t-expect">Must get
+        <select id="t-expect" name="expect">{% for p in policies %}<option value="{{ p }}" {% if p == case.expect %}selected{% endif %}>{{ policy_labels[p] }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="grid-2 even">
+      <label for="t-user">User
+        <select id="t-user" name="user"><option value="">(anonymous)</option>
+          {% for name in usernames %}<option value="{{ name }}" {% if name == case.user %}selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+      <label for="t-groups">Groups <small>comma separated</small> <input id="t-groups" name="groups" value="{{ groups_text }}"></label>
+    </div>
+    <label for="t-ip">Client IP <small>optional</small> <input id="t-ip" name="ip" value="{{ case.ip }}" placeholder="192.0.2.10"></label>
+    <div class="editor-actions">
+      <a role="button" class="secondary outline" href="/tests">Cancel</a>
+      <button type="submit">Save test</button>
+    </div>
+  </form>
+</div>

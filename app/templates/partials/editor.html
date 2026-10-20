@@ -3,7 +3,7 @@
 <div class="editor" id="editor">
   <div class="panel-head">
     <h2>{% if index is none %}New rule{% else %}{{ 'Rule' if locked else 'Edit rule' }} #{{ index + 1 }}{% endif %}</h2>
-    <a role="button" class="act" href="/rules" aria-label="Close the editor" title="Close">{{ icon("x") }}</a>
+    <a role="button" class="act" href="/rules" aria-label="Close the editor" title="Close" data-panel-close>{{ icon("x") }}</a>
   </div>
 
   {% if locked %}

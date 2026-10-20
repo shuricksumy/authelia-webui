@@ -137,13 +137,9 @@ def extra_changes(user: dict[str, Any], schema: UsersSchema, data: Any) -> dict[
 # --------------------------------------------------------------------------- list
 
 
-@router.get("/users", response_class=HTMLResponse)
-def users_page(request: Request, q: str = "", saved: str = "") -> Response:
-    v = load_view(request)
-    doc = users_doc(v)
-    ctx = users_context(v)
+def list_rows(doc: UsersDocument | None, ctx: dict[str, Any], q: str = "") -> list[dict[str, Any]]:
+    """The users table; the editor opens as a drawer over it, so its pages need it too."""
     rows: list[dict[str, Any]] = []
-    broken = doc is None
     if doc is not None:
         schema: UsersSchema = ctx["schema"]
         users = doc.users()
@@ -161,8 +157,17 @@ def users_page(request: Request, q: str = "", saved: str = "") -> Response:
                 "admin": ctx["admin_group"] in groups,
                 "issues": [m for who, sev, m in problems if who == name],
             })  # fmt: skip
+    return rows
+
+
+@router.get("/users", response_class=HTMLResponse)
+def users_page(request: Request, q: str = "", saved: str = "") -> Response:
+    v = load_view(request)
+    doc = users_doc(v)
+    ctx = users_context(v)
     flash = f"User {saved} saved." if saved else ""
-    return render(v, "users.html", rows=rows, q=q, broken=broken, flash=flash, **ctx)
+    return render(v, "users.html", rows=list_rows(doc, ctx, q), q=q, broken=doc is None,
+                  flash=flash, **ctx)  # fmt: skip
 
 
 # --------------------------------------------------------------------------- editor
@@ -183,6 +188,9 @@ def editor_context(v: View, doc: UsersDocument, name: str | None, errors: list[s
     }  # fmt: skip
     return {
         **ctx,
+        "rows": list_rows(doc, ctx),
+        "q": "",
+        "broken": False,
         "uname": name,
         "errors": errors or [],
         "f": data,

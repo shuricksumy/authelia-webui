@@ -52,8 +52,13 @@
     var label = button.dataset.label || button.textContent;
     button.dataset.label = label;
     function done(message) {
-      button.textContent = message;
       clearTimeout(button._reset);
+      if (button.classList.contains("act")) {  // an icon button: a small tip instead of new text
+        button.dataset.tip = message;
+        button._reset = setTimeout(function () { delete button.dataset.tip; }, 2500);
+        return;
+      }
+      button.textContent = message;
       button._reset = setTimeout(function () { button.textContent = label; }, 2500);
     }
     function legacy() {
@@ -141,8 +146,26 @@
     list.push(banner.dataset.jobId);
     try { localStorage.setItem("dismissed-jobs", JSON.stringify(list.slice(-20))); } catch (e) { /* private mode */ }
     banner.hidden = true;
+    recountNotes();
   });
-  document.addEventListener("DOMContentLoaded", applyDismissals);
+  document.addEventListener("DOMContentLoaded", function () { applyDismissals(); recountNotes(); });
+
+  // Notifications (the bell in the top bar): the server counts them; dismissing or marking one
+  // as seen updates the count, its colour (worst first) and the button's name here.
+  function recountNotes() {
+    var list = document.querySelector("[data-notes]");
+    var badge = document.querySelector("[data-bell-count]");
+    if (!list || !badge) { return; }
+    var items = Array.prototype.filter.call(list.querySelectorAll("[data-note]"), function (el) { return !el.hidden; });
+    var levels = items.map(function (el) { return el.getAttribute("data-note"); });
+    var worst = levels.indexOf("error") !== -1 ? "error" : (levels.indexOf("warn") !== -1 ? "warn" : "info");
+    badge.textContent = String(items.length);
+    badge.hidden = items.length === 0;
+    badge.className = "bell-count " + worst;
+    var summary = badge.closest("summary");
+    if (summary) { summary.setAttribute("aria-label", "Notifications (" + items.length + ")"); }
+  }
+  document.addEventListener("htmx:afterSettle", recountNotes);
 
   // Applying restarts Authelia, which signs everyone out (memory sessions): the progress poll then
   // fails or is redirected to the portal. Wait until Authelia answers again (a redirect to the
@@ -319,12 +342,16 @@
       document.querySelectorAll("table.data[data-colkey]").forEach(applyWidths);
       return;
     }
-    var menu = document.querySelector("[data-view-menu][open]");
-    if (menu && !menu.contains(event.target)) { menu.removeAttribute("open"); }  // click outside closes
+    // a click outside an open menu (View, notifications) closes it
+    document.querySelectorAll("[data-view-menu][open], [data-bell-menu][open]").forEach(function (menu) {
+      if (!menu.contains(event.target)) { menu.removeAttribute("open"); }
+    });
   });
   document.addEventListener("keydown", function (event) {
-    var menu = document.querySelector("[data-view-menu][open]");
-    if (event.key === "Escape" && menu) { menu.removeAttribute("open"); }
+    if (event.key !== "Escape") { return; }
+    document.querySelectorAll("[data-view-menu][open], [data-bell-menu][open]").forEach(function (menu) {
+      menu.removeAttribute("open");
+    });
   });
   window.addEventListener("storage", function (event) {
     if (event.key === "view" && window.appView) { showView(window.appView.read()); }
@@ -355,6 +382,19 @@
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape" && document.documentElement.hasAttribute("data-nav-open")) { setDrawer(false); }
   });
+
+  // Esc closes the editor drawer (its close link), unless a dialog or a menu is open on top of it
+  // or the key was meant for a form field (typed text is never thrown away by Esc). Capture phase:
+  // it must see the dialog before the dialog's own Esc handler removes it.
+  document.addEventListener("keydown", function (event) {
+    if (event.key !== "Escape" || event.defaultPrevented) { return; }
+    var modal = document.getElementById("modal");
+    if ((modal && modal.firstChild) || document.querySelector("[data-view-menu][open], [data-bell-menu][open]")) { return; }
+    if (document.documentElement.hasAttribute("data-nav-open")) { return; }
+    if (event.target.closest && event.target.closest("input, textarea, select, [contenteditable]")) { return; }
+    var close = document.querySelector("#panel [data-panel-close]");
+    if (close) { close.click(); }
+  }, true);
   document.addEventListener("DOMContentLoaded", function () {
     if (window.appView) { showView(window.appView.read()); }
   });

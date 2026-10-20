@@ -35,11 +35,20 @@ router = APIRouter()
 log = logging.getLogger("app.overview")
 
 
+_TITLES = {"/rules": "Rules", "/tests": "Access tests", "/clients": "OIDC clients",
+           "/users": "Users", "/keys": "Certificates", "/logs": "Authelia log"}  # fmt: skip
+
+
 @dataclass(frozen=True)
 class Attention:
     severity: str  # error | warning | info
     text: str
     href: str = ""
+
+    @property
+    def title(self) -> str:
+        """The card title: the page the item links to (no link: Authelia itself)."""
+        return _TITLES.get(self.href.split("?")[0], "Authelia" if not self.href else "")
 
 
 @dataclass

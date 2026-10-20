@@ -127,9 +127,8 @@ def hosts(uris: Any) -> list[str]:
     return out
 
 
-@router.get("/clients", response_class=HTMLResponse)
-def clients_page(request: Request, saved: str = "") -> Response:
-    v = load_view(request)
+def list_context(v: View) -> dict[str, Any]:
+    """The clients table; the editor opens as a drawer over it, so its pages need it too."""
     doc = clients_of(v)
     rows: list[dict[str, Any]] = []
     issues: list[Issue] = []
@@ -151,11 +150,17 @@ def clients_page(request: Request, saved: str = "") -> Response:
                 "issues": [x for x in issues if x.rule == i],
                 "changed": doc.blocks[i].lines not in live_blocks,
             })  # fmt: skip
-    return render(
-        v, "oidc_clients.html", active="clients", rows=rows, has_clients_file=doc is not None,
-        doc_issues=[x for x in issues if x.rule is None], labels=POLICY_LABEL,
-        flash=f"Client {saved} saved to the draft." if saved else "",
-    )  # fmt: skip
+    return {
+        "active": "clients", "rows": rows, "has_clients_file": doc is not None,
+        "doc_issues": [x for x in issues if x.rule is None], "labels": POLICY_LABEL,
+    }  # fmt: skip
+
+
+@router.get("/clients", response_class=HTMLResponse)
+def clients_page(request: Request, saved: str = "") -> Response:
+    v = load_view(request)
+    return render(v, "oidc_clients.html", **list_context(v),
+                  flash=f"Client {saved} saved to the draft." if saved else "")  # fmt: skip
 
 
 # --------------------------------------------------------------------------- editor
@@ -167,6 +172,7 @@ def editor_context(
 ) -> dict[str, Any]:  # fmt: skip
     names = names_of(v)
     return {
+        **list_context(v),
         "active": "clients", "index": index, "form": form, "errors": errors or [],
         "names": names, "UNSET": F.UNSET, "inner_comments": inner_comments, "secret_kind": secret,
         "grant_types": F.GRANT_TYPES, "response_types": F.RESPONSE_TYPES,

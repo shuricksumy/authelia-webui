@@ -51,6 +51,12 @@ ORIGINAL_TESTS = ""  # and access_tests.yml
 ORIGINAL_USERS = ""  # and users.yml
 
 
+def open_bell(page: Page) -> None:
+    """Notices live behind the bell in the top bar: open it so the picture shows them."""
+    page.locator("[data-bell-menu] > summary").click()
+    page.wait_for_selector(".bell-panel", state="visible")
+
+
 def reset_draft() -> None:
     """Back to a pristine stack: no draft, no apply state, no git history, original rules."""
     shutil.rmtree(MANAGED / ".draft", ignore_errors=True)
@@ -175,6 +181,7 @@ def apply_applied(page: Page) -> None:
     seed_job("applied", ["done", "done", "done", "done", "done", "skipped"],
              "Applied. Authelia is healthy.")  # fmt: skip
     page.goto(f"{BASE}/rules", wait_until="networkidle")
+    open_bell(page)
 
 
 def apply_rolled_back(page: Page) -> None:
@@ -213,7 +220,7 @@ def tests_page(page: Page) -> None:
 def tests_dialog(page: Page) -> None:
     page.goto(f"{BASE}/tests", wait_until="networkidle")
     page.get_by_role("button", name="+ Add test").click()
-    page.wait_for_selector("dialog[open]")
+    page.wait_for_selector("#test-form")
 
 
 def review_failing_tests(page: Page) -> None:
@@ -228,6 +235,7 @@ def external_change(page: Page) -> None:
     git.ensure(TRACKED)
     LIVE.write_text(ORIGINAL + "# edited over ssh\n")
     page.goto(f"{BASE}/rules", wait_until="networkidle")
+    open_bell(page)
 
 
 def main_changed(page: Page) -> None:
@@ -236,6 +244,7 @@ def main_changed(page: Page) -> None:
     apply_state.update(MANAGED, main_sha=sha256(MAIN.read_text()))
     MAIN.write_text(MAIN.read_text() + "# edited by hand\n")
     page.goto(f"{BASE}/rules", wait_until="networkidle")
+    open_bell(page)
 
 
 def clients_list(page: Page) -> None:
@@ -363,7 +372,7 @@ def emergency_session(page: Page) -> None:
     page.goto("http://localhost:8090/emergency/login", wait_until="networkidle")
     page.get_by_label("Emergency password").fill(EMERGENCY_PASSWORD)
     page.get_by_role("button", name="Sign in").click()
-    page.wait_for_selector(".banner.error")
+    page.wait_for_selector(".emergency-chip")
 
 
 SCREENS: dict[str, Callable[[Page], None]] = {
@@ -415,6 +424,13 @@ def shoot(context: BrowserContext, name: str, width: str, scheme: str) -> None:
     try:
         SCREENS[name](page)
         settle(page)
+        # The editor drawer scrolls inside the window; unpin it so the full-page picture shows all
+        # of it (CSSOM: allowed by the CSP).
+        page.evaluate(
+            "() => { const p = document.getElementById('panel'); "
+            "if (p && p.firstElementChild && getComputedStyle(p).position === 'fixed') "
+            "{ p.style.position = 'absolute'; p.style.bottom = 'auto'; } }"
+        )
         page.screenshot(path=str(OUT / f"{name}-{width}-{scheme}.png"), full_page=True)
     finally:
         page.close()

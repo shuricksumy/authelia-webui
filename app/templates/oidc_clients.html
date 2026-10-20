@@ -3,6 +3,7 @@
 {% from "partials/icons.html" import warn %}
 {% block title %}OIDC Clients{% endblock %}
 {% block content %}
+<div class="layout"><div class="main-col">
 {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
 <div class="toolbar">
   <h1>OIDC Clients</h1>
@@ -28,8 +29,8 @@
             {% if r.public %}<small class="note">public client</small>{% elif r.secret == 'plaintext' %}<small class="note err-text">secret stored in plain text</small>{% endif %}
             {% if r.issues %}<details class="issues {% if r.issues|selectattr('severity', 'equalto', 'error')|list %}has-errors{% endif %}"><summary>{{ warn() }} {{ r.issues|length }}</summary>
               <ul>{% for i in r.issues %}<li class="{{ i.severity }}">{{ i.message }}</li>{% endfor %}</ul></details>{% endif %}</td>
-          <td data-label="Client ID"><code class="client-id" title="{{ r.client_id }}">{{ r.client_id|truncate(28, true, '…') }}</code>
-            <button type="button" class="outline secondary small icon-btn" data-copy="{{ r.client_id }}" aria-label="Copy client ID of {{ r.name or r.client_id }}">Copy</button></td>
+          <td data-label="Client ID"><span class="copy-cell"><code class="client-id trunc" title="{{ r.client_id }}">{{ r.client_id }}</code>
+            <button type="button" class="act copy" data-copy="{{ r.client_id }}" aria-label="Copy client ID of {{ r.name or r.client_id }}" title="Copy">{{ icon("copy") }}</button></span></td>
           <td data-label="Redirects to"><span class="trunc" title="{{ r.hosts|join(', ') }}">{{ r.hosts|join(', ') or '—' }}</span></td>
           <td data-label="Policy"><span class="badge {{ r.policy }}">{{ labels.get(r.policy, r.policy) }}</span></td>
           <td data-label="PKCE">{{ 'yes' if r.pkce else 'no' }}</td>
@@ -41,4 +42,6 @@
   </div>
   {% endif %}
 {% endif %}
+</div>
+<aside id="panel" class="panel wide" aria-label="Client editor">{% block panel %}{% endblock %}</aside></div>
 {% endblock %}

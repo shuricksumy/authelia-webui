@@ -105,6 +105,16 @@ def test_invalid_test_is_rejected_with_a_reason(env: dict[str, Path]) -> None:  
     assert not (env["managed"] / "access_tests.yml").exists()
 
 
+def test_test_form_is_a_drawer_over_the_list(env: dict[str, Path]) -> None:  # noqa: F811
+    ui = UI(env)
+    drawer = ui.get("/tests/new", htmx=True).text  # "+ Add test": only the drawer's content
+    assert 'id="test-form"' in drawer and "<html" not in drawer and "data-panel-close" in drawer
+    page = ui.get("/tests/new?url=https%3A%2F%2Fphotos.example.com%2Fx").text  # a link: whole page
+    lst, panel = page.split('<aside id="panel"')
+    assert "<h1>Access tests</h1>" in lst and 'id="test-form"' in panel
+    assert 'value="https://photos.example.com/x"' in panel
+
+
 def test_tester_offers_add_as_test_prefilled(env: dict[str, Path]) -> None:  # noqa: F811
     ui = UI(env)
     page = ui.post("/tester/run", {"url": "https://photos.example.com/x", "method": "GET"}).text

@@ -77,6 +77,14 @@ def test_list_never_shows_a_hash_and_marks_you(ui: UI) -> None:
     assert ui.get("/users?q=nobody").text.count("<tr") <= 2
 
 
+def test_editor_opens_as_a_drawer_over_the_list(ui: UI) -> None:
+    page = ui.get("/users/bob/edit").text
+    table, panel = page.split('<aside id="panel"')
+    assert 'class="data users"' in table and "alice" in table  # the list stays
+    assert 'id="user-form"' in panel and "data-panel-close" in panel  # the editor is the drawer
+    assert HASH not in page and "argon2" not in page
+
+
 def test_edit_a_user_changes_only_that_user(ui: UI, uenv: dict[str, Path]) -> None:
     before = uenv["users"].read_text()
     r = post(
