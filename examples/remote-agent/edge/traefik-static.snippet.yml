@@ -1,0 +1,11 @@
+# Lines to MERGE into the EDGE Traefik's static config (traefik.yml); not a complete file.
+# Static config is read at start only: restart Traefik after adding them.
+#
+# A plain entry point for the CrowdSec API (LAPI), used by agents behind the tunnel.
+# Do NOT publish it in compose (`ports:`): it is reached through the WireGuard container on the
+# edge network only (README, step 2). No middlewares here: the router in crowdsec-lapi.yml has
+# its own allow-list, and the CrowdSec bouncer must not sit in front of CrowdSec itself.
+
+entryPoints:
+  cslapi:
+    address: ":8082"

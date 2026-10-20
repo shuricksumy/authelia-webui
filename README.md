@@ -201,6 +201,9 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 - **Hardening the edge (optional):** [`docs/hardening.md`](docs/hardening.md): the real client
   address behind a CDN (and why Authelia needs it), CrowdSec bans, Cloudflare in front, and
   Traefik without the Docker socket; files in [`examples/hardening/`](examples/hardening/).
+- **Apps on a home machine, edge in the cloud (optional):**
+  [`examples/remote-agent/`](examples/remote-agent/): a CrowdSec agent next to the apps reports to
+  the edge through the tunnel, so Home Assistant and Nextcloud logins are banned on every site.
 
 ## Reachable from anywhere (optional, not the default)
 

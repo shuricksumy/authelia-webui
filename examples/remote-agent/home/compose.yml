@@ -1,0 +1,41 @@
+# HOME machine: a CrowdSec agent that reads local app logs and sends its alerts to CrowdSec on
+# the edge, through the WireGuard tunnel. No engine, no database, no bouncer here: the edge's
+# Traefik enforces every ban, for every site. Guide: README.md next to this folder.
+#
+#   mkdir -p crowdsec-agent/config crowdsec-agent/data
+#   cp acquis.yaml crowdsec-agent/acquis.yaml
+#   echo "CROWDSEC_AGENT_PASSWORD=<from cscli machines add on the edge>" >> .env
+#   docker compose -f compose.yml up -d
+#
+# Merge the service into your existing compose file if you prefer; nothing else depends on it.
+services:
+  crowdsec-agent:
+    # The Debian variant ships journalctl (the Alpine one does not): needed for journald sources.
+    image: crowdsecurity/crowdsec:v1.8.1-debian
+    container_name: crowdsec-agent
+    restart: unless-stopped
+    environment:
+      DISABLE_LOCAL_API: "true" # agent only: alerts go to the edge
+      # The edge Traefik's address on the edge network, entry point cslapi (crowdsec-lapi.yml).
+      # Reached through the tunnel: the client's AllowedIPs include exactly this address.
+      LOCAL_API_URL: http://172.30.0.2:8082
+      AGENT_USERNAME: home-agent # created on the edge with `cscli machines add home-agent`
+      AGENT_PASSWORD: ${CROWDSEC_AGENT_PASSWORD:?set CROWDSEC_AGENT_PASSWORD}
+      COLLECTIONS: crowdsecurity/home-assistant crowdsecurity/nextcloud
+      PARSERS: crowdsecurity/whitelists # never report LAN/VPN addresses
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./crowdsec-agent/config:/etc/crowdsec
+      - ./crowdsec-agent/data:/var/lib/crowdsec/data
+      - ./crowdsec-agent/acquis.yaml:/etc/crowdsec/acquis.yaml:ro
+      # journald (Home Assistant under the Supervisor); the machine id names the journal files
+      - /var/log/journal:/var/log/journal:ro
+      - /run/log/journal:/run/log/journal:ro
+      - /etc/machine-id:/etc/machine-id:ro
+      # Nextcloud's data folder, read-only (its log is replaced on rotation, so not the file).
+      # To expose less, set Nextcloud's 'logfile' to a folder of its own and mount only that.
+      - /srv/nextcloud/data:/logs/nextcloud:ro
+    # No ports: the agent only connects out. No Docker socket.
+    cap_drop: [ALL]
+    cap_add: [DAC_READ_SEARCH] # read logs owned by root / www-data, nothing else
+    security_opt: ["no-new-privileges:true"]

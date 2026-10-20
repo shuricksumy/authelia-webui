@@ -1,0 +1,30 @@
+# CrowdSec scenario for the EDGE: repeated failed logins that the app itself rejects on routes
+# without Authelia (Nextcloud WebDAV/OCS for sync apps). Nextcloud does not log these failures,
+# so no agent next to it can see them; Traefik's access log on the edge does (README, step 5).
+#
+# Place at crowdsec/config/scenarios/ (= /etc/crowdsec/scenarios/ inside) and list YOUR routers
+# as Traefik names them. Start in simulation (alerts, no bans):
+#   cscli simulation enable local/webdav-auth-bf
+# All devices of one household share one public address: a single app with an old password,
+# retrying in a loop, would ban the whole house. Check `cscli alerts list` for a week first.
+type: leaky
+name: local/webdav-auth-bf
+description: "Repeated failed logins rejected by the app on routes without Authelia"
+filter: >-
+  evt.Meta.service == 'http' &&
+  evt.Meta.http_status == '401' &&
+  evt.Unmarshaled.traefik != nil &&
+  evt.Unmarshaled.traefik.RouterName in ['nextcloud@file']
+groupby: "evt.Meta.source_ip"
+capacity: 10
+leakspeed: "30s"
+blackhole: 5m
+labels:
+  service: http
+  remediation: true
+  behavior: "http:bruteforce"
+  label: "Brute force on routes without Authelia (WebDAV/OCS)"
+  classification:
+    - attack.T1110
+  confidence: 3
+  spoofable: 0

@@ -1,0 +1,23 @@
+# EDGE Traefik, dynamic config (put it in the file provider's directory; hot-reloaded).
+# Forwards the cslapi entry point (traefik-static.snippet.yml) to CrowdSec's API, for agents
+# that come through the tunnel. Traefik reaches `crowdsec` on the network they share.
+#
+# The allow-list holds the WireGuard container's address on the edge network: the container
+# masquerades, so every tunnel peer arrives as that one address (README, step 2). Agents still
+# need their own machine login (`cscli machines add`), so a peer without credentials gets nothing.
+http:
+  routers:
+    crowdsec-lapi:
+      entryPoints: [cslapi]
+      rule: PathPrefix(`/`)
+      service: crowdsec-lapi
+      middlewares: [crowdsec-lapi-allow]
+  middlewares:
+    crowdsec-lapi-allow:
+      ipAllowList:
+        sourceRange: ["172.30.0.30/32"] # PLACEHOLDER: the WireGuard container's edge address
+  services:
+    crowdsec-lapi:
+      loadBalancer:
+        servers:
+          - url: http://crowdsec:8080

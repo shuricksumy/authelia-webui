@@ -243,6 +243,15 @@ agents that send alerts heartbeat. Undo: `cscli machines delete traefik-manager`
 | "no geoip-enrich" / "no HTTP meta" | parser or alert context missing | `PARSERS`/`CONTEXTS` in the overlay; context add (section 2) |
 | bans in force: 0, "0 subscribed" | nothing banned yet; blocklist not synced | `cscli capi status`; wait for the sync |
 
+## 8. Apps on another machine (optional)
+
+When heavy apps (Home Assistant, Nextcloud) run at home and only Traefik, Authelia and CrowdSec run
+on a cloud server, the apps' own logs never reach the edge. A CrowdSec agent next to them reads
+those logs and sends its alerts through the tunnel; the edge bans the address for every site.
+Setup, per-app real client address, the tunnel route and the pitfalls (Home Assistant's UI-managed
+proxy settings and coloured journal output, Nextcloud's unlogged WebDAV failures):
+[`examples/remote-agent/`](../examples/remote-agent/).
+
 ## Pitfalls met on a real deployment
 
 - **Static config is read at start only.** After editing `traefik.yml`, recreate Traefik, then
