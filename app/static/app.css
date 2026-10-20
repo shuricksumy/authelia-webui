@@ -576,6 +576,7 @@ table.keys form.inline-form { display: inline-flex; margin: 0 0.3rem 0 0; }
 @media (max-width: 960px) {
   .layout:has(#panel > *) .panel { position: static; width: auto; padding: 0; border: 0; box-shadow: none; background: transparent; animation: none; }
   .layout:has(#panel > *) .main-col { display: none; } /* the editor is the whole page */
+  .panel .editor-actions { position: static; background: transparent; padding-inline: 0; } /* no card behind it here */
 }
 /* the sidebar becomes a drawer (app.js opens it; Esc or the backdrop closes it) */
 @media (max-width: 60rem) {
