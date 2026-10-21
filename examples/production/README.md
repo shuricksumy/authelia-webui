@@ -25,6 +25,8 @@ compose.firewall-bouncer.yml  optional, with compose.crowdsec.yml: bans in the h
 crowdsec/firewall-bouncer.yaml  its config (the key comes from .env)
 compose.cloudflare-list-sync.yml  optional, with compose.crowdsec.yml: own bans into a Cloudflare
                             IP list (docs/cloudflare-list-sync.md; script in ../cloudflare-list-sync/)
+compose.static-blocklist.yml  optional, with compose.crowdsec.yml: permanent bans from a text file
+                            (docs/static-blocklist.md; watcher in ../static-blocklist/)
 traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 

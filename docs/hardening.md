@@ -269,6 +269,12 @@ expired ones: [`cloudflare-list-sync.md`](cloudflare-list-sync.md), files in
 [`examples/cloudflare-list-sync/`](../examples/cloudflare-list-sync/) and
 `examples/production/compose.cloudflare-list-sync.yml`.
 
+## 11. Permanent bans from a file (optional)
+
+A text file of addresses and ranges that every bouncer enforces, applied within seconds of saving:
+[`static-blocklist.md`](static-blocklist.md). How all the blocking pieces fit together, and the
+order to deploy them: [`blocking.md`](blocking.md).
+
 ## Pitfalls met on a real deployment
 
 - **Static config is read at start only.** After editing `traefik.yml`, recreate Traefik, then

@@ -208,6 +208,9 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
   CrowdSec's firewall bouncer as a pinned local image, so SSH and a VPN server are covered too.
 - **Bans at Cloudflare (optional):** [`docs/cloudflare-list-sync.md`](docs/cloudflare-list-sync.md):
   CrowdSec's own bans mirrored into a Cloudflare IP list for a WAF rule, free plan included.
+- **Permanent bans from a file (optional):** [`docs/static-blocklist.md`](docs/static-blocklist.md):
+  save the file and every bouncer applies it within seconds. All blocking pieces together, in
+  deployment order: [`docs/blocking.md`](docs/blocking.md).
 
 ## Reachable from anywhere (optional, not the default)
 

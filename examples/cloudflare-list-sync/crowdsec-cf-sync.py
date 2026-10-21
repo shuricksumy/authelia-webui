@@ -3,7 +3,8 @@
 Guide: docs/cloudflare-list-sync.md.
 
 Every INTERVAL seconds:
-  wanted  = active CrowdSec decisions of type ban, from ORIGINS (default: crowdsec, cscli;
+  wanted  = active CrowdSec decisions of type ban, from ORIGINS (default: crowdsec, cscli,
+            static-blocklist;
             NOT the community blocklist: it is larger than a free plan's list)
   current = list items whose comment starts with "crowdsec" (items you added by hand are
             never touched)
@@ -19,7 +20,7 @@ Environment:
   CF_API_TOKEN   API token with Account > Account Filter Lists > Edit
   CF_ACCOUNT_ID  account id (32 hex)
   CF_LIST_ID     list id (32 hex)
-  ORIGINS        crowdsec,cscli
+  ORIGINS        crowdsec,cscli,static-blocklist
   INTERVAL       60
   MAX_ITEMS      5000   cap for items owned by this tool (free plan: 10000 in total)
   DRY_RUN        1 = only log what would change
@@ -84,7 +85,8 @@ class Sync:
         self.items_url = f"{CF_API}/accounts/{account}/rules/lists/{env('CF_LIST_ID')}/items"
         self.ops_url = f"{CF_API}/accounts/{account}/rules/lists/bulk_operations"
         self.cf_headers = {"Authorization": f"Bearer {env('CF_API_TOKEN')}"}
-        self.origins = {o.strip() for o in env("ORIGINS", "crowdsec,cscli").split(",") if o.strip()}
+        origins = env("ORIGINS", "crowdsec,cscli,static-blocklist")
+        self.origins = {o.strip() for o in origins.split(",") if o.strip()}
         self.max_items = int(env("MAX_ITEMS", "5000"))
         self.dry_run = os.environ.get("DRY_RUN") == "1"
 

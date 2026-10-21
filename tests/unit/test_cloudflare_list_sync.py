@@ -220,7 +220,7 @@ def test_overlay_runs_unprivileged_with_a_token_and_reads_only_decisions() -> No
     assert svc["cap_drop"] == ["ALL"] and "cap_add" not in svc
     assert "ports" not in svc and all(str(v).endswith(":ro") for v in svc["volumes"])
     env = svc["environment"]
-    assert env["ORIGINS"] == "crowdsec,cscli"  # never the community blocklist
+    assert set(env["ORIGINS"].split(",")) == {"crowdsec", "cscli", "static-blocklist"}  # no CAPI
     assert env["DRY_RUN"] == "1"  # first start logs only
     assert env["CF_API_TOKEN"].startswith("${CF_API_TOKEN")
     assert env["LAPI_KEY"].startswith("${CROWDSEC_CF_SYNC_KEY")

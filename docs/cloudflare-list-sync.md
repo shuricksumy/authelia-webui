@@ -23,8 +23,9 @@ and [`examples/production/compose.cloudflare-list-sync.yml`](../examples/product
 Every `INTERVAL` seconds (60):
 
 1. reads CrowdSec's active decisions with its own **bouncer key** (read-only);
-2. keeps bans from the origins in `ORIGINS`: `crowdsec` (its own detections) and `cscli` (bans you
-   add by hand). The community blocklist (`CAPI`, tens of thousands of addresses) does not fit a
+2. keeps bans from the origins in `ORIGINS`: `crowdsec` (its own detections), `cscli` (bans you
+   add by hand) and `static-blocklist` (your permanent list, [`static-blocklist.md`](static-blocklist.md)).
+   The community blocklist (`CAPI`, tens of thousands of addresses) does not fit a
    free list and is enforced by the bouncers anyway;
 3. reads the whole list (paged, 500 per page) and compares:
    - adds the missing bans, with the comment `crowdsec: <scenario>`;
@@ -42,7 +43,7 @@ It uses Python's standard library only: no `pip`, nothing downloaded at run time
 | `LAPI_KEY` | | the bouncer key |
 | `CF_API_TOKEN` | | API **token** (not the Global API Key) |
 | `CF_ACCOUNT_ID`, `CF_LIST_ID` | | 32 hex characters each |
-| `ORIGINS` | `crowdsec,cscli` | which decisions to mirror |
+| `ORIGINS` | `crowdsec,cscli,static-blocklist` | which decisions to mirror |
 | `INTERVAL` | `60` | seconds between cycles |
 | `MAX_ITEMS` | `5000` | cap for the items the sync owns |
 | `DRY_RUN` | unset | `1`: only log what would change |
@@ -103,7 +104,7 @@ added by hand (`cscli bouncers add <name> -o raw`) works as well: put its key in
 Expected log, with `DRY_RUN: "1"`:
 
 ```
-syncing origins ['crowdsec', 'cscli'] every 60s (dry run)
+syncing origins ['crowdsec', 'cscli', 'static-blocklist'] every 60s (dry run)
 add 1: 192.0.2.10                        # only if CrowdSec has own bans right now
 ```
 
