@@ -1,0 +1,7 @@
+# Permanent bans: one IP address or CIDR range per line; text after # is a comment.
+# Saved changes apply by themselves within seconds (docs/static-blocklist.md):
+# a new line bans, a deleted line lifts the ban, on every bouncer.
+#
+# 203.0.113.9          # example: a single address
+# 198.51.100.0/24      # example: a range
+# 2001:db8::/48        # example: an IPv6 range

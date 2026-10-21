@@ -261,6 +261,20 @@ image from the official binary and run in the same compose project
 [`examples/firewall-bouncer/`](../examples/firewall-bouncer/) and
 `examples/production/compose.firewall-bouncer.yml`). The same page adds SSH's and OpenVPN's logs.
 
+## 10. Bans at Cloudflare's edge (optional)
+
+Behind Cloudflare, CrowdSec's own bans can also go into a Cloudflare IP list that a WAF rule blocks,
+so banned addresses stop at the edge (free plan included). A small service mirrors them and removes
+expired ones: [`cloudflare-list-sync.md`](cloudflare-list-sync.md), files in
+[`examples/cloudflare-list-sync/`](../examples/cloudflare-list-sync/) and
+`examples/production/compose.cloudflare-list-sync.yml`.
+
+## 11. Permanent bans from a file (optional)
+
+A text file of addresses and ranges that every bouncer enforces, applied within seconds of saving:
+[`static-blocklist.md`](static-blocklist.md). How all the blocking pieces fit together, and the
+order to deploy them: [`blocking.md`](blocking.md).
+
 ## Pitfalls met on a real deployment
 
 - **Static config is read at start only.** After editing `traefik.yml`, recreate Traefik, then

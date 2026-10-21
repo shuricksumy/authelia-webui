@@ -2,7 +2,7 @@
 
 From an empty server to the full stack: Traefik, Authelia, the configurator, and optionally
 Traefik Manager, CrowdSec and Cloudflare in front. Each phase ends with a check; do not start the
-next one before it passes. Phases 4 to 8 are optional and can be added later, in this order.
+next one before it passes. Phases 4 to 9 are optional and can be added later, in this order.
 
 | Phase | Gives you | Details |
 |---|---|---|
@@ -14,6 +14,7 @@ next one before it passes. Phases 4 to 8 are optional and can be added later, in
 | 6. Traefik Manager ↔ CrowdSec | bans and attacks in Traefik Manager | [`hardening.md`](hardening.md) §7 |
 | 7. Cloudflare in front | real client IPs, WAF, origin locked to Cloudflare | [`hardening.md`](hardening.md) §1, §4 |
 | 8. Login throttling per IP | Authelia bans per address too | [`hardening.md`](hardening.md) §3 |
+| 9. More blocking | firewall, Cloudflare edge, static list, apps elsewhere | [`blocking.md`](blocking.md) |
 
 Replace `example.com` with your domain everywhere. Commands run in the stack folder
 (`/opt/authelia-stack` here, a copy of `examples/production/`).

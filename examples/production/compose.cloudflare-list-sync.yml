@@ -1,0 +1,41 @@
+# Optional add-on, on top of compose.crowdsec.yml: CrowdSec's own bans in a Cloudflare IP list,
+# so a WAF rule (`ip.src in $<list>`) blocks them at Cloudflare, before they reach the server.
+# Works on the free plan (1 list, 10 000 items). Guide: docs/cloudflare-list-sync.md.
+#
+#   mkdir -p cloudflare-list-sync
+#   cp ../cloudflare-list-sync/crowdsec-cf-sync.py cloudflare-list-sync/
+#   echo "CROWDSEC_CF_SYNC_KEY=$(openssl rand -hex 32)" >> .env
+#   # + CF_API_TOKEN, CF_ACCOUNT_ID, CF_LIST_ID in .env (the guide, step 1)
+#   docker compose -f compose.yml -f compose.crowdsec.yml -f compose.cloudflare-list-sync.yml up -d
+services:
+  crowdsec:
+    environment:
+      # Registers the sync as a bouncer: it reads decisions, nothing else
+      BOUNCER_KEY_cloudflare_list: ${CROWDSEC_CF_SYNC_KEY:?set CROWDSEC_CF_SYNC_KEY (openssl rand -hex 32)}
+
+  crowdsec-cf-sync:
+    image: python:3.13-alpine # the script uses the standard library only: no build, no pip
+    restart: unless-stopped
+    user: "65534:65534" # nobody
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["python", "-I", "/app/crowdsec-cf-sync.py"]
+    environment:
+      LAPI_URL: http://crowdsec:8080
+      LAPI_KEY: ${CROWDSEC_CF_SYNC_KEY:?set CROWDSEC_CF_SYNC_KEY}
+      # API token with Account > Account Filter Lists > Edit only, never the Global API Key
+      CF_API_TOKEN: ${CF_API_TOKEN:?set CF_API_TOKEN}
+      CF_ACCOUNT_ID: ${CF_ACCOUNT_ID:?set CF_ACCOUNT_ID}
+      CF_LIST_ID: ${CF_LIST_ID:?set CF_LIST_ID}
+      # own detections, manual bans and the static list (docs/static-blocklist.md);
+      # never the community blocklist (CAPI): it does not fit a free list
+      ORIGINS: crowdsec,cscli,static-blocklist
+      INTERVAL: "60"
+      MAX_ITEMS: "5000" # items owned by the sync; the free plan allows 10 000 in total
+      DRY_RUN: "1" # first start: log only. Remove once the log looks right (guide, step 3)
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./cloudflare-list-sync/crowdsec-cf-sync.py:/app/crowdsec-cf-sync.py:ro
+    networks: [crowdsec] # CrowdSec by name; Cloudflare through this network's internet access
+    depends_on: [crowdsec]

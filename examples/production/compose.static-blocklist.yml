@@ -1,0 +1,35 @@
+# Optional add-on, on top of compose.crowdsec.yml: permanent bans from a text file. Save the file
+# and every bouncer enforces the change within seconds (Traefik, the firewall bouncer, and the
+# Cloudflare list when compose.cloudflare-list-sync.yml runs). Guide: docs/static-blocklist.md.
+#
+#   mkdir -p static-blocklist/app static-blocklist/list
+#   cp ../static-blocklist/crowdsec-static-blocklist.py static-blocklist/app/
+#   cp ../static-blocklist/static-blocklist.example.txt static-blocklist/list/static-blocklist.txt
+#   PW=$(openssl rand -hex 24); echo "CROWDSEC_BLOCKLIST_PASSWORD=$PW" >> .env
+#   docker compose exec crowdsec cscli machines add static-blocklist --password "$PW" -f - >/dev/null
+#   docker compose -f compose.yml -f compose.crowdsec.yml -f compose.static-blocklist.yml up -d
+services:
+  crowdsec-static-blocklist:
+    image: python:3.13-alpine # the script uses the standard library only: no build, no pip
+    restart: unless-stopped
+    user: "65534:65534" # nobody: reads one file, talks to CrowdSec, nothing else
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["python", "-I", "/app/crowdsec-static-blocklist.py"]
+    environment:
+      LAPI_URL: http://crowdsec:8080
+      MACHINE_ID: static-blocklist # created with cscli machines add (above)
+      MACHINE_PASSWORD: ${CROWDSEC_BLOCKLIST_PASSWORD:?set CROWDSEC_BLOCKLIST_PASSWORD}
+      LIST_FILE: /data/static-blocklist.txt
+      DURATION: 87600h # 10 years: the file, not the clock, ends a ban
+      CHECK: "5" # seconds between looks at the file
+      RECHECK: "600" # full comparison with CrowdSec, restores bans deleted by hand
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./static-blocklist/app/crowdsec-static-blocklist.py:/app/crowdsec-static-blocklist.py:ro
+      # The FOLDER, not the file: editors (nano, vim, sed -i) replace the file on save, and a
+      # single-file mount would keep showing the old one.
+      - ./static-blocklist/list:/data:ro
+    networks: [crowdsec]
+    depends_on: [crowdsec]
