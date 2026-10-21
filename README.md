@@ -206,6 +206,8 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
   the edge through the tunnel, so Home Assistant and Nextcloud logins are banned on every site.
 - **Bans in the host firewall (optional):** [`docs/firewall-bouncer.md`](docs/firewall-bouncer.md):
   CrowdSec's firewall bouncer as a pinned local image, so SSH and a VPN server are covered too.
+- **Bans at Cloudflare (optional):** [`docs/cloudflare-list-sync.md`](docs/cloudflare-list-sync.md):
+  CrowdSec's own bans mirrored into a Cloudflare IP list for a WAF rule, free plan included.
 
 ## Reachable from anywhere (optional, not the default)
 

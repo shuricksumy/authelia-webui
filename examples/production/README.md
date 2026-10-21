@@ -23,6 +23,8 @@ compose.traefik-manager.crowdsec.yml   both add-ons together: Traefik Manager's 
 compose.firewall-bouncer.yml  optional, with compose.crowdsec.yml: bans in the host firewall too
                             (docs/firewall-bouncer.md; image from ../firewall-bouncer/build.bash)
 crowdsec/firewall-bouncer.yaml  its config (the key comes from .env)
+compose.cloudflare-list-sync.yml  optional, with compose.crowdsec.yml: own bans into a Cloudflare
+                            IP list (docs/cloudflare-list-sync.md; script in ../cloudflare-list-sync/)
 traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 
