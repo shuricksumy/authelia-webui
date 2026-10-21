@@ -21,6 +21,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --uid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin app
+# pip is not needed at run time (the virtualenv comes from the builder), and the base image's pip
+# carries its own vendored copy of certifi, which a scanner flags whenever certifi has an advisory
+# that the pip release in the base image has not caught up with yet. Less to patch, smaller image.
+RUN python -m pip uninstall -y pip
 COPY --from=authelia /app/authelia /usr/local/bin/authelia
 # Fail the build if the bundled binary is not the pinned version.
 RUN authelia --version | grep -F "${AUTHELIA_VERSION}"
