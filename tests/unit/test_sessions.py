@@ -332,3 +332,30 @@ def test_current_session_comes_from_the_cookie_header(
 ) -> None:
     key = SessionStore(server, secret_file, cookie_name=name).current_key(header)
     assert key == (None if expected is None else PREFIX + expected)
+
+
+def test_after_a_redis_failure_later_reads_fail_at_once_until_the_pause_ends(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    now = [100.0]
+    sessions = store(server, secret_file, cache_s=0, clock=lambda: now[0])
+    server.fail = redis.exceptions.ConnectionError("down")
+    with pytest.raises(SessionsUnavailable):
+        sessions.snapshot()  # waits out the timeout once...
+    server.fail = None
+    with pytest.raises(SessionsUnavailable, match="cannot be reached"):
+        sessions.snapshot()  # ...but pages after it do not wait again
+    assert server.scans == 0  # Redis was not even asked
+    now[0] += 20  # the pause is over: Redis is back
+    assert len(sessions.snapshot().sessions) == 3
+
+
+def test_an_explicit_action_always_tries_even_during_the_pause(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    sessions = store(server, secret_file, cache_s=0)
+    server.fail = redis.exceptions.ConnectionError("down")
+    with pytest.raises(SessionsUnavailable):
+        sessions.snapshot()
+    server.fail = None
+    assert sessions.revoke("bob").deleted == 1  # revoke reads fresh: it is not held back

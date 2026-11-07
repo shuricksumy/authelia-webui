@@ -62,5 +62,11 @@
     </div>
     <p class="muted"><small>Saved at once. Authelia reloads the users file by itself: nobody is signed out.</small></p>
   </form>
+  {% if uname is not none %}
+  <section class="sessions-block" aria-labelledby="sessions-h">
+    <h3 id="sessions-h">Open sessions</h3>
+    <div id="user-sessions" hx-get="/users/{{ uname|urlencode }}/sessions" hx-trigger="load" hx-swap="innerHTML"><p class="muted"><small>Loading&hellip;</small></p></div>
+  </section>
+  {% endif %}
 </div>
 {%- endblock %}

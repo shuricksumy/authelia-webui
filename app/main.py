@@ -21,12 +21,14 @@ from app.emergency import Emergency
 from app.security import SecurityMiddleware
 from app.sessions import SessionStore
 from app.settings import Settings, load_settings
+from app.ui import ago, duration
 from app.web import router
 from app.web_apply import router as apply_router
 from app.web_emergency import router as emergency_router
 from app.web_keys import router as keys_router
 from app.web_oidc import router as oidc_router
 from app.web_overview import router as overview_router
+from app.web_sessions import router as sessions_router
 from app.web_tests import router as tests_router
 from app.web_users import router as users_router
 
@@ -86,6 +88,8 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
         return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     app.state.templates.env.filters["utc"] = utc
+    app.state.templates.env.filters["ago"] = ago
+    app.state.templates.env.filters["duration"] = duration
     app.state.templates.env.filters["cert_days"] = lambda c: certs.describe_days(c.days_left())
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
     app.include_router(router)
@@ -93,6 +97,7 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
     app.include_router(tests_router)
     app.include_router(oidc_router)
     app.include_router(users_router)
+    app.include_router(sessions_router)
     app.include_router(overview_router)
     app.include_router(keys_router)
     app.include_router(emergency_router)

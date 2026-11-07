@@ -51,6 +51,7 @@ BUDGET_S = 3.0  # seconds spent reading per request
 BATCH = 200  # GET + PTTL pairs per round trip
 DELETE_BATCH = 100
 CACHE_S = 5.0  # the Users page and the Overview share one read
+BREAKER_S = 15.0  # after a failure, answer "unavailable" at once for this long
 SOCKET_TIMEOUT_S = 2.0
 MAX_PLAINTEXT = 1 << 20  # a decrypted session is a few hundred bytes; refuse anything absurd
 
@@ -130,6 +131,7 @@ class SessionStore:
         self._clock = clock
         self._lock = threading.Lock()
         self._cache: tuple[float, Snapshot] | None = None
+        self._down: tuple[float, str] | None = None  # (retry after, message)
 
     @classmethod
     def from_settings(cls, settings: Settings) -> SessionStore | None:
@@ -151,11 +153,24 @@ class SessionStore:
     # ------------------------------------------------------------------ reading
 
     def snapshot(self, *, fresh: bool = False) -> Snapshot:
-        """The open sessions now (cached for a few seconds unless `fresh`)."""
+        """The open sessions now (cached for a few seconds unless `fresh`).
+
+        After a failure, later calls fail at once for a few seconds instead of each waiting out
+        the Redis timeout; `fresh` (an explicit action) always tries.
+        """
         with self._lock:
-            if not fresh and self._cache and self._clock() - self._cache[0] < self._cache_s:
-                return self._cache[1]
-            snap = self._read()
+            now = self._clock()
+            if not fresh:
+                if self._cache and now - self._cache[0] < self._cache_s:
+                    return self._cache[1]
+                if self._down and now < self._down[0]:
+                    raise SessionsUnavailable(self._down[1])
+            try:
+                snap = self._read()
+            except SessionsUnavailable as err:
+                self._down = (self._clock() + BREAKER_S, str(err))
+                raise
+            self._down = None
             self._cache = (self._clock(), snap)
             return snap
 

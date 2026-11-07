@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from app.rules.disabled import DisabledRules
@@ -14,6 +15,35 @@ from app.rules.tester import MatchResult, as_list, normalise_subjects
 
 POLICY_LABEL = {"bypass": "BYPASS", "one_factor": "1FA", "two_factor": "2FA", "deny": "DENY"}
 AND_WORDS = frozenset({"and", "+"})
+
+
+def ago(moment: datetime | None, now: datetime | None = None) -> str:
+    """'just now', '4 min ago', '3 h ago', '2 d ago' (the exact time goes in a title)."""
+    if moment is None:
+        return "unknown"
+    seconds = max(0, int(((now or datetime.now(UTC)) - moment).total_seconds()))
+    if seconds < 45:
+        return "just now"
+    if seconds < 3600:
+        return f"{max(1, round(seconds / 60))} min ago"
+    if seconds < 86400:
+        return f"{seconds // 3600} h ago"
+    return f"{seconds // 86400} d ago"
+
+
+def duration(seconds: int | None) -> str:
+    """'52 min', '1 h 5 min', '3 d': how long something still lasts."""
+    if seconds is None:
+        return "unknown"
+    if seconds < 60:
+        return "under a minute"
+    if seconds < 3600:
+        return f"{seconds // 60} min"
+    if seconds < 86400:
+        hours, minutes = divmod(seconds // 60, 60)
+        return f"{hours} h {minutes} min" if minutes else f"{hours} h"
+    days, rest = divmod(seconds, 86400)
+    return f"{days} d {rest // 3600} h" if rest // 3600 else f"{days} d"
 
 
 def lines_of(text: str) -> list[str]:

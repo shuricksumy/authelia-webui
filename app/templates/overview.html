@@ -80,6 +80,15 @@
     <span class="stat-sub">last apply: {% if last_job and last_job.done %}{{ last_job.finished|utc }} <span class="result-badge {{ last_job.result }}">{{ last_job.result }}</span>{% else %}none yet{% endif %}</span>
   </article>
 
+  {% if s.sessions is defined %}
+  <article class="stat">
+    {{ head('Open sessions', 'sign-out', '/users', 'green') }}
+    <div class="stat-row"><span class="stat-num">{{ s.sessions }}</span>
+      {{ state('', plural(s.session_users, 'user')) }}</div>
+    <span class="stat-sub">signed in to Authelia right now</span>
+  </article>
+  {% endif %}
+
   <article class="stat{% if data.log_counts and data.log_counts.error %} alert{% endif %}">
     {{ head('Authelia log', 'scroll', '/logs', 'red' if data.log_counts and data.log_counts.error else '') }}
     {% if not log_configured %}

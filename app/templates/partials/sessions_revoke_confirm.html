@@ -1,0 +1,13 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">{{ 'Sign out your other sessions?' if is_me else 'Sign out everywhere?' }}</h3></header>
+    {% set others = sessions|rejectattr('current')|list|length %}
+    <p>This ends {{ others if is_me else sessions|length }} open session{{ '' if (others if is_me else sessions|length) == 1 else 's' }} of <strong>{{ uname }}</strong>
+      on every device, at once: the next page they open asks them to sign in. {% if is_me %}Your current session stays.{% endif %}</p>
+    <p><small class="muted">The account stays enabled and they can sign in again right away. Apps that use OpenID Connect keep their own sign-in until it expires.</small></p>
+    <footer>
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="danger" hx-post="/users/{{ uname|urlencode }}/sessions/revoke" hx-target="#user-sessions" hx-swap="innerHTML">Sign out</button>
+    </footer>
+  </article>
+</dialog>

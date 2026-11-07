@@ -1,0 +1,31 @@
+{% from "partials/icons.html" import icon %}
+{% if clear_modal %}<div id="modal" hx-swap-oob="true"></div>{% endif %}
+{% if flash %}<p class="flash ok" role="status">{{ flash }}</p>{% endif %}
+{% if error %}<p class="flash error" role="alert">{{ error }}</p>{% endif %}
+{% if not enabled %}
+<p class="muted"><small>Open sessions are not set up. They need Authelia's sessions in Redis; see <code>docs/sessions.md</code>.</small></p>
+{% elif problem %}
+<p class="notice error" role="alert">Open sessions are unavailable: {{ problem }}.</p>
+{% else %}
+  {% if wrong_secret %}<p class="notice error" role="alert">None of the sessions could be read: <code>SESSIONS_SECRET_FILE</code> probably does not hold Authelia's <code>session.secret</code>.</p>{% endif %}
+  {% if not sessions %}
+  <p class="muted">No open sessions.</p>
+  {% else %}
+  <p class="sessions-summary"><strong>{{ sessions|length }}</strong> open &middot; {{ with_2fa }} with 2FA &middot; last active {{ last_activity|ago }}</p>
+  <ul class="sessions">
+    {% for s in sessions %}
+    <li>
+      <span class="badge {{ 'two_factor' if s.second_factor else 'one_factor' }}">{{ '2FA' if s.second_factor else '1FA' }}</span>
+      <span class="s-main" {% if s.last_activity %}title="{{ s.last_activity|utc }}"{% endif %}>active {{ s.last_activity|ago }}{% if s.current %} <span class="pill ok">this browser</span>{% endif %}{% if s.remember_me %} <span class="pill">stays signed in</span>{% endif %}</span>
+      <small class="muted s-sub">signed in {{ s.first_factor_at|ago }} &middot; expires in {{ s.expires_in|duration }}</small>
+    </li>
+    {% endfor %}
+  </ul>
+  {% if truncated %}<p class="muted"><small>The list may be incomplete: there are more sessions than one read covers.</small></p>{% endif %}
+  {% if is_me and sessions|length <= 1 %}
+  <p class="muted"><small>This is your only session.</small></p>
+  {% else %}
+  <button type="button" class="danger outline small" hx-get="/users/{{ uname|urlencode }}/sessions/confirm" hx-target="#modal">{{ icon("sign-out") }} {{ 'Sign out my other sessions' if is_me else 'Sign out everywhere' }}</button>
+  {% endif %}
+  {% endif %}
+{% endif %}
