@@ -359,3 +359,111 @@ def test_an_explicit_action_always_tries_even_during_the_pause(
         sessions.snapshot()
     server.fail = None
     assert sessions.revoke("bob").deleted == 1  # revoke reads fresh: it is not held back
+
+
+# ------------------------------------------------------------------ handles, one session, everyone
+
+
+def handles(sessions: SessionStore, user: str) -> list[str]:
+    return [s.handle for s in sessions.snapshot(fresh=True).for_user(user)]
+
+
+def test_a_handle_stands_in_for_the_key_without_revealing_it(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    real_id = "Zq9#x!K2m%L7$wP4-_nR8^cT3*vB5yD6"  # as long and as odd as Authelia's own ids
+    server.add(real_id, blob(user_session("dave")))
+    sessions = store(server, secret_file, handle_key=b"k" * 32)
+    snap = sessions.snapshot()
+    seen = [s.handle for s in snap.sessions]
+    assert len(set(seen)) == 4 and all(
+        len(h) == 20 and set(h) <= set("0123456789abcdef") for h in seen
+    )
+    dave = snap.for_user("dave")[0]
+    assert real_id not in dave.handle and real_id not in repr(dave)  # a key is never in a repr
+    assert dave.handle in repr(dave)  # a handle may be shown
+    same = store(server, secret_file, handle_key=b"k" * 32)
+    other = store(server, secret_file, handle_key=b"x" * 32)
+    assert handles(sessions, "alice") == handles(same, "alice")
+    assert handles(sessions, "alice") != handles(other, "alice")
+
+
+def test_revoke_one_ends_exactly_that_session(server: FakeRedis, secret_file: Path) -> None:
+    sessions = store(server, secret_file)
+    first, second = handles(sessions, "alice")
+    result = sessions.revoke_one("alice", first)
+    assert (result.deleted, result.users) == (1, 1)
+    assert handles(sessions, "alice") == [second]
+    assert f"{PREFIX}b1".encode() in server.data  # bob untouched
+
+
+def test_a_handle_cannot_end_another_users_session(server: FakeRedis, secret_file: Path) -> None:
+    sessions = store(server, secret_file)
+    (bobs,) = handles(sessions, "bob")
+    result = sessions.revoke_one("alice", bobs)  # alice's page, bob's handle
+    assert result.deleted == 0 and server.deleted == []
+    assert handles(sessions, "bob") == [bobs]
+
+
+def test_revoke_one_with_an_unknown_or_forged_handle_does_nothing(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    sessions = store(server, secret_file)
+    for forged in ("0" * 20, "", "a1", PREFIX + "a1", "../../etc"):
+        assert sessions.revoke_one("alice", forged).deleted == 0
+    assert server.deleted == []
+
+
+def test_revoke_one_reports_redis_trouble_and_deletes_nothing(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    sessions = store(server, secret_file)
+    first = handles(sessions, "alice")[0]
+    server.fail = redis.exceptions.ConnectionError("down")
+    with pytest.raises(SessionsUnavailable):
+        sessions.revoke_one("alice", first)
+    assert server.deleted == []
+
+
+def test_revoke_everyone_signs_all_users_out_but_not_the_one_kept(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    sessions = store(server, secret_file)
+    result = sessions.revoke_everyone(keep=f"{PREFIX}a2")
+    assert (result.deleted, result.kept, result.users, result.complete) == (2, 1, 2, True)
+    assert [s.key for s in sessions.snapshot(fresh=True).sessions] == [f"{PREFIX}a2"]
+    assert f"{PREFIX}anon".encode() in server.data  # a visitor session nobody signed in to
+
+
+def test_revoke_everyone_never_touches_unreadable_keys(
+    server: FakeRedis, secret_file: Path
+) -> None:
+    server.add("garbage", b"not a session")
+    sessions = store(server, secret_file)
+    result = sessions.revoke_everyone()
+    assert (result.deleted, result.unreadable) == (3, 1)
+    assert f"{PREFIX}garbage".encode() in server.data
+
+
+def test_handles_survive_a_restart_when_they_come_from_the_app_secret(
+    server: FakeRedis, secret_file: Path, tmp_path: Path
+) -> None:
+    from app.settings import Settings
+
+    def settings(app_secret: str) -> Settings:
+        return Settings(
+            AUTH_DOMAIN="auth.example.com", CONFIGURATOR_DOMAIN="authcfg.example.com",
+            ADMIN_GROUP="admin", ALLOWED_CLIENT_CIDRS="10.8.0.0/24",  # type: ignore[arg-type]
+            TRUSTED_PROXY_CIDRS="172.20.0.0/16",  # type: ignore[arg-type]
+            AUTHELIA_CONTAINER="authelia", AUTHELIA_HEALTH_URL="http://authelia:9091/api/health",
+            APP_SECRET_KEY=app_secret,  # type: ignore[arg-type]
+            SESSIONS_REDIS_URL="redis://redis:6379/0", SESSIONS_SECRET_FILE=secret_file,
+        )  # fmt: skip
+
+    def handle_with(app_secret: str) -> str:
+        made = SessionStore.from_settings(settings(app_secret))
+        assert made is not None
+        return made.handle_of(f"{PREFIX}a1")
+
+    assert handle_with("a" * 40) == handle_with("a" * 40)  # the same after a restart
+    assert handle_with("a" * 40) != handle_with("b" * 40)

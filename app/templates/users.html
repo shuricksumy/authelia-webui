@@ -7,7 +7,10 @@
 {% if flash %}<div class="flash ok" role="status">{{ flash }}</div>{% endif %}
 <div class="toolbar">
   <h1>Users</h1>
-  {% if writable %}<div class="toolbar-actions"><a role="button" href="/users/new">+ New user</a></div>{% endif %}
+  <div class="toolbar-actions">
+    {% if session_counts.usable and session_counts.sessions %}<button type="button" class="outline danger small" hx-get="/sessions/confirm-all" hx-target="#modal" title="Sign every user out, on every device">{{ icon("sign-out") }} Sign out all users</button>{% endif %}
+    {% if writable %}<a role="button" href="/users/new">+ New user</a>{% endif %}
+  </div>
 </div>
 {% if not writable %}
 <article class="notice info">The users file is outside the configurator's managed folder, so users are read-only here.

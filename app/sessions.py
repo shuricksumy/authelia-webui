@@ -21,8 +21,10 @@ Rules this module keeps, because it holds the key to everyone's sessions:
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import logging
+import os
 import threading
 import time
 from collections import Counter
@@ -63,6 +65,7 @@ class SessionsUnavailable(Exception):
 @dataclass(frozen=True)
 class SessionInfo:
     key: str = field(repr=False)  # the live session id: never shown, never logged
+    handle: str  # an opaque stand-in for the key that is safe to show and to put in a URL
     username: str
     second_factor: bool
     last_activity: datetime | None
@@ -99,6 +102,7 @@ class RevokeResult:
     kept: int  # the caller's own session, when it was asked to stay
     complete: bool  # False when the read was cut short: some sessions may be left
     unreadable: int
+    users: int = 0  # how many different users lost sessions
 
 
 def _timestamp(value: Any) -> datetime | None:
@@ -117,6 +121,7 @@ class SessionStore:
         secret_file: Path,
         *,
         cookie_name: str = "authelia_session",
+        handle_key: bytes | None = None,
         max_keys: int = MAX_KEYS,
         budget_s: float = BUDGET_S,
         cache_s: float = CACHE_S,
@@ -125,6 +130,8 @@ class SessionStore:
         self._client = client
         self._secret_file = secret_file
         self._cookie_name = cookie_name
+        # Keyed, so a handle cannot be guessed from a session id, nor a session id from a handle.
+        self._handle_key = handle_key or os.urandom(32)
         self._max_keys = max_keys
         self._budget_s = budget_s
         self._cache_s = cache_s
@@ -148,7 +155,15 @@ class SessionStore:
             decode_responses=False,
             client_name="authelia-configurator",
         )
-        return cls(client, settings.SESSIONS_SECRET_FILE, cookie_name=settings.SESSIONS_COOKIE_NAME)
+        return cls(
+            client,
+            settings.SESSIONS_SECRET_FILE,
+            cookie_name=settings.SESSIONS_COOKIE_NAME,
+            # the same on every instance and after a restart: an open page keeps working
+            handle_key=hashlib.sha256(
+                b"session-handle:" + settings.APP_SECRET_KEY.get_secret_value().encode()
+            ).digest(),
+        )
 
     # ------------------------------------------------------------------ reading
 
@@ -238,9 +253,11 @@ class SessionStore:
                     if not isinstance(username, str) or not username:
                         continue  # a session nobody has signed in to
                     second = _timestamp(data.get("SecondFactorAuthnTimestamp"))
+                    name = key.decode("utf-8", "replace")
                     sessions.append(
                         SessionInfo(
-                            key=key.decode("utf-8", "replace"),
+                            key=name,
+                            handle=self._handle(name),
                             username=username,
                             second_factor=second is not None,
                             last_activity=_timestamp(data.get("LastActivity")),
@@ -259,6 +276,43 @@ class SessionStore:
 
     # ------------------------------------------------------------------ changing
 
+    def handle_of(self, key: str) -> str:
+        """The handle of a session key (the caller's own, from its cookie)."""
+        return self._handle(key)
+
+    def _handle(self, key: str) -> str:
+        return hmac.new(self._handle_key, key.encode("utf-8"), hashlib.sha256).hexdigest()[:20]
+
+    def _delete(self, keys: list[str]) -> int:
+        deleted = 0
+        try:
+            for start in range(0, len(keys), DELETE_BATCH):
+                chunk = [k.encode("utf-8") for k in keys[start : start + DELETE_BATCH]]
+                deleted += int(self._client.delete(*chunk))
+        except redis.exceptions.RedisError as err:
+            raise self._unavailable(err) from None
+        finally:
+            with self._lock:
+                self._cache = None  # the counts changed (or may have)
+        return deleted
+
+    def revoke_one(self, username: str, handle: str) -> RevokeResult:
+        """Delete the one session with this handle, but only if it belongs to `username`."""
+        snap = self.snapshot(fresh=True)
+        # compare in constant time, and never act on a handle that is not this user's
+        target = [s for s in snap.for_user(username) if hmac.compare_digest(s.handle, handle)]
+        deleted = self._delete([s.key for s in target])
+        return RevokeResult(deleted, 0, not snap.truncated, snap.unreadable, 1 if deleted else 0)
+
+    def revoke_everyone(self, keep: str | None = None) -> RevokeResult:
+        """Delete every session of every user (readable ones only), except the key `keep`."""
+        snap = self.snapshot(fresh=True)
+        targets = [s for s in snap.sessions if s.key != keep]
+        deleted = self._delete([s.key for s in targets])
+        users = len({s.username.casefold() for s in targets})
+        kept = len(snap.sessions) - len(targets)
+        return RevokeResult(deleted, kept, not snap.truncated, snap.unreadable, users)
+
     def revoke(self, username: str, keep: str | None = None) -> RevokeResult:
         """Delete every session of `username` (case-insensitive), except the key `keep`.
 
@@ -269,16 +323,14 @@ class SessionStore:
         snap = self.snapshot(fresh=True)
         mine = snap.for_user(username)
         targets = [s.key for s in mine if s.key != keep]
-        deleted = 0
-        try:
-            for start in range(0, len(targets), DELETE_BATCH):
-                chunk = [k.encode("utf-8") for k in targets[start : start + DELETE_BATCH]]
-                deleted += int(self._client.delete(*chunk))
-        except redis.exceptions.RedisError as err:
-            raise self._unavailable(err) from None
-        with self._lock:
-            self._cache = None  # the counts just changed
-        return RevokeResult(deleted, len(mine) - len(targets), not snap.truncated, snap.unreadable)
+        deleted = self._delete(targets)
+        return RevokeResult(
+            deleted,
+            len(mine) - len(targets),
+            not snap.truncated,
+            snap.unreadable,
+            1 if deleted else 0,
+        )
 
     def current_key(self, cookie_header: str | None) -> str | None:
         """The Redis key of the session named in a request's Cookie header (its value is the id)."""
