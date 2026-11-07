@@ -14,10 +14,18 @@ pytestmark = pytest.mark.e2e
 def test_authelia_portal_serves_login_page(stack: dict[str, str], page: Page) -> None:
     response = goto(page, PORTAL_URL, wait_until="networkidle")
     assert response is not None and response.ok
-    # Authelia's page is a SPA: the title is set after "networkidle", and this test runs right after
-    # the apply tests restarted Authelia. Wait for the form first, then for the title.
-    expect(page.get_by_role("textbox", name="Username")).to_be_visible(timeout=20_000)
-    expect(page).to_have_title("Login - Authelia", timeout=20_000)
+    # Authelia's page is a SPA: the title is set after "networkidle", and Authelia may have been
+    # restarted just before. Wait for the form first, then for the title. This one has failed on CI
+    # now and then with only "element(s) not found", so say what the page showed instead.
+    try:
+        expect(page.get_by_role("textbox", name="Username")).to_be_visible(timeout=60_000)
+    except AssertionError:
+        shown = page.locator("body").inner_text(timeout=3_000).strip().replace("\n", " | ")
+        raise AssertionError(
+            f"the login form never appeared at {page.url!r} (title {page.title()!r}); "
+            f"the page showed: {shown[:400]!r}"
+        ) from None
+    expect(page).to_have_title("Login - Authelia", timeout=60_000)
     expect(page.get_by_role("textbox", name="Password")).to_be_visible()
 
 

@@ -9,6 +9,10 @@
 #   docker compose -f compose.yml -f compose.sessions.yml up -d
 #
 # Redis restarts: sessions are saved to disk, so nobody is signed out, but pick a quiet moment.
+#
+# This file assumes the example's names: a Redis SERVICE called `redis` on a network called
+# `sessions`. If yours are named differently, rename the `redis:` key below, change the host in
+# SESSIONS_REDIS_URL and the network under `configurator` (docs/sessions.md, "Your own compose file").
 services:
   redis:
     # compose.yml's command plus one more user for the configurator. It may scan, read and delete

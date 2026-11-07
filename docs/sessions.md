@@ -62,6 +62,23 @@ Run these in the folder that holds your `compose.yml`.
 [`examples/production/compose.sessions.yml`](../examples/production/compose.sessions.yml) is the
 whole add-on, with comments.
 
+**Your own compose file, with other names?** The add-on assumes the example's names: a Redis
+service called `redis` on a network called `sessions`. If yours differ (say Redis is
+`authelia-redis`), change three things:
+
+1. Rename the `redis:` key in `compose.sessions.yml` to your Redis **service** name. Otherwise
+   Compose adds a second service called `redis` that has no image, and refuses to start. (Or copy
+   the `--user ...` arguments onto your own Redis command by hand.)
+2. Point `SESSIONS_REDIS_URL` at it: `redis://authelia-redis:6379/0`.
+3. Under the configurator's `networks:`, use the network your Redis is on instead of `sessions`
+   (and declare it if the file does not already). `docker inspect authelia-redis --format
+   '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'` lists it, with Compose's project
+   prefix in front.
+
+Also keep the same `REDIS_PASSWORD` value for Redis and for Authelia that you use today. If Redis
+has no password (`docker exec <redis> redis-cli ping` answers `PONG`), the add-on still works, but
+set one: nothing but Authelia and the configurator should be able to reach it.
+
 ### The settings
 
 Set in the add-on file; listed here for other setups. The address and the secret file go together.
