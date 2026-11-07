@@ -5,6 +5,23 @@ configuration that change often: **access control rules** and **OIDC clients** (
 Everything else stays hand-edited YAML. Every change is validated by Authelia itself, committed to a
 local git repo, and rolled back automatically if Authelia is unhealthy after a restart.
 
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/overview-1280-dark.png" alt="Overview: what needs attention, counts for rules, tests, clients and users, Authelia's health"><br><sub><b>Overview.</b> What needs attention, and the state of Authelia, in one place.</sub></td>
+    <td width="50%"><img src="docs/screenshots/rules-1280-light.png" alt="Access control rules: reorder, switch off, edit, with policy badges"><br><sub><b>Rules.</b> Drag to reorder, switch a rule off without deleting it, and see its policy at a glance.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/rule-editor-1280-dark.png" alt="Rule editor drawer sliding in over the rules list"><br><sub><b>Edit in a drawer.</b> The list stays in view; lint warnings show before you save.</sub></td>
+    <td width="50%"><img src="docs/screenshots/apply-applied-1280-light.png" alt="After applying: the notifications bell shows that the change was applied and Authelia is healthy"><br><sub><b>Apply with a safety net.</b> Validated by Authelia, committed, restarted, health-checked, and rolled back on failure.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/users-1280-light.png" alt="Users page"><br><sub><b>Users and groups.</b> Passwords are hashed by Authelia's own binary; nobody can lock themselves out.</sub></td>
+    <td width="50%"><img src="docs/screenshots/client-picker-1280-light.png" alt="OIDC client presets for popular apps"><br><sub><b>OIDC clients.</b> Start from a preset for the app, secrets are shown once and stored as hashes.</sub></td>
+  </tr>
+</table>
+
+<sub>Light and dark themes, a phone layout, and more screens in [`docs/screenshots/`](docs/screenshots/).</sub>
+
 > **Status: Phase 1b.** The rules UI edits a **draft** (view, reorder by drag or buttons, add, edit
 > as a form or raw YAML, lint, test a URL against the rules, review the diff) and **applies** it
 > safely: validate with Authelia, atomic write, git commit, restart through a locked-down socket
