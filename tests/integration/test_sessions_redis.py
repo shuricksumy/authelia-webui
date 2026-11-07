@@ -38,6 +38,7 @@ class Env:
     restricted: redis.Redis
     password: str  # every test user shares the generated password
     secret_file: Path
+    restricted_password: str
 
 
 def _compose(*args: str, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -91,6 +92,7 @@ def env(
             restricted,
             credentials["password"],
             secret_file,
+            restricted_password,
         )
     finally:
         _compose("down", "-v", env=environment)
@@ -196,3 +198,33 @@ def test_everyone_can_be_signed_out_except_the_session_kept(env: Env) -> None:
     assert result.kept == 1 and result.deleted >= 2 and result.users >= 2
     assert still_signed_in(mine)  # the administrator pressing the button stays signed in
     assert not still_signed_in(other) and not still_signed_in(bobs)
+
+
+def test_the_app_connects_through_its_own_settings_as_the_restricted_user(env: Env) -> None:
+    """The path production takes: SessionStore.from_settings, logging in as the restricted Redis
+    user. Building the client by hand (as the other tests do) once hid that the app asked Redis to
+    name its connection, which that user may not do, so Redis refused the whole connection."""
+    from app.settings import Settings
+
+    settings = Settings(
+        AUTH_DOMAIN="auth.example.test",
+        CONFIGURATOR_DOMAIN="authcfg.example.test",
+        ADMIN_GROUP="admin",
+        ALLOWED_CLIENT_CIDRS="10.8.0.0/24",  # type: ignore[arg-type]
+        TRUSTED_PROXY_CIDRS="172.20.0.0/16",  # type: ignore[arg-type]
+        AUTHELIA_CONTAINER="authelia",
+        AUTHELIA_HEALTH_URL="http://authelia:9091/api/health",
+        APP_SECRET_KEY="k" * 40,  # type: ignore[arg-type]
+        SESSIONS_REDIS_URL=f"redis://127.0.0.1:{REDIS_PORT}/0",
+        SESSIONS_REDIS_USERNAME="configurator",
+        SESSIONS_REDIS_PASSWORD=env.restricted_password,  # type: ignore[arg-type]
+        SESSIONS_SECRET_FILE=env.secret_file,
+    )
+    store = SessionStore.from_settings(settings)
+    assert store is not None
+    first, second = sign_in(env, "alice"), sign_in(env, "alice")
+    snap = store.snapshot(fresh=True)  # a refused connection would raise SessionsUnavailable here
+    assert snap.unreadable == 0 and len(snap.for_user("alice")) >= 2
+    handle = store.handle_of(store.current_key(first) or "")
+    assert store.revoke_one("alice", handle).deleted == 1
+    assert not still_signed_in(first) and still_signed_in(second)

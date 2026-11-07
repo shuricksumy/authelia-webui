@@ -298,6 +298,40 @@ def test_a_failing_delete_is_unavailable_too(server: FakeRedis, secret_file: Pat
         sessions.revoke("alice")
 
 
+def test_the_client_asks_redis_for_nothing_the_restricted_user_may_not_do(
+    secret_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A client name, RESP3 or a custom protocol makes redis-py send a command on connect, and the
+    Redis user may only scan, read, delete, pttl and ping: the whole connection would be refused."""
+    from app.settings import Settings
+
+    seen: dict[str, Any] = {}
+
+    def capture(url: str, **options: Any) -> object:
+        seen.update(options, url=url)
+        return object()
+
+    monkeypatch.setattr(redis.Redis, "from_url", staticmethod(capture))
+    settings = Settings(
+        AUTH_DOMAIN="auth.example.com",
+        CONFIGURATOR_DOMAIN="authcfg.example.com",
+        ADMIN_GROUP="admin",
+        ALLOWED_CLIENT_CIDRS="10.8.0.0/24",  # type: ignore[arg-type]
+        TRUSTED_PROXY_CIDRS="172.20.0.0/16",  # type: ignore[arg-type]
+        AUTHELIA_CONTAINER="authelia",
+        AUTHELIA_HEALTH_URL="http://authelia:9091/api/health",
+        APP_SECRET_KEY="k" * 40,  # type: ignore[arg-type]
+        SESSIONS_REDIS_URL="redis://redis:6379/0",
+        SESSIONS_SECRET_FILE=secret_file,
+        SESSIONS_REDIS_PASSWORD="pw",  # type: ignore[arg-type]
+    )
+    SessionStore.from_settings(settings)
+    harmless = {"url", "username", "password", "socket_timeout", "socket_connect_timeout",
+                "decode_responses"}  # fmt: skip
+    assert set(seen) <= harmless, sorted(set(seen) - harmless)
+    assert "client_name" not in seen and "protocol" not in seen
+
+
 def test_a_missing_or_empty_secret_file_is_unavailable(server: FakeRedis, tmp_path: Path) -> None:
     with pytest.raises(SessionsUnavailable, match="does not exist"):
         SessionStore(server, tmp_path / "missing").snapshot()

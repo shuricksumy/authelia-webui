@@ -153,7 +153,10 @@ class SessionStore:
             socket_timeout=SOCKET_TIMEOUT_S,
             socket_connect_timeout=SOCKET_TIMEOUT_S,
             decode_responses=False,
-            client_name="authelia-configurator",
+            # Nothing else: every option that makes the client send a command on connect (a client
+            # name, RESP3, a database other than 0) needs that command in the Redis user's ACL,
+            # which allows only scan/get/del/pttl/ping. A `client_name` here once made Redis refuse
+            # the whole connection (CLIENT SETNAME). tests/unit/test_sessions.py pins the options.
         )
         return cls(
             client,
