@@ -38,6 +38,7 @@ from app.rules.store import (
 )
 from app.rules.tester import POLICIES, RequestObject, RuleTester, Subject
 from app.security import Identity, identity_of
+from app.sessions import SessionStore
 from app.settings import Settings
 from app.ui import (
     POLICY_LABEL,
@@ -109,6 +110,12 @@ class View:
 def services_of(request: Request) -> ApplyServices:
     services: ApplyServices = request.app.state.services
     return services
+
+
+def sessions_of(request: Request) -> SessionStore | None:
+    """The open-sessions reader, or None when the owner has not switched the feature on."""
+    store: SessionStore | None = getattr(request.app.state, "sessions", None)
+    return store
 
 
 def templates(request: Request) -> Jinja2Templates:

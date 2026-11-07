@@ -108,6 +108,15 @@ class Settings(BaseSettings):
     # Sites allowed to show the configurator in a frame (e.g. a dashboard or Home Assistant), as
     # origins: https://home.example.com, https://*.example.com. Unset: no framing (clickjacking).
     FRAME_ANCESTORS: Annotated[list[str], NoDecode] = Field(default_factory=list)
+    # Open sessions (docs/sessions.md). With Authelia's sessions in Redis the configurator can show
+    # who is signed in and sign a user out everywhere. Opt-in: set the Redis address AND the file
+    # that holds Authelia's `session.secret` (the sessions are encrypted with it). The Redis user
+    # should only be allowed to scan, read and delete the session keys, never to write them.
+    SESSIONS_REDIS_URL: str | None = None  # redis://host:6379/0 (rediss:// for TLS)
+    SESSIONS_REDIS_USERNAME: str = "configurator"
+    SESSIONS_REDIS_PASSWORD: SecretStr | None = None
+    SESSIONS_SECRET_FILE: Path | None = None
+    SESSIONS_COOKIE_NAME: str = "authelia_session"  # Authelia's `session.name`
     APPLY_HEALTH_TIMEOUT_S: int = Field(default=30, ge=5, le=300)
     AUTHELIA_VERSION: str = "unknown"  # baked into the image at build time
 
@@ -169,7 +178,26 @@ class Settings(BaseSettings):
             raise ValueError("EMERGENCY_PASSWORD_HASH must be an Authelia password digest ($...)")
         return self
 
-    @field_validator("AUTHELIA_LOG_FILE", "NOTIFY_WEBHOOK_URL", mode="before")
+    @model_validator(mode="after")
+    def _sessions_need_both(self) -> Settings:
+        url, secret_file = self.SESSIONS_REDIS_URL, self.SESSIONS_SECRET_FILE
+        if (url is None) != (secret_file is None):
+            raise ValueError("SESSIONS_REDIS_URL and SESSIONS_SECRET_FILE must be set together")
+        if url is not None:
+            parts = urlsplit(url)
+            if parts.scheme not in ("redis", "rediss") or not parts.hostname:
+                raise ValueError("SESSIONS_REDIS_URL must look like redis://host:6379/0")
+            if parts.username or parts.password:
+                raise ValueError(
+                    "put the Redis user and password in SESSIONS_REDIS_USERNAME / "
+                    "SESSIONS_REDIS_PASSWORD, not in the URL (a URL ends up in logs and errors)"
+                )
+        return self
+
+    @field_validator(
+        "AUTHELIA_LOG_FILE", "NOTIFY_WEBHOOK_URL", "SESSIONS_REDIS_URL", "SESSIONS_REDIS_PASSWORD",
+        "SESSIONS_SECRET_FILE", mode="before",
+    )  # fmt: skip
     @classmethod
     def _empty_is_unset(cls, value: object) -> object:
         # `VAR=` in compose/.env means "not set", not Path(".") or an empty URL.

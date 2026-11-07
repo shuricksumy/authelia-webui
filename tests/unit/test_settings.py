@@ -99,3 +99,45 @@ def test_webhook_url_is_not_exposed_in_repr(env: pytest.MonkeyPatch) -> None:
     assert "bot-token-xyz" not in repr(settings)
     assert settings.NOTIFY_WEBHOOK_URL is not None
     assert settings.NOTIFY_WEBHOOK_URL.get_secret_value().endswith("bot-token-xyz")
+
+
+# ---------------------------------------------------------------- open sessions (docs/sessions.md)
+
+
+def test_sessions_are_off_by_default_and_empty_values_mean_off(env: pytest.MonkeyPatch) -> None:
+    assert load_settings().SESSIONS_REDIS_URL is None
+    env.setenv("SESSIONS_REDIS_URL", "")  # `VAR=` in compose/.env
+    env.setenv("SESSIONS_SECRET_FILE", " ")
+    settings = load_settings()
+    assert settings.SESSIONS_REDIS_URL is None and settings.SESSIONS_SECRET_FILE is None
+
+
+def test_sessions_need_the_address_and_the_secret_file_together(env: pytest.MonkeyPatch) -> None:
+    env.setenv("SESSIONS_REDIS_URL", "redis://redis:6379/0")
+    with pytest.raises(SettingsError, match="set together"):
+        load_settings()
+    env.delenv("SESSIONS_REDIS_URL")
+    env.setenv("SESSIONS_SECRET_FILE", "/run/secrets/session")
+    with pytest.raises(SettingsError, match="set together"):
+        load_settings()
+    env.setenv("SESSIONS_REDIS_URL", "rediss://redis.internal:6380/2")
+    settings = load_settings()
+    assert settings.SESSIONS_REDIS_USERNAME == "configurator"
+    assert settings.SESSIONS_COOKIE_NAME == "authelia_session"
+
+
+@pytest.mark.parametrize("url", ["http://redis:6379", "redis://", "redis:6379", "unix:///sock"])
+def test_sessions_redis_url_must_be_a_redis_address(env: pytest.MonkeyPatch, url: str) -> None:
+    env.setenv("SESSIONS_SECRET_FILE", "/run/secrets/session")
+    env.setenv("SESSIONS_REDIS_URL", url)
+    with pytest.raises(SettingsError, match="SESSIONS_REDIS_URL"):
+        load_settings()
+
+
+def test_sessions_credentials_do_not_go_in_the_url(env: pytest.MonkeyPatch) -> None:
+    env.setenv("SESSIONS_SECRET_FILE", "/run/secrets/session")
+    env.setenv("SESSIONS_REDIS_URL", "redis://someone:pw@redis:6379/0")
+    with pytest.raises(SettingsError) as raised:
+        load_settings()
+    assert "SESSIONS_REDIS_PASSWORD" in str(raised.value)
+    assert "someone:pw" not in str(raised.value)  # the error must not echo the credentials

@@ -19,6 +19,7 @@ from app import certs
 from app.apply.services import ApplyServices, build_services
 from app.emergency import Emergency
 from app.security import SecurityMiddleware
+from app.sessions import SessionStore
 from app.settings import Settings, load_settings
 from app.web import router
 from app.web_apply import router as apply_router
@@ -62,6 +63,7 @@ def create_app(settings: Settings | None = None, services: ApplyServices | None 
     )
     app.state.settings = settings
     app.state.services = services
+    app.state.sessions = SessionStore.from_settings(settings)  # None unless switched on
 
     @app.get("/healthz", response_class=PlainTextResponse)
     def healthz() -> str:
