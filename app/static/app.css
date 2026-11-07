@@ -230,6 +230,8 @@ code { font-size: 0.86em; }
 }
 .content { min-width: 0; display: flex; flex-direction: column; }
 main { flex: 1; width: 100%; max-width: 110rem; margin: 0; padding: 1.15rem 1.5rem 2rem; }
+/* Pico's .container-fluid centres the page (auto margins); keep it against the sidebar instead */
+main.container-fluid { margin-inline: 0; }
 .statusbar { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; padding: 0.5rem 1.5rem; border-top: 1px solid var(--app-border); font-size: 0.8rem; color: var(--pico-muted-color); }
 .statusbar strong { font-family: var(--pico-font-family-monospace); font-weight: 500; color: var(--pico-color); }
 .statusbar.bad { background: var(--app-deny-bg); color: var(--app-deny-fg); }
@@ -530,7 +532,12 @@ ol.steps li.skipped, ol.steps li.pending { color: var(--pico-muted-color); }
 .attn.warning .badge-sev { color: var(--app-warn-fg); }
 .notice.ok { background: var(--app-2fa-bg); color: var(--app-2fa-fg); border-color: color-mix(in srgb, var(--app-2fa-fg) 25%, transparent); }
 .cards.overview { margin-bottom: 1rem; }
-.cards.stats { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); margin-bottom: 0.9rem; }
+/* the dashboard: four equal columns that every group follows (a group of three leaves the last
+   one empty, so the cards of different groups line up); two on a narrow window, one on a phone */
+.cards.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 0.9rem; }
+/* media queries count rem as the browser's 16 px, not our 14 px: 75rem is 1200 px */
+@media (max-width: 75rem) { .cards.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 40rem) { .cards.stats { grid-template-columns: minmax(0, 1fr); } }
 .stat { margin: 0; padding: 0.9rem 1rem 0.8rem; display: flex; flex-direction: column; gap: 0.15rem; border: 1px solid var(--app-border); border-radius: var(--app-radius-lg); box-shadow: var(--app-card-shadow); transition: border-color 120ms; }
 .stat:hover { border-color: var(--app-border-strong); }
 .stat.alert { box-shadow: inset 3px 0 0 var(--app-bad-dot), var(--app-card-shadow); }
