@@ -166,11 +166,13 @@ def list_rows(doc: UsersDocument | None, ctx: dict[str, Any], q: str = "") -> li
 
 
 @router.get("/users", response_class=HTMLResponse)
-def users_page(request: Request, q: str = "", saved: str = "") -> Response:
+def users_page(request: Request, q: str = "", saved: str = "", signed_out: int = -1) -> Response:
     v = load_view(request)
     doc = users_doc(v)
     ctx = users_context(v, session_counts=counts_of(v.request))
     flash = f"User {saved} saved." if saved else ""
+    if signed_out >= 0:
+        flash = f"{signed_out} session{'' if signed_out == 1 else 's'} signed out."
     return render(v, "users.html", rows=list_rows(doc, ctx, q), q=q, broken=doc is None,
                   flash=flash, **ctx)  # fmt: skip
 

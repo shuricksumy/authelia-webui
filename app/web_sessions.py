@@ -92,8 +92,9 @@ def block_context(
         sessions=[
             {
                 "second_factor": s.second_factor, "last_activity": s.last_activity,
-                "first_factor_at": s.first_factor_at, "remember_me": s.remember_me,
-                "expires_in": s.expires_in, "current": s.key == current,
+                "first_factor_at": s.first_factor_at, "second_factor_at": s.second_factor_at,
+                "remember_me": s.remember_me, "expires_in": s.expires_in,
+                "current": s.key == current, "handle": s.handle, "short": s.handle[:6],
             }
             for s in mine
         ],
@@ -173,3 +174,82 @@ def sessions_revoke(request: Request, name: str) -> Response:
         v, "partials/user_sessions.html",
         **block_context(request, name, flash=flash, clear_modal=True),  # re-reads (cache cleared)
     )  # fmt: skip
+
+
+@router.post("/users/{name}/sessions/{handle}/revoke", response_class=HTMLResponse)
+def session_revoke_one(request: Request, name: str, handle: str) -> Response:
+    """End one session. The handle is an opaque stand-in: the real session id never leaves Redis."""
+    store: SessionStore | None = sessions_of(request)
+    if store is None:
+        return conflict_response(Conflict("Open sessions are not set up.", 404))
+    v = load_view(request)
+    identity = identity_of(request.state)
+
+    def page(status: int = 200, **extra: Any) -> Response:
+        return render(v, "partials/user_sessions.html", status=status,
+                      **block_context(request, name, **extra))  # fmt: skip
+
+    if _is_me(request, name):
+        mine = store.current_key(request.headers.get("cookie"))
+        if mine is None or store.handle_of(mine) == handle:
+            return page(
+                422,
+                error="That is the session you are using. Sign out from Authelia instead, "
+                "or use \"Sign out my other sessions\".",
+            )  # fmt: skip
+    try:
+        result = store.revoke_one(name, handle)
+    except SessionsUnavailable as exc:
+        return page(422, error=f"Open sessions are unavailable: {exc}.")
+    if not result.deleted:
+        return page(flash="That session was already gone.")
+    summary = f"Signed out 1 session (#{handle[:6]}) of {name[:80]}"
+    audit.append(
+        v.settings.CONFIG_MANAGED_DIR,
+        audit.AuditEntry(
+            ts=audit.now(), user=identity.username, client_ip=str(identity.client_ip),
+            action="sessions", result="revoked", commit="", summary=summary,
+        ),
+    )  # fmt: skip
+    notify.send(v.settings, "sessions", "revoked", identity.username, summary)
+    return page(flash=f"{name}: session #{handle[:6]} signed out.")
+
+
+@router.get("/sessions/confirm-all", response_class=HTMLResponse)
+def sessions_confirm_all(request: Request) -> Response:
+    if sessions_of(request) is None:
+        return conflict_response(Conflict("Open sessions are not set up.", 404))
+    counts = counts_of(request)
+    if counts.problem:
+        return conflict_response(Conflict(f"Open sessions are unavailable: {counts.problem}.", 503))
+    v = load_view(request)
+    return render(v, "partials/sessions_revoke_all_confirm.html", counts=counts)
+
+
+@router.post("/sessions/revoke-all", response_class=HTMLResponse)
+def sessions_revoke_all(request: Request) -> Response:
+    """Sign every user out, except the session the caller is using."""
+    store: SessionStore | None = sessions_of(request)
+    if store is None:
+        return conflict_response(Conflict("Open sessions are not set up.", 404))
+    v = load_view(request)
+    identity = identity_of(request.state)
+    keep = store.current_key(request.headers.get("cookie"))
+    try:
+        result = store.revoke_everyone(keep=keep)
+    except SessionsUnavailable as exc:
+        return conflict_response(Conflict(f"Open sessions are unavailable: {exc}.", 503))
+    if result.deleted:
+        detail = "your current one kept" if result.kept else "all of them"
+        if not result.complete:
+            detail += ", the list was cut short so some may remain"
+        summary = f"Signed out {result.deleted} session(s) of {result.users} user(s) ({detail})"
+        audit.append(
+            v.settings.CONFIG_MANAGED_DIR,
+            audit.AuditEntry(
+                ts=audit.now(), user=identity.username, client_ip=str(identity.client_ip),
+                action="sessions", result="revoked", commit="", summary=summary,
+            ),
+        )  # fmt: skip
+        notify.send(v.settings, "sessions", "revoked", identity.username, summary)
+    return Response(status_code=204, headers={"HX-Redirect": f"/users?signed_out={result.deleted}"})

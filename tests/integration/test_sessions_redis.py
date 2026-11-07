@@ -173,3 +173,26 @@ def test_a_wrong_secret_reads_nothing_and_deletes_nothing(env: Env, tmp_path: Pa
     assert snap.sessions == () and snap.looks_like_wrong_secret
     assert store.revoke("alice").deleted == 0
     assert still_signed_in(cookie)
+
+
+def test_one_session_can_be_ended_by_its_handle_and_only_that_one(env: Env) -> None:
+    first, second = sign_in(env, "alice"), sign_in(env, "alice")
+    handle = env.store.handle_of(env.store.current_key(first) or "")
+    result = env.store.revoke_one("alice", handle)
+    assert result.deleted == 1
+    assert not still_signed_in(first) and still_signed_in(second)
+
+
+def test_a_handle_does_not_work_across_users(env: Env) -> None:
+    alice, bobs = sign_in(env, "alice"), sign_in(env, "bob")
+    bobs_handle = env.store.handle_of(env.store.current_key(bobs) or "")
+    assert env.store.revoke_one("alice", bobs_handle).deleted == 0  # alice's page, bob's handle
+    assert still_signed_in(bobs) and still_signed_in(alice)
+
+
+def test_everyone_can_be_signed_out_except_the_session_kept(env: Env) -> None:
+    mine, other, bobs = sign_in(env, "alice"), sign_in(env, "alice"), sign_in(env, "bob")
+    result = env.store.revoke_everyone(keep=env.store.current_key(mine))
+    assert result.kept == 1 and result.deleted >= 2 and result.users >= 2
+    assert still_signed_in(mine)  # the administrator pressing the button stays signed in
+    assert not still_signed_in(other) and not still_signed_in(bobs)

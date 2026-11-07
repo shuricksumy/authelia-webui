@@ -1,0 +1,12 @@
+<dialog open aria-labelledby="dlg-title">
+  <article>
+    <header><button type="button" aria-label="Close" rel="prev" data-close></button><h3 id="dlg-title">Sign out all users?</h3></header>
+    <p>This ends <strong>{{ counts.sessions }}</strong> open session{{ '' if counts.sessions == 1 else 's' }} of <strong>{{ counts.users }}</strong> user{{ '' if counts.users == 1 else 's' }}
+      on every device, at once. Everyone has to sign in again, other administrators included. The session you are using stays.</p>
+    <p><small class="muted">Use it when you suspect a leaked session, or after changing who may sign in. Accounts stay enabled. Apps that use OpenID Connect keep their own sign-in until it expires.</small></p>
+    <footer>
+      <button type="button" class="secondary" data-close>Cancel</button>
+      <button type="button" class="danger" hx-post="/sessions/revoke-all">Sign out all users</button>
+    </footer>
+  </article>
+</dialog>

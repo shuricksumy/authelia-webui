@@ -3,6 +3,7 @@ the Overview card (app/web_sessions.py), through the ASGI app with a fake Redis.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -240,3 +241,153 @@ def test_ago_and_duration_read_naturally() -> None:
     assert duration(52 * 60) == "52 min" and duration(3600 + 5 * 60) == "1 h 5 min"
     assert duration(2 * 3600) == "2 h" and duration(3 * 86400) == "3 d"
     assert duration(86400 + 3 * 3600) == "1 d 3 h"
+
+
+# ------------------------------------------------------------------ kill one session
+
+
+def handle_of(page: UI, user: str, index: int = 0) -> str:
+    """The opaque handle the page puts in the kill button's URL (never the session id)."""
+    html = page.get(f"/users/{user}/sessions", htmx=True).text
+    found = re.findall(rf"/users/{user}/sessions/([0-9a-f]{{20}})/revoke", html)
+    return found[index]
+
+
+def test_each_session_row_has_details_a_short_id_and_its_own_kill_button(ui: UI) -> None:
+    text = ui.get("/users/alice/sessions", htmx=True).text
+    assert text.count("/sessions/") >= 2 and text.count("Sign out this session") >= 2
+    assert re.findall(r"#[0-9a-f]{6}</span>", text) and "expires in" in text and "signed in" in text
+    assert "2FA " in text  # when the second factor was completed, for the one that has it
+    for hidden in (PREFIX, ALICE_1, ALICE_2):
+        assert hidden not in text  # the URL carries a handle, never the session id
+
+
+def test_killing_one_session_leaves_the_others_and_is_audited(
+    ui: UI,
+    server: FakeRedis,
+    env: dict[str, Path],  # noqa: F811
+) -> None:
+    handle = handle_of(ui, "alice")
+    r = ui.post(f"/users/alice/sessions/{handle}/revoke")
+    assert r.status_code == 200 and f"session #{handle[:6]} signed out" in r.text
+    assert len([k for k in server.data if b"sid-alice" in k]) == 1  # one of alice's two is gone
+    assert PREFIX + BOB_1 in {k.decode() for k in server.data}
+    entry = audit.recent(env["managed"])[-1]
+    assert entry.action == "sessions" and f"#{handle[:6]}" in entry.summary
+    assert PREFIX not in entry.summary and ALICE_1 not in entry.summary
+
+
+def test_a_handle_from_another_users_page_cannot_end_that_users_session(
+    ui: UI,
+    server: FakeRedis,
+    env: dict[str, Path],  # noqa: F811
+) -> None:
+    bobs = handle_of(ui, "bob")
+    r = ui.post(f"/users/alice/sessions/{bobs}/revoke")  # alice's URL, bob's handle
+    assert "already gone" in r.text
+    assert PREFIX + BOB_1 in {k.decode() for k in server.data}
+    assert audit.recent(env["managed"]) == []  # nothing happened, nothing to record
+
+
+def test_a_forged_handle_does_nothing(ui: UI, server: FakeRedis) -> None:
+    for forged in ("0" * 20, "x", ALICE_1):
+        assert ui.post(f"/users/alice/sessions/{forged}/revoke").status_code == 200
+    assert server.deleted == []
+
+
+def test_you_can_end_your_other_sessions_one_by_one_but_not_the_one_you_use(
+    me: UI, server: FakeRedis
+) -> None:
+    cookie = f"authelia_session={ALICE_2}"
+    html = with_cookie(me, "/users/alice/sessions", cookie).text
+    handles_shown = re.findall(r"/users/alice/sessions/([0-9a-f]{20})/revoke", html)
+    assert len(handles_shown) == 1  # no kill button on "this browser"
+    mine = me.client.app.state.sessions.handle_of(PREFIX + ALICE_2)  # type: ignore[attr-defined]
+    assert mine not in handles_shown
+    refused = with_cookie(me, f"/users/alice/sessions/{mine}/revoke", cookie, "post")
+    assert refused.status_code == 422 and "session you are using" in refused.text
+    assert PREFIX + ALICE_2 in {k.decode() for k in server.data}
+    other = with_cookie(me, f"/users/alice/sessions/{handles_shown[0]}/revoke", cookie, "post")
+    assert other.status_code == 200 and PREFIX + ALICE_1 not in {k.decode() for k in server.data}
+
+
+def test_killing_one_of_your_own_sessions_without_a_cookie_does_nothing(
+    me: UI, server: FakeRedis
+) -> None:
+    handle = me.client.app.state.sessions.handle_of(PREFIX + ALICE_1)  # type: ignore[attr-defined]
+    r = me.post(f"/users/alice/sessions/{handle}/revoke")
+    assert r.status_code == 422 and server.deleted == []
+
+
+# ------------------------------------------------------------------ sign out all users
+
+
+def test_the_users_page_offers_sign_out_all_users_only_when_there_is_someone(
+    ui: UI,
+    server: FakeRedis,
+    env: dict[str, Path],  # noqa: F811
+) -> None:
+    assert "Sign out all users" in ui.get("/users").text
+    for key in list(server.data):
+        del server.data[key]
+    assert "Sign out all users" not in ui.get("/users").text  # nobody is signed in
+    assert "Sign out all users" not in UI(env).get("/users").text  # feature off
+
+
+def test_the_confirmation_for_everyone_says_how_many(ui: UI) -> None:
+    text = ui.get("/sessions/confirm-all", htmx=True).text
+    assert "<strong>3</strong> open sessions" in text and "<strong>2</strong> users" in text
+    assert "other administrators included" in text and 'hx-post="/sessions/revoke-all"' in text
+
+
+def test_signing_everyone_out_keeps_only_the_callers_own_session(
+    me: UI,
+    server: FakeRedis,
+    env: dict[str, Path],  # noqa: F811
+) -> None:
+    r = with_cookie(me, "/sessions/revoke-all", f"authelia_session={ALICE_2}", "post")
+    assert r.status_code == 204 and r.headers["HX-Redirect"] == "/users?signed_out=2"
+    assert {k.decode() for k in server.data} == {PREFIX + ALICE_2, PREFIX + "sid-anon"}
+    entry = audit.recent(env["managed"])[-1]
+    assert entry.action == "sessions" and "2 session(s) of 2 user(s)" in entry.summary
+    assert "your current one kept" in entry.summary
+
+
+def test_signing_everyone_out_with_no_cookie_ends_every_session(
+    ui: UI,
+    server: FakeRedis,  # the emergency door has no Authelia session of its own
+) -> None:
+    r = ui.post("/sessions/revoke-all")
+    assert r.headers["HX-Redirect"] == "/users?signed_out=3"
+    assert {k.decode() for k in server.data} == {PREFIX + "sid-anon"}
+
+
+def test_the_users_page_says_how_many_were_signed_out(ui: UI) -> None:
+    assert "3 sessions signed out." in ui.get("/users?signed_out=3").text
+    assert "1 session signed out." in ui.get("/users?signed_out=1").text
+    assert "signed out." not in ui.get("/users").text
+
+
+@pytest.mark.parametrize(
+    "path", ["/sessions/revoke-all", "/users/alice/sessions/" + "a" * 20 + "/revoke"]
+)
+def test_the_new_actions_are_admin_only_and_need_the_csrf_token(
+    ui: UI,
+    env: dict[str, Path],  # noqa: F811
+    path: str,
+) -> None:
+    outsider = UI(env, user="bob", groups="home")
+    assert outsider.client.post(path, headers=outsider.headers).status_code == 403
+    assert ui.client.post(path, headers=ui.headers).status_code == 403  # an admin, but no token
+
+
+def test_redis_trouble_during_the_new_actions_is_a_message_and_deletes_nothing(
+    ui: UI, server: FakeRedis
+) -> None:
+    handle = handle_of(ui, "alice")
+    server.fail = redis.exceptions.ConnectionError("down")
+    one = ui.post(f"/users/alice/sessions/{handle}/revoke")
+    assert one.status_code == 422 and "cannot be reached" in one.text
+    everyone = ui.post("/sessions/revoke-all")
+    assert everyone.status_code == 503 and "cannot be reached" in everyone.text
+    assert server.deleted == []
