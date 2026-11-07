@@ -31,12 +31,29 @@ is in that case.)
 
 Run these in the folder that holds your `compose.yml`.
 
-1. **Authelia's session secret as a file.** It must be exactly the value of `session.secret` from
-   your Authelia configuration: the sessions are encrypted with it.
+1. **Authelia's session secret as a file.** It must be exactly the value of `session.secret` that
+   **Authelia itself uses**: the sessions are encrypted with it. It is not a new random value, and
+   a wrong one only shows up later as "None of the sessions could be read".
+
+   The safest way is to let the running configurator copy it, so that it never appears on screen
+   and nothing is retyped. It reads your Authelia configuration (mounted read-only) and your shell
+   writes the file:
    ```sh
    mkdir -p secrets
-   printf %s 'THE-VALUE-OF-session.secret' > secrets/session_secret
+   docker compose exec -T configurator python -c '
+   import sys
+   from ruamel.yaml import YAML
+   cfg = YAML(typ="safe").load(open("/config/configuration.yml"))
+   sys.stdout.write(str((cfg.get("session") or {}).get("secret", "")))
+   ' > secrets/session_secret
+   wc -c secrets/session_secret     # the length of your secret, not 0
    ```
+   Or by hand, if you prefer: `printf %s 'THE-VALUE' > secrets/session_secret`. If your Authelia gets
+   the secret from an environment variable or a secret file (`AUTHELIA_SESSION_SECRET`, or
+   `AUTHELIA_SESSION_SECRET_FILE`), copy that value instead: it overrides the configuration file.
+
+   Keep **the same file** when you change it later: overwrite it with `>`, never `rm` and `mv`, or
+   the single-file mount keeps pointing at the old one.
    The configurator runs as `AUTHELIA_UID:AUTHELIA_GID` from your `.env`, so give the file to that
    user. **Use the numbers, not the variable names**: those variables exist in `.env`, not in your
    shell, and `chown "$AUTHELIA_UID:..."` would silently do nothing.
@@ -74,6 +91,9 @@ service called `redis` on a network called `sessions`. If yours differ (say Redi
    (and declare it if the file does not already). `docker inspect authelia-redis --format
    '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}'` lists it, with Compose's project
    prefix in front.
+
+Where is my secret file? The compose file decides, and it may not be where you made it. Docker
+knows: `docker inspect <configurator container> --format '{{range .Mounts}}{{.Source}} {{.Destination}}{{"\n"}}{{end}}' | grep session_secret` prints its path on the host. Write to **that** file.
 
 Also keep the same `REDIS_PASSWORD` value for Redis and for Authelia that you use today. If Redis
 has no password (`docker exec <redis> redis-cli ping` answers `PONG`), the add-on still works, but
@@ -144,7 +164,7 @@ attention" item too.
 | Redis cannot be reached | The configurator is not on the Redis network, or Redis is down. |
 | Redis refused the configurator's login | `CONFIGURATOR_REDIS_PASSWORD` differs from what Redis started with: recreate `redis` after changing it. |
 | the Redis user may not read or delete the session keys | The `--user` line was changed or is not applied yet (check `docker exec <redis> redis-cli ACL USERS` lists `configurator`), or Authelia's `database_index` is not 0 (add `+select`). |
-| None of the sessions could be read | `SESSIONS_SECRET_FILE` is not Authelia's `session.secret` (same bytes, no extra text), or Authelia changed its format. |
+| None of the sessions could be read | `SESSIONS_SECRET_FILE` is not the secret Authelia uses (it must be the same bytes, with no quotes or extra text), or Authelia changed its format. See [Checking the secret](#checking-the-secret). |
 | The list may be incomplete | More than 50 000 session keys, or Redis answered slowly. |
 
 To see what the container itself sees:
@@ -152,6 +172,31 @@ To see what the container itself sees:
 ```sh
 docker compose exec configurator sh -c 'id; echo "$SESSIONS_SECRET_FILE"; ls -lnd "$SESSIONS_SECRET_FILE"; wc -c < "$SESSIONS_SECRET_FILE"'
 ```
+
+## Checking the secret
+
+If sessions exist but none can be read, compare the secret with Authelia's. These print only a
+length and a short fingerprint, never the secret:
+
+```sh
+docker compose exec -T configurator python - <<'EOF'
+import hashlib, os
+from ruamel.yaml import YAML
+def fp(b): return hashlib.sha256(b).hexdigest()[:8]
+ours = open(os.environ["SESSIONS_SECRET_FILE"], "rb").read().rstrip(b"\r\n")
+print("our file:          length", len(ours), "fingerprint", fp(ours))
+cfg = YAML(typ="safe").load(open("/config/configuration.yml"))
+value = str((cfg.get("session") or {}).get("secret", "")).encode()
+print("configuration.yml: length", len(value), "fingerprint", fp(value), "(0 = not set in the file)")
+EOF
+docker exec authelia sh -c 'env | grep -E "^AUTHELIA_SESSION_SECRET" | sed "s/=.*/=<set>/"'
+```
+
+- The two fingerprints must be equal. If they are not, step 1 copied the wrong value: redo it.
+- If the second command prints a name, Authelia takes its secret from the environment (or from the
+  file named there), which beats `configuration.yml`: use that value instead.
+- If Authelia reads several configuration files, the secret may be in another one (`docker exec
+  authelia sh -c 'echo "$X_AUTHELIA_CONFIG"'` lists them).
 
 ## Limits
 
