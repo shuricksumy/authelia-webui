@@ -228,6 +228,10 @@ webhook never breaks an apply. The URL may contain a token, so keep it in your `
 - **Permanent bans from a file (optional):** [`docs/static-blocklist.md`](docs/static-blocklist.md):
   save the file and every bouncer applies it within seconds. All blocking pieces together, in
   deployment order: [`docs/blocking.md`](docs/blocking.md).
+- **Open sessions and "sign out everywhere" (optional):** [`docs/sessions.md`](docs/sessions.md):
+  see who is signed in to Authelia, and end one session, all of a user's, or everyone's, from the
+  Users page. Needs Authelia's sessions in Redis (the production example has them); switched on by
+  [`compose.sessions.yml`](examples/production/compose.sessions.yml).
 
 ## Reachable from anywhere (optional, not the default)
 
