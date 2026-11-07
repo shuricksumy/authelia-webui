@@ -20,12 +20,13 @@
   <label for="q" class="visually-hidden">Filter</label>
   <input id="q" type="search" name="q" value="{{ q }}" placeholder="Filter by name, email or group">
 </form>
+{% if session_counts.problem %}<p class="muted"><small>Open sessions are unavailable: {{ session_counts.problem }}.</small></p>{% endif %}
 {% if not rows %}<article class="empty"><p>{{ 'No user matches the filter.' if q else 'No users yet.' }}</p></article>
 {% else %}
 <div class="table-scroll">
   <table class="data users" data-colkey="users">
-    <colgroup><col class="w-l"><col><col><col class="w-xl"><col class="w-s"><col class="w-s"></colgroup>
-    <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th><th>Status</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
+    <colgroup><col class="w-l"><col><col><col class="w-xl">{% if session_counts.on %}<col class="w-s">{% endif %}<col class="w-s"><col class="w-s"></colgroup>
+    <thead><tr><th>User</th><th>Name</th><th>Email</th><th>Groups</th>{% if session_counts.on %}<th>Sessions</th>{% endif %}<th>Status</th><th class="col-actions"><span class="visually-hidden">Actions</span></th></tr></thead>
     <tbody>
       {% for r in rows %}
       <tr{% if r.disabled %} class="is-disabled"{% endif %}>
@@ -34,6 +35,7 @@
         <td data-label="Name"><span class="trunc" title="{{ r.displayname }}">{{ r.displayname }}</span></td>
         <td data-label="Email"><span class="trunc" title="{{ r.email }}">{{ r.email or '—' }}</span></td>
         <td data-label="Groups">{% for g in r.groups %}<span class="chip{% if g == admin_group %} edit{% endif %}">{{ g }}</span>{% else %}<span class="muted">none</span>{% endfor %}</td>
+        {% if session_counts.on %}<td data-label="Sessions">{% if r.sessions is none %}<span class="muted" title="{{ session_counts.problem }}">&ndash;</span>{% elif r.sessions %}<span class="pill{{ ' ok' if r.sessions_2fa }}" title="{{ r.sessions_2fa }} with 2FA">{{ r.sessions }}</span>{% else %}<span class="muted">0</span>{% endif %}</td>{% endif %}
         <td data-label="Status">{% if r.disabled %}<span class="badge deny">disabled</span>{% else %}<span class="ok-text">active</span>{% endif %}</td>
         <td class="col-actions">{% if writable %}<a role="button" class="act accent" aria-label="Edit" title="Edit {{ r.name }}" href="/users/{{ r.name|urlencode }}/edit">{{ icon("pencil-simple") }}</a>{% endif %}</td>
       </tr>

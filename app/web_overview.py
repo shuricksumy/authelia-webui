@@ -30,6 +30,7 @@ from app.users.document import UsersDocument
 from app.users.lint import lint_users
 from app.users.schema import load_schema
 from app.web import View, load_view, render, services_of
+from app.web_sessions import counts_of
 
 router = APIRouter()
 log = logging.getLogger("app.overview")
@@ -207,6 +208,17 @@ def collect(v: View) -> Overview:
                 )
             )
 
+    def open_sessions() -> None:
+        counts = counts_of(v.request)
+        if not counts.on:
+            return
+        if counts.problem:
+            out.items.append(
+                Attention("warning", f"Open sessions are unavailable: {counts.problem}.", "/users")
+            )
+            return
+        out.stats.update(sessions=counts.sessions, session_users=counts.users)
+
     def logs_check() -> None:
         path = v.settings.AUTHELIA_LOG_FILE
         if path is None:
@@ -237,6 +249,7 @@ def collect(v: View) -> Overview:
     check("the access tests", tests)
     check("the OIDC clients", clients)
     check("the users", users)
+    check("the open sessions", open_sessions)
     check("the log", logs_check)
     check("the certificates", certificates)
     order = {"error": 0, "warning": 1, "info": 2}

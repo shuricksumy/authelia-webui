@@ -32,6 +32,7 @@ from app.web import (
     render,
     services_of,
 )
+from app.web_sessions import SessionCounts, counts_of
 
 router = APIRouter()
 NO_STORE = {"Cache-Control": "no-store, max-age=0", "Pragma": "no-cache"}
@@ -53,6 +54,7 @@ def users_context(v: View, **extra: Any) -> dict[str, Any]:
     engine = services_of(v.request).engine
     return {
         "active": "users", "writable": engine.users_name is not None,
+        "session_counts": SessionCounts(),  # the pages that list users pass the real counts
         "users_rev": engine.users_rev(), "schema": load_schema(v.settings.CONFIG_MAIN),
         "admin_group": v.settings.ADMIN_GROUP, "me": v.identity.username, **extra,
     }  # fmt: skip
@@ -140,6 +142,7 @@ def extra_changes(user: dict[str, Any], schema: UsersSchema, data: Any) -> dict[
 def list_rows(doc: UsersDocument | None, ctx: dict[str, Any], q: str = "") -> list[dict[str, Any]]:
     """The users table; the editor opens as a drawer over it, so its pages need it too."""
     rows: list[dict[str, Any]] = []
+    counts: SessionCounts = ctx["session_counts"]
     if doc is not None:
         schema: UsersSchema = ctx["schema"]
         users = doc.users()
@@ -156,6 +159,8 @@ def list_rows(doc: UsersDocument | None, ctx: dict[str, Any], q: str = "") -> li
                 "disabled": u.get("disabled") is True,
                 "admin": ctx["admin_group"] in groups,
                 "issues": [m for who, sev, m in problems if who == name],
+                "sessions": counts.total.get(name.casefold(), 0) if counts.usable else None,
+                "sessions_2fa": counts.two_factor.get(name.casefold(), 0),
             })  # fmt: skip
     return rows
 
@@ -164,7 +169,7 @@ def list_rows(doc: UsersDocument | None, ctx: dict[str, Any], q: str = "") -> li
 def users_page(request: Request, q: str = "", saved: str = "") -> Response:
     v = load_view(request)
     doc = users_doc(v)
-    ctx = users_context(v)
+    ctx = users_context(v, session_counts=counts_of(v.request))
     flash = f"User {saved} saved." if saved else ""
     return render(v, "users.html", rows=list_rows(doc, ctx, q), q=q, broken=doc is None,
                   flash=flash, **ctx)  # fmt: skip
@@ -175,7 +180,7 @@ def users_page(request: Request, q: str = "", saved: str = "") -> Response:
 
 def editor_context(v: View, doc: UsersDocument, name: str | None, errors: list[str] | None = None,
                    form: dict[str, Any] | None = None) -> dict[str, Any]:  # fmt: skip
-    ctx = users_context(v)
+    ctx = users_context(v, session_counts=counts_of(v.request))
     user = dict(doc.users().get(name, {})) if name else {}
     top_level = {k: val for k, val in user.items() if k not in KNOWN}
     nested = user.get("extra") if isinstance(user.get("extra"), dict) else {}

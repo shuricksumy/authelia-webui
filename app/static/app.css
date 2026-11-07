@@ -557,6 +557,16 @@ dl.facts dt, dl.facts dd { padding: 0.25rem 0; border-bottom: 1px solid var(--ap
 dl.facts dt:last-of-type, dl.facts dd:last-of-type { border-bottom: 0; }
 dl.facts dt { color: var(--pico-muted-color); font-size: 0.82rem; padding-right: 1rem; }
 dl.facts dd { margin: 0; overflow-wrap: anywhere; font-size: 0.86rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+/* Open sessions (the user editor's block) */
+.sessions-block { margin-top: 1.2rem; padding-top: 0.9rem; border-top: 1px solid var(--app-border); }
+.sessions-block h3 { margin: 0 0 0.5rem; }
+.sessions-summary { margin: 0 0 0.4rem; font-size: 0.88rem; color: var(--pico-muted-color); }
+.sessions-summary strong { color: var(--pico-color); }
+ul.sessions { list-style: none; margin: 0 0 0.7rem; padding: 0; border: 1px solid var(--app-border); border-radius: var(--pico-border-radius); }
+ul.sessions li { display: grid; grid-template-columns: 3.6rem 1fr; align-items: center; gap: 0.05rem 0.6rem; margin: 0; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--app-border); list-style: none; }
+ul.sessions li:last-child { border-bottom: 0; }
+ul.sessions .s-sub { grid-column: 2; }
+.sessions-block button.small { display: inline-flex; align-items: center; gap: 0.4rem; }
 .log-filters select, .log-filters input { width: auto; min-width: 11rem; margin: 0; }
 .log-entry summary { cursor: pointer; list-style: none; }
 .log-entry summary::-webkit-details-marker { display: none; }
