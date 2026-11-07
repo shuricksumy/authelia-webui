@@ -104,6 +104,8 @@ def test_the_guide_covers_every_message_the_app_shows() -> None:
         "may not read or delete the session keys",
         "None of the sessions could be read",
         "Your own compose file, with other names?",  # the add-on assumes the example's names
+        "Checking the secret",  # how to compare the secret with Authelia's, without printing it
+        "Where is my secret file?",
     ):
         assert phrase in text, phrase
 
