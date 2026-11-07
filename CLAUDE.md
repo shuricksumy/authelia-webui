@@ -38,7 +38,11 @@ Protection of the configurator rules is derived from env (there is no `protected
   HMAC handle keyed from `APP_SECRET_KEY`, which only ends a session of the user whose page posts it);
   a decrypted session is reduced to a few fields (it can hold a pending TOTP secret); anything unexpected
   is "unavailable"/"unreadable" and deletes nothing; your own session is kept; reads are bounded and
-  a failed read short-circuits for 15 s. Do not use `msgpack.unpackb(max_buffer_size=...)`: that option
+  a failed read short-circuits for 15 s. The Redis client may send **no command on connect** beyond
+  what that ACL allows: no `client_name` (CLIENT SETNAME was refused and killed the whole connection
+  in production), no RESP3, and a database other than 0 needs `+select`; a unit test pins the
+  client options and `test_the_app_connects_through_its_own_settings...` logs in as the restricted
+  user through `from_settings`. Do not use `msgpack.unpackb(max_buffer_size=...)`: that option
   belongs to `Unpacker` and the `TypeError` was swallowed as "unreadable" once.
 - Authelia creates empty sessions (no username) for any visitor: they are ignored, not counted.
 

@@ -37,7 +37,8 @@ services:
 
   configurator:
     environment:
-      # The Redis database of Authelia's session.redis (0 unless you set database_index)
+      # The Redis database of Authelia's session.redis (0 unless you set database_index; for any
+      # other number also add +select to the user's rules above)
       SESSIONS_REDIS_URL: redis://redis:6379/0
       SESSIONS_REDIS_PASSWORD: ${CONFIGURATOR_REDIS_PASSWORD}
       SESSIONS_SECRET_FILE: /run/secrets/session_secret

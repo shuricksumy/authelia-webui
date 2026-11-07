@@ -68,7 +68,7 @@ Set in the add-on file; listed here for other setups. The address and the secret
 
 | Setting | Default | |
 |---|---|---|
-| `SESSIONS_REDIS_URL` | unset (feature off) | `redis://host:6379/0`, or `rediss://` for TLS. The number is Authelia's `database_index`. Credentials in the URL are refused: URLs end up in logs. |
+| `SESSIONS_REDIS_URL` | unset (feature off) | `redis://host:6379/0`, or `rediss://` for TLS. The number is Authelia's `database_index`; for any number but 0, add `+select` to the Redis user's rules (below). Credentials in the URL are refused: URLs end up in logs. |
 | `SESSIONS_REDIS_USERNAME` | `configurator` | The Redis user below. |
 | `SESSIONS_REDIS_PASSWORD` | none | Its password. |
 | `SESSIONS_SECRET_FILE` | unset (feature off) | A file holding Authelia's `session.secret`. Read each time, so rotating it needs no restart. |
@@ -82,6 +82,9 @@ would be lost when Redis restarts):
 ```
 --user configurator on >PASSWORD ~authelia-session:* -@all +scan +get +del +pttl +ping
 ```
+
+(Authelia's `database_index` is 0 unless you set it. For another number, add `+select` to the rules:
+the configurator must choose that database when it connects. `+select` cannot write anything.)
 
 It can list, read and delete the session keys, and **nothing else**: it cannot create a session, so
 it cannot sign anyone in, and it cannot read other keys. Checked in the tests against a real Redis:
@@ -123,7 +126,7 @@ attention" item too.
 | the session secret file is empty | Step 1 wrote nothing. |
 | Redis cannot be reached | The configurator is not on the Redis network, or Redis is down. |
 | Redis refused the configurator's login | `CONFIGURATOR_REDIS_PASSWORD` differs from what Redis started with: recreate `redis` after changing it. |
-| the Redis user may not read or delete the session keys | The `--user` line was changed. Restore the line above. |
+| the Redis user may not read or delete the session keys | The `--user` line was changed or is not applied yet (check `docker exec <redis> redis-cli ACL USERS` lists `configurator`), or Authelia's `database_index` is not 0 (add `+select`). |
 | None of the sessions could be read | `SESSIONS_SECRET_FILE` is not Authelia's `session.secret` (same bytes, no extra text), or Authelia changed its format. |
 | The list may be incomplete | More than 50 000 session keys, or Redis answered slowly. |
 
