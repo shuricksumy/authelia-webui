@@ -27,6 +27,8 @@ compose.cloudflare-list-sync.yml  optional, with compose.crowdsec.yml: own bans 
                             IP list (docs/cloudflare-list-sync.md; script in ../cloudflare-list-sync/)
 compose.static-blocklist.yml  optional, with compose.crowdsec.yml: permanent bans from a text file
                             (docs/static-blocklist.md; watcher in ../static-blocklist/)
+compose.sessions.yml        optional: see who is signed in, sign users out (docs/sessions.md); needs
+                            secrets/session_secret and CONFIGURATOR_REDIS_PASSWORD
 traefik-manager/            its router and API allow-list (copy into traefik/dynamic/)
 ```
 

@@ -22,6 +22,26 @@ revision); the live files are written only by `app/apply/engine.py`. Access test
 they never touch Authelia, so `ApplyEngine.save_tests` commits them at once (no draft, no restart).
 Protection of the configurator rules is derived from env (there is no `protected_rules.yml`).
 
+## Architecture notes (open sessions, optional)
+- `app/sessions.py` reads Authelia's sessions from **Redis** (memory sessions are out of reach) and
+  deletes them per user, one by one, or all. Opt-in: `SESSIONS_REDIS_URL` + `SESSIONS_SECRET_FILE`
+  (settings validate them together); `app.state.sessions` is None otherwise and every page looks
+  as before. UI in `app/web_sessions.py` (the user editor's block, the sign-out routes, the counts for
+  the Users page and Overview). Guide: `docs/sessions.md`; add-on: `examples/production/compose.sessions.yml`.
+- Format (Authelia 4.39.x): key `authelia-session:<id>`, value = AES-256-GCM, key SHA-256(`session.secret`),
+  12-byte nonce first, no AAD, around a MessagePack map `{"KV": {"UserSession": <JSON>}}`. The browser's
+  cookie value **is** the key id. **Re-run `tests/integration/test_sessions_redis.py` on every Authelia bump**
+  (real Authelia + Redis); a changed format must fail there, never in production.
+- Invariants, all tested: it only scans/reads/deletes (the Redis user is `-@all +scan +get +del +pttl
+  +ping` on `authelia-session:*`, so a compromised configurator cannot forge a login); a session key is
+  a live login and **never** reaches a template, URL, log or audit entry (the buttons carry an opaque
+  HMAC handle keyed from `APP_SECRET_KEY`, which only ends a session of the user whose page posts it);
+  a decrypted session is reduced to a few fields (it can hold a pending TOTP secret); anything unexpected
+  is "unavailable"/"unreadable" and deletes nothing; your own session is kept; reads are bounded and
+  a failed read short-circuits for 15 s. Do not use `msgpack.unpackb(max_buffer_size=...)`: that option
+  belongs to `Unpacker` and the `TypeError` was swallowed as "unreadable" once.
+- Authelia creates empty sessions (no username) for any visitor: they are ignored, not counted.
+
 ## Architecture notes (Phase 4b: overview and logs)
 - `app/logs.py` is the only log reader: bounded (line/byte budget), newest first, plain files read
   backwards in chunks, `.gz` streamed with only the tail kept. Paging cursor = `file:offset`.

@@ -1,0 +1,48 @@
+# Optional add-on: see who is signed in and sign a user out everywhere (docs/sessions.md).
+# Needs Authelia's sessions in Redis, which compose.yml already does.
+#
+#   mkdir -p secrets
+#   printf %s 'THE-VALUE-OF-session.secret' > secrets/session_secret   # exactly Authelia's secret
+#   sudo chown 1000:1000 secrets/session_secret && sudo chmod 400 secrets/session_secret
+#       # use AUTHELIA_UID:AUTHELIA_GID from .env: the configurator runs as that user
+#   echo "CONFIGURATOR_REDIS_PASSWORD=$(openssl rand -hex 24)" >> .env
+#   docker compose -f compose.yml -f compose.sessions.yml up -d
+#
+# Redis restarts: sessions are saved to disk, so nobody is signed out, but pick a quiet moment.
+services:
+  redis:
+    # compose.yml's command plus one more user for the configurator. It may scan, read and delete
+    # the session keys and nothing else: it cannot create a session, so it cannot sign anyone in,
+    # and it cannot read any other key. (A user added at run time would be lost on a restart.)
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD}
+      - --save
+      - "60"
+      - "1"
+      - --dir
+      - /data
+      - --user
+      - configurator
+      - "on"
+      - ">${CONFIGURATOR_REDIS_PASSWORD:?set CONFIGURATOR_REDIS_PASSWORD (openssl rand -hex 24)}"
+      - "~authelia-session:*"
+      - -@all
+      - +scan
+      - +get
+      - +del
+      - +pttl
+      - +ping
+
+  configurator:
+    environment:
+      # The Redis database of Authelia's session.redis (0 unless you set database_index)
+      SESSIONS_REDIS_URL: redis://redis:6379/0
+      SESSIONS_REDIS_PASSWORD: ${CONFIGURATOR_REDIS_PASSWORD}
+      SESSIONS_SECRET_FILE: /run/secrets/session_secret
+      # SESSIONS_COOKIE_NAME: authelia_session   # only if you renamed Authelia's session.name
+    volumes:
+      # Authelia's session.secret, read-only: the sessions are encrypted with it
+      - ./secrets/session_secret:/run/secrets/session_secret:ro
+    networks: [sessions] # reaches Redis; its other networks stay as in compose.yml
