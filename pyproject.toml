@@ -14,6 +14,8 @@ dependencies = [
     "python-multipart>=0.0.32",
     "httpx>=0.28.1",
     "cryptography>=50.0.2",
+    "redis>=5",
+    "msgpack>=1",
 ]
 
 [dependency-groups]
@@ -48,7 +50,7 @@ packages = ["app", "scripts"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["ruamel.*"]
+module = ["ruamel.*", "msgpack.*"]  # no type stubs shipped
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

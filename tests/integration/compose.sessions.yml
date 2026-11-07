@@ -1,0 +1,16 @@
+# Integration test only (test_sessions_redis.py), on top of compose.test.yml: Authelia keeps its
+# sessions in a throwaway Redis. The test generates the password and the session secret and passes
+# them in the environment; nothing here is a real credential.
+services:
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--requirepass", "${SESSIONS_TEST_REDIS_PASSWORD:?set by the test}", "--save", "", "--appendonly", "no"]
+    ports: ["127.0.0.1:16390:6379"] # the test reads the sessions from the host, like the app would
+    networks: [stack]
+  authelia:
+    environment:
+      AUTHELIA_SESSION_SECRET: ${SESSIONS_TEST_SECRET:?set by the test}
+      AUTHELIA_SESSION_REDIS_HOST: redis
+      AUTHELIA_SESSION_REDIS_PORT: "6379"
+      AUTHELIA_SESSION_REDIS_PASSWORD: ${SESSIONS_TEST_REDIS_PASSWORD:?set by the test}
+    depends_on: [redis]
