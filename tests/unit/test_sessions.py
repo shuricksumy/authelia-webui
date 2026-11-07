@@ -299,7 +299,7 @@ def test_a_failing_delete_is_unavailable_too(server: FakeRedis, secret_file: Pat
 
 
 def test_a_missing_or_empty_secret_file_is_unavailable(server: FakeRedis, tmp_path: Path) -> None:
-    with pytest.raises(SessionsUnavailable, match="cannot be read"):
+    with pytest.raises(SessionsUnavailable, match="does not exist"):
         SessionStore(server, tmp_path / "missing").snapshot()
     empty = tmp_path / "empty"
     empty.write_text("\n")
@@ -467,3 +467,26 @@ def test_handles_survive_a_restart_when_they_come_from_the_app_secret(
 
     assert handle_with("a" * 40) == handle_with("a" * 40)  # the same after a restart
     assert handle_with("a" * 40) != handle_with("b" * 40)
+
+
+def test_the_secret_file_message_says_why_it_cannot_be_used(
+    server: FakeRedis, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "made-by-docker"
+    folder.mkdir()  # what a bind mount creates when the host file did not exist
+    with pytest.raises(SessionsUnavailable, match="is a folder"):
+        SessionStore(server, folder).snapshot()
+
+    unreadable = tmp_path / "root-only"
+    unreadable.write_text("secret")
+
+    def deny(self: Path) -> bytes:
+        raise PermissionError(13, "Permission denied", str(self))
+
+    monkeypatch.setattr(Path, "read_bytes", deny)  # chmod would not stop a test run as root
+    with pytest.raises(
+        SessionsUnavailable, match="not readable by the configurator's user"
+    ) as raised:
+        SessionStore(server, unreadable).snapshot()
+    assert "check its owner and mode" in str(raised.value)
+    assert str(unreadable) not in str(raised.value)  # the message never echoes a path or an error

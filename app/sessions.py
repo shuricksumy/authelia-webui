@@ -192,6 +192,20 @@ class SessionStore:
     def _aes_key(self) -> bytes:
         try:
             secret = self._secret_file.read_bytes().rstrip(b"\r\n")
+        except FileNotFoundError:
+            raise SessionsUnavailable(
+                "the session secret file does not exist (is it mounted at SESSIONS_SECRET_FILE?)"
+            ) from None
+        except IsADirectoryError:
+            raise SessionsUnavailable(
+                "SESSIONS_SECRET_FILE is a folder: Docker makes one when the file on the host "
+                "did not exist at start"
+            ) from None
+        except PermissionError:
+            raise SessionsUnavailable(
+                "the session secret file is not readable by the configurator's user "
+                "(check its owner and mode)"
+            ) from None
         except OSError:
             raise SessionsUnavailable("the session secret file cannot be read") from None
         if not secret:
