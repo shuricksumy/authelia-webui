@@ -48,7 +48,7 @@ jobs:
         run: sed -i "s/^ARG AUTHELIA_VERSION=.*/ARG AUTHELIA_VERSION=${LATEST}/" Dockerfile
       - name: Open PR (CI decides whether it is safe to merge)
         if: steps.latest.outputs.newer == 'true' && steps.existing.outputs.count == '0'
-        uses: peter-evans/create-pull-request@15733dbdfeedb4f7fdb73d13c6f5ac83b710fab8 # v8.1.2
+        uses: peter-evans/create-pull-request@3ffccacd46053766916f087ce41d627c0b8cf2d1 # v8.1.3
         with:
           branch: authelia-${{ steps.latest.outputs.latest }}
           title: "chore: authelia ${{ steps.latest.outputs.latest }}"
